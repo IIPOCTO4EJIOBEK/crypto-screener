@@ -72,6 +72,11 @@ class Params:
     seed: int = 0
     # вход по открытию следующего дня (True) или по закрытию сигнального (False)
     use_open: bool = True
+    # через сколько дней после сигнального дня исполняется вход. 1 —
+    # поведение по умолчанию (открытие следующего дня); больше — проверка
+    # времени жизни сигнала: если преимущество держится только при входе на
+    # следующий день, руками (сигнал виден вечером, вход утром) его не снять.
+    lag: int = 1
 
 
 @dataclass
@@ -147,11 +152,16 @@ def _momentum(bars: list[Candle | None], i: int, lookback: int) -> float | None:
 def _interval_gross(bars: list[Candle | None], i: int, p: Params) -> float | None:
     """Доходность монеты за интервал удержания, начавшийся решением дня i.
 
-    При use_open вход по открытию дня i+1, выход по открытию дня i+1+holding.
-    При use_open=False — по закрытиям дня i и дня i+holding.
+    При use_open вход по открытию дня i+lag, выход — через holding дней
+    (по умолчанию lag=1, то есть открытие следующего дня). При use_open=False
+    — по закрытиям дня i и дня i+holding.
+
+    Интервалы стыкуются при любом lag: следующий интервал входит в тот же
+    день, в который вышел предыдущий (i+holding+lag = i+lag+holding), поэтому
+    капитал не простаивает в кэше между интервалами.
     """
     if p.use_open:
-        entry, exit_ = i + 1, i + 1 + p.holding
+        entry, exit_ = i + p.lag, i + p.lag + p.holding
         price = lambda c: c.open
     else:
         entry, exit_ = i, i + p.holding
@@ -222,9 +232,9 @@ def run(panel: "Panel", params: Params, *, costs: Costs,
     intervals = 0
     counting = since_ms is None             # пишем ли текущие интервалы наружу
 
-    for i in range(params.lookback, n - h - 1, h):
-        entry_ms = (ts[i + 1] if params.use_open else ts[i])
-        exit_ms = (ts[i + 1 + h] if params.use_open else ts[i + h])
+    for i in range(params.lookback, n - h - params.lag, h):
+        entry_ms = (ts[i + params.lag] if params.use_open else ts[i])
+        exit_ms = (ts[i + params.lag + h] if params.use_open else ts[i + h])
         if until_ms is not None and entry_ms >= until_ms:
             break
 

@@ -127,6 +127,43 @@ def test_вход_по_открытию_а_не_по_закрытию_сигна
     assert not math.isclose(a.total, b.total, rel_tol=1e-9)
 
 
+def test_задержка_исполнения_сдвигает_вход_на_lag_дней():
+    """lag — сколько дней от сигнала до входа; проверяется ценами входа.
+
+    Ряд растущий и без гэпов: open дня d = 100 + d, поэтому доходность каждого
+    интервала видна прямо из цен. Если бы вход всегда брался по открытию
+    следующего дня, произведение ниже не сошлось бы.
+    """
+    n, lb, h, lag = 60, 10, 5, 3
+    pnl = Panel.build({"A": straight(n, step=1.0)})
+    assert len(pnl.ts) == n, "панель не должна терять дни"
+    r = run(pnl, Params(lookback=lb, holding=h, mode="all", lag=lag), costs=FREE)
+    expected = 1.0
+    for i in range(lb, n - h - lag, h):
+        expected *= (100.0 + i + lag + h) / (100.0 + i + lag)
+    assert math.isclose(r.total, expected - 1.0, rel_tol=1e-12)
+
+
+def test_задержка_по_умолчанию_совпадает_с_единицей():
+    """lag=1 — прежнее поведение; иначе все старые числа поехали бы молча."""
+    bars = [bar(d, 100.0 + d, 100.0 + d + (5.0 if d % 3 == 0 else 0.0))
+            for d in range(80)]
+    pnl = Panel.build({"A": bars})
+    a = run(pnl, Params(lookback=10, holding=5, mode="long"), costs=FREE)
+    b = run(pnl, Params(lookback=10, holding=5, mode="long", lag=1), costs=FREE)
+    assert a.total == b.total
+    assert [x[1] for x in a.equity] == [x[1] for x in b.equity]
+
+
+def test_на_росте_задержка_снижает_доходность():
+    """Растущий ряд: чем позже вход, тем дороже цена и тем меньше доходность."""
+    pnl = Panel.build({"A": straight(80, step=1.0)})
+    quick = run(pnl, Params(lookback=10, holding=5, mode="all", lag=1), costs=FREE)
+    slow = run(pnl, Params(lookback=10, holding=5, mode="all", lag=10), costs=FREE)
+    assert slow.total < quick.total
+    assert slow.in_market == quick.in_market == 1.0
+
+
 def test_оборот_считает_и_вход_и_перекладывание():
     """Портфель из двух монет: оборот не меньше одного полного входа."""
     up = straight(60, step=1.0)

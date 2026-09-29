@@ -17,6 +17,7 @@
     .venv/bin/python -m tools.trend_study                # базовая конфигурация
     .venv/bin/python -m tools.trend_study --grid         # сетка параметров
     .venv/bin/python -m tools.trend_study --funding      # с фандингом
+    .venv/bin/python -m tools.trend_study --lag-sweep    # задержка исполнения
 
 Флаги можно сочетать: прогон с `--funding --years --walk --grid` грузит
 архив один раз и считает всё сразу. Повторные прогоны ускоряются кешем
@@ -217,6 +218,10 @@ def main() -> None:
     p.add_argument("--purge", type=int, default=30,
                    help="разрыв между выбором и проверкой, дней")
     p.add_argument("--controls", type=int, default=CONTROLS)
+    p.add_argument("--lag-sweep", nargs="*", type=int, default=None,
+                   metavar="ДН",
+                   help="перебор задержки исполнения: вход по открытию дня "
+                        "i+лаг вместо i+1 (без значений — 1 2 3 5 10)")
     p.add_argument("--universe", default=DEFAULT_UNIVERSE_NOTE,
                    help="как выбран состав монет — эта строка попадает "
                         "в отчёт как оговорка (по умолчанию: восьмёрка "
@@ -424,6 +429,46 @@ def main() -> None:
                               n_significant=v.n_significant, alpha=v.alpha,
                               dsr=v.dsr,
                               порог_n=30)
+
+    # время жизни сигнала: сигнал дня i исполняется на день i+lag. Рынок
+    # считается с той же задержкой — иначе сравнивались бы разные окна, а не
+    # разные сроки входа.
+    if a.lag_sweep is not None:
+        lags = a.lag_sweep or [1, 2, 3, 5, 10]
+        print(f"\nвремя жизни сигнала: сигнал по закрытию дня i, вход по "
+              f"открытию дня i+лаг (лаг 1 — по умолчанию)\n")
+        print(f"{'лаг':>4} {'интерв':>7} {'экспоз':>7} {'оборот/год':>10} "
+              f"{'всего %':>9} {'тренд':>7} {'рынок':>7} {'p':>7} {'различие':>10}")
+        lag_rows = []
+        for lag in lags:
+            pl = Params(lookback=a.lookback, holding=a.holding, mode="long",
+                        lag=lag)
+            pm = Params(lookback=a.lookback, holding=a.holding, mode="all",
+                        lag=lag)
+            rl = run(panel, pl, costs=costs, funding=funding)
+            rm = run(panel, pm, costs=costs, funding=funding)
+            got = (significance.sharpe_diff(rl.returns, rm.returns,
+                                            DAYS_PER_YEAR / a.holding)
+                   if rl.sharpe is not None and rm.sharpe is not None else None)
+            z, pval = got if got else (None, None)
+            word = ("—" if pval is None else
+                    ("значимо" if pval < 0.05 else "не значимо"))
+            print(f"{lag:>4} {rl.n_intervals:>7} {rl.exposure:>7.3f} "
+                  f"{rl.turnover_year:>10.1f} {rl.total * 100:>+9.1f} "
+                  f"{(rl.sharpe or 0):>7.2f} {(rm.sharpe or 0):>7.2f} "
+                  f"{(f'{pval:.3f}' if pval is not None else '—'):>7} {word:>10}")
+            lag_rows.append(dict(lag=lag, n=rl.n_intervals, exposure=rl.exposure,
+                                 in_market=rl.in_market,
+                                 turnover=rl.turnover_year, total=rl.total,
+                                 cagr=rl.cagr, sharpe=rl.sharpe,
+                                 dd=rl.max_drawdown, market_sharpe=rm.sharpe,
+                                 market_total=rm.total, z=z, p=pval,
+                                 значимо=(None if pval is None else bool(pval < 0.05))))
+        extra["задержка"] = dict(
+            правило=f"L{a.lookback} H{a.holding}", строки=lag_rows,
+            описание=("сигнал считается по закрытию дня i, вход — по открытию "
+                      "дня i+лаг; лаг 1 — вход на следующее утро, лаг 2 и "
+                      "больше — если решение принимается с промедлением"))
 
     if a.json:
         payload = {"прогоны": {name: {"params": asdict(rr.params),

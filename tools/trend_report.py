@@ -211,6 +211,44 @@ def walk_table(rows: list[dict]) -> str:
         "</tr></thead><tbody>" + "".join(body) + "</tbody></table>")
 
 
+def lag_table(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    body = []
+    for r in rows:
+        def sh(x):
+            return f"{x:.2f}" if x is not None else "—"
+
+        p = r.get("p")
+        if p is None:
+            word, ptxt = "—", "—"
+        elif not r.get("значимо"):
+            word, ptxt = "нет", f"{p:.3f}"
+        else:
+            better = (r["sharpe"] or 0) > (r.get("market_sharpe") or 0)
+            word = "лучше рынка" if better else "хуже рынка"
+            ptxt = f"{p:.3f}"
+        body.append(
+            "<tr>"
+            f'<td class="num">{r["lag"]}</td>'
+            f'<td class="num">{r["n"]}</td>'
+            f'<td class="num">{r["exposure"]:.3f}</td>'
+            f'<td class="num">{r["turnover"]:.1f}</td>'
+            f'<td class="num">{r["total"] * 100:+.1f}</td>'
+            f'<td class="num"><b>{sh(r["sharpe"])}</b></td>'
+            f'<td class="num">{sh(r["market_sharpe"])}</td>'
+            f'<td class="num">{r["market_total"] * 100:+.1f}</td>'
+            f'<td class="num">{ptxt}</td>'
+            f'<td>{word}</td>'
+            "</tr>")
+    return (
+        '<table><thead><tr><th>задержка, дней</th><th>интерв</th><th>экспоз</th>'
+        '<th>оборот/год</th><th>тренд, всего %</th><th>тренд Sharpe</th>'
+        '<th>рынок Sharpe</th><th>рынок, всего %</th><th>p</th>'
+        '<th>различие</th></tr></thead><tbody>'
+        + "".join(body) + "</tbody></table>")
+
+
 def build(payload: dict) -> str:
     runs = payload.get("прогоны", {})
     cond = payload.get("условия", {})
@@ -246,6 +284,31 @@ def build(payload: dict) -> str:
             f'{g["n_tested"]}, значимых после поправки {g["n_significant"]}.'
             f'</div>')
 
+    lg = extra.get("задержка")
+    if lg and lg.get("строки"):
+        rows = lg["строки"]
+        base = next((r for r in rows if r["lag"] == 1), None)
+        far = max(rows, key=lambda r: r["lag"])
+        if base and base.get("sharpe") is not None and far.get("sharpe") is not None:
+            parts = []
+            for r in rows:
+                if r.get("p") is None or not r.get("значимо"):
+                    continue
+                better = (r["sharpe"] or 0) > (r.get("market_sharpe") or 0)
+                parts.append(f'при {r["lag"]} дн — {"лучше" if better else "хуже"} '
+                             f'рынка')
+            где = ("Различие с рынком значимо " + ", ".join(parts) + ".") if parts \
+                else "Ни при одной задержке различие с рынком не значимо."
+            blocks.append(
+                f'<div class="verdict"><b>Время жизни сигнала.</b> '
+                f'{_esc(lg.get("правило", ""))}: сигнал считается по закрытию '
+                f'дня i, вход — по открытию дня i+задержка. Sharpe правила '
+                f'падает с {base["sharpe"]:.2f} при задержке 1 день до '
+                f'{far["sharpe"]:.2f} при {far["lag"]} днях, а рынок с той же '
+                f'задержкой держится около {far["market_sharpe"]:.2f}: значит '
+                f'сдвиг окна само преимущество не объясняет, оно именно '
+                f'исчезает. {где}</div>')
+
     wf = extra.get("вне выбора")
     if wf:
         wins = sum(1 for r in wf if r.get("fixed_sharpe") is not None
@@ -276,6 +339,20 @@ def build(payload: dict) -> str:
         "и одном способе взвешивания (равные веса). Ни то, ни другое не "
         "подбиралось под данные, но и не проверялось на устойчивость.",
     ]
+
+    walk_sec = ""
+    if wf:
+        walk_sec = ('<h2>Проверка вне выбора параметров</h2>'
+                    '<div class="scroll">' + walk_table(wf) + "</div>")
+
+    lag_sec = ""
+    if extra.get("задержка"):
+        lag_sec = (
+            '<h2>Время жизни сигнала: задержка исполнения</h2>'
+            '<div class="scroll">'
+            + lag_table((extra["задержка"]).get("строки") or []) + "</div>"
+            '<p class="sub">' + _esc((extra["задержка"]).get("описание") or "")
+            + "</p>")
 
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -324,8 +401,7 @@ def build(payload: dict) -> str:
 <h2>Что показали проверки</h2>
 {''.join(blocks) if blocks else '<p class="sub">проверки не запускались</p>'}
 
-<h2>Проверка вне выбора параметров</h2>
-<div class="scroll">{walk_table(wf or [])}</div>
+{walk_sec}{lag_sec}
 
 <div class="caveat"><b>Чего эти числа не знают</b>
 <ul>{''.join(f'<li>{c}</li>' for c in caveats)}</ul></div>
