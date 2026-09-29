@@ -7,6 +7,8 @@ __pycache__/
 data/*.db
 data/*.parquet
 data/*.csv
+data/*.jsonl
+data/tg/
 docs/tiger/
 tools/news/delist_raw.json
 tools/prototype/data.json

@@ -31,6 +31,7 @@ from src.analysis.liquidity import (find_walls, imbalance, marginal_slices,
 from src.analysis.metrics import correlation, efficiency_ratio, natr, volume_splash
 from src.data.archive import load_book_depth, load_klines, load_metrics
 from src.data.market import ohlcv
+from src.data.news import snapshot as news_snapshot
 
 SYMBOLS = (
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
@@ -73,6 +74,7 @@ class Collector:
         self.positioning: dict[str, dict] = {}
         self.pairs: list[str] = []
         self.btc: dict[str, list] = {}
+        self.news: dict = {}
 
     def gap(self, what: str, exc: Exception | None = None) -> None:
         text = what
@@ -277,6 +279,26 @@ class Collector:
                 self.gap(f"metrics {sym}: в архиве за 4 дня строк нет")
         print(f"  позиционирование: символов с данными {len(self.positioning)}")
 
+    # -- новостной фон ----------------------------------------------------
+    def collect_news(self) -> None:
+        """Заголовки изданий и индекс страха и жадности.
+
+        Это фон, а не сигнал: лента нужна, чтобы отличить событие от потока
+        заявок. Поэтому отсутствие ленты — пробел в отчёте, а не повод
+        подставить пустую рамку.
+        """
+        try:
+            self.news = news_snapshot()
+        except Exception as e:                          # noqa: BLE001
+            self.gap("новостной фон", e)
+            return
+        fg = self.news.get("fear_greed")
+        print(f"  новости: заголовков {len(self.news.get('headlines', []))}, "
+              f"лент не открылось {len(self.news.get('broken', []))}, "
+              f"индекс {fg['value'] if fg else '—'}")
+        for name in self.news.get("broken", []):
+            self.gap(f"лента {name}")
+
 
 def build_data() -> dict:
     t0 = time.time()
@@ -292,6 +314,8 @@ def build_data() -> dict:
     col.collect_book()
     print("сбор позиционирования (архив metrics)…")
     col.collect_positioning()
+    print("сбор новостного фона…")
+    col.collect_news()
     dur = round(time.time() - t0, 1)
 
     by_kind: dict[str, int] = {}
@@ -316,6 +340,7 @@ def build_data() -> dict:
         "charts": col.charts,
         "orderbook": col.orderbook,
         "positioning": col.positioning,
+        "news": col.news,
         "archive_day": days[0] if days else None,
         "counts": {
             "coins": len(SYMBOLS),
