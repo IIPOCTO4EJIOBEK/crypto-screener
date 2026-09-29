@@ -168,6 +168,20 @@ def _nearest_below(levels, price: float):
     return max(dn, key=lambda lv: lv.price) if dn else None
 
 
+def _beyond(direction: str, entry: float, targets: list[float]) -> list[float]:
+    """Оставить только цели по ту сторону от входа, где сделка в плюсе.
+
+    Цель ниже входа у лонга — не цель, а уже пройденный уровень: цена там
+    была. Такие попадают в список двумя путями. В отскоке — потому что
+    допуск уровня считает касанием свечу, чей лоу остался выше уровня, и
+    проекция «на 1.5 хвоста» уходит тогда вниз. В сломе структуры — потому
+    что закрытие могло подтвердиться выше предыдущего максимума, и он
+    оказывается позади входа.
+    """
+    return [t for t in targets
+            if (t > entry if direction == "long" else t < entry)]
+
+
 def _confidence(*parts: float) -> float:
     return round(min(1.0, max(0.05, sum(parts))), 2)
 
@@ -345,6 +359,11 @@ def detect_bounce(candles: list[Candle], tf: str, symbol: str,
             nxt = _nearest_below(levels, last.close)
             if nxt:
                 targets.insert(0, nxt.price)
+        targets = _beyond(direction, last.close, targets)
+        if not targets:
+            # за входом не осталось ни одной цели: уровень касания оказался
+            # выше входа, и проекция ушла назад. Это не сделка.
+            continue
 
         kind = "zakol" if pierced else "bounce"
         title = f"{'Закол' if pierced else 'Отскок'} уровня"
@@ -548,30 +567,34 @@ def detect_structure_break(candles: list[Candle], tf: str, symbol: str,
         hl = lows[-1][1]
         if last.close < hl * (1 - tol):
             stop = highs[-1][1]
-            targets = [lows[-2][1], last.close - (stop - last.close)]
-            out.append(Formation(
-                "structure_break", "Слом структуры", "short", symbol,
-                exchange, tf, last.ts, last.close, last.close, stop,
-                targets, True,
-                _confidence(0.5, 0.1 if last.close < last.open else 0.0),
-                [f"структура была восходящей: максимумы и минимумы росли",
-                 f"цена закрылась ниже последнего минимума {hl:.4f} — "
-                 f"последовательность сломана"],
-                "возврат цены выше сломанного минимума и обновление максимума"))
+            targets = _beyond("short", last.close,
+                              [lows[-2][1], last.close - (stop - last.close)])
+            if targets:
+                out.append(Formation(
+                    "structure_break", "Слом структуры", "short", symbol,
+                    exchange, tf, last.ts, last.close, last.close, stop,
+                    targets, True,
+                    _confidence(0.5, 0.1 if last.close < last.open else 0.0),
+                    [f"структура была восходящей: максимумы и минимумы росли",
+                     f"цена закрылась ниже последнего минимума {hl:.4f} — "
+                     f"последовательность сломана"],
+                    "возврат цены выше сломанного минимума и обновление максимума"))
     elif down_structure:
         lh = highs[-1][1]
         if last.close > lh * (1 + tol):
             stop = lows[-1][1]
-            targets = [highs[-2][1], last.close + (last.close - stop)]
-            out.append(Formation(
-                "structure_break", "Слом структуры", "long", symbol,
-                exchange, tf, last.ts, last.close, last.close, stop,
-                targets, True,
-                _confidence(0.5, 0.1 if last.close > last.open else 0.0),
-                ["структура была нисходящей: максимумы и минимумы падали",
-                 f"цена закрылась выше последнего максимума {lh:.4f} — "
-                 f"последовательность сломана"],
-                "возврат цены ниже сломанного максимума"))
+            targets = _beyond("long", last.close,
+                              [highs[-2][1], last.close + (last.close - stop)])
+            if targets:
+                out.append(Formation(
+                    "structure_break", "Слом структуры", "long", symbol,
+                    exchange, tf, last.ts, last.close, last.close, stop,
+                    targets, True,
+                    _confidence(0.5, 0.1 if last.close > last.open else 0.0),
+                    ["структура была нисходящей: максимумы и минимумы падали",
+                     f"цена закрылась выше последнего максимума {lh:.4f} — "
+                     f"последовательность сломана"],
+                    "возврат цены ниже сломанного максимума"))
     if out and n > 0 and out[0].risk_pct > 4 * n:
         return []  # до стопа слишком далеко — это уже не слом, а разворот
     return out
