@@ -28,8 +28,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from src.analysis.formations import Formation, detect_all
+from src.backtest import significance
 from src.backtest.costs import Costs
-from src.backtest.expectancy import STEP_BY_TF
+from src.backtest.expectancy import MIN_TRADES, STEP_BY_TF
 from src.backtest.walk import HISTORY
 from src.data.market import Candle
 from src.storage import db
@@ -38,10 +39,11 @@ from src.storage import db
 # летнее, то есть фиксированный сдвиг, а не местная зона машины.
 MSK = timezone(timedelta(hours=3))
 
-# Минимум сделок, при котором измерение считается опорой. Порог грубый и
-# намеренно высокий: на десятке сделок средний R гуляет на единицы, и
-# ранжировать по такому числу — то же, что ранжировать по случаю.
-MIN_TRADES = 30
+# Минимум сделок, при котором измерение считается опорой: порог грубый и
+# намеренно высокий — на десятке сделок средний R гуляет на единицы, и
+# ранжировать по такому числу то же, что ранжировать по случаю. Само значение
+# живёт в expectancy.py (MIN_TRADES), потому что тот же порог нужен отчёту
+# измерения; здесь оно только используется.
 
 # Сколько свечей давать детектору. Столько же, сколько в прогоне по архиву
 # (HISTORY в src/backtest/walk.py): иначе живой скринер находил бы не то, что
@@ -211,13 +213,18 @@ def _table_note(stats: dict, rows: list[Row]) -> str:
     """
     anchors = [m for m in stats.values() if m["n"] >= MIN_TRADES]
     pos = sum(1 for m in anchors if m["exp_net"] > 0)
+    # поправка на перебор считается по строкам-опорам: плюс на трёх сделках
+    # ничего не значит, и включать его в счёт значимых сравнений нечестно
+    verdict = significance.judge([dict(m) for m in anchors], min_n=MIN_TRADES)
     hit = {(r.kind, r.tf) for r in rows if r.exp_net is not None}
     pos_keys = {(k, tf) for (k, tf), m in stats.items()
                 if m["n"] >= MIN_TRADES and m["exp_net"] > 0}
     tail = "сегодня ни одна из них не сработала" if not (pos_keys & hit) \
         else f"из них сегодня сработало {len(pos_keys & hit)}"
     return (f"в таблице измерений формаций {len(stats)}, опора (n ≥ "
-            f"{MIN_TRADES}) у {len(anchors)}, в плюсе {pos} — {tail}")
+            f"{MIN_TRADES}) у {len(anchors)}, в плюсе {pos}, значимых после "
+            f"поправки на перебор (FDR {verdict.alpha:g}) "
+            f"{verdict.n_significant} — {tail}")
 
 
 def render_text(rows: list[Row], notes: list[str], stats: dict,

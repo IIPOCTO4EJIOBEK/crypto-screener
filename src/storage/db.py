@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS formation_stats (
     exp_gross    REAL    NOT NULL,   -- средний R до издержек
     exp_net      REAL    NOT NULL,   -- средний R после издержек
     cost         REAL    NOT NULL,   -- средние издержки в R
+    sd           REAL    NOT NULL DEFAULT 0,  -- разброс R по сделкам
     PRIMARY KEY (kind, tf)
 );
 """
@@ -183,7 +184,24 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
+
+
+# Колонки, дописанные после первого выпуска схемы. `CREATE TABLE IF NOT EXISTS`
+# уже существующую таблицу не меняет, поэтому новую колонку надо добавлять
+# отдельно: иначе база, созданная раньше, молча останется без неё.
+_ADDED_COLUMNS = {
+    "formation_stats": (("sd", "REAL NOT NULL DEFAULT 0"),),
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
 
 # --------------------------------------------------------------------------
@@ -237,7 +255,7 @@ def insert_candles(conn: sqlite3.Connection, symbol: str, exchange: str,
 
 
 _STATS_COLS = ("kind", "tf", "measured_on", "symbol_scope", "n", "win_rate",
-               "exp_gross", "exp_net", "cost")
+               "exp_gross", "exp_net", "cost", "sd")
 _STATS_SQL = (
     f"INSERT OR REPLACE INTO formation_stats ({', '.join(_STATS_COLS)}) "
     f"VALUES ({', '.join('?' * len(_STATS_COLS))})"

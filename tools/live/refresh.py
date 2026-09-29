@@ -15,8 +15,9 @@ from __future__ import annotations
 import argparse
 from datetime import date
 
+from src.backtest import significance
 from src.backtest.costs import Costs
-from src.backtest.expectancy import WINDOW_DAYS, table, window
+from src.backtest.expectancy import MIN_TRADES, WINDOW_DAYS, table, window
 from src.backtest.walk import report
 from src.storage import db
 
@@ -39,17 +40,35 @@ def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
                  n=s.n, win_rate=round(s.win_rate, 2),
                  exp_gross=round(s.expectancy, 4),
                  exp_net=round(s.expectancy_net, 4),
-                 cost=round(s.cost, 4)) for s in stats]
+                 cost=round(s.cost, 4),
+                 sd=round(s.sd, 4)) for s in stats]
     written = db.upsert_formation_stats(conn, rows, tfs)
     return written
 
 
 def _print_rows(rows: list[dict]) -> None:
     print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'цель %':>7} "
-          f"{'R':>8} {'издержки':>9} {'R net':>8}")
-    for r in sorted(rows, key=lambda r: -r["exp_net"]):
+          f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'значимо':>8}")
+    order = sorted(rows, key=lambda r: -r["exp_net"])
+    flags = significance.benjamini_hochberg(
+        [p for p in (_p(r) for r in order) if p is not None])
+    flag_iter = iter(flags)
+    for r in order:
+        p = _p(r)
+        mark = ("—" if p is None
+                else ("да" if next(flag_iter) else "нет"))
         print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r['win_rate']:7.1f} "
-              f"{r['exp_gross']:+8.3f} {r['cost']:9.3f} {r['exp_net']:+8.3f}")
+              f"{r['exp_gross']:+8.3f} {r['cost']:9.3f} {r['exp_net']:+8.3f} "
+              f"{('—' if p is None else f'{p:7.4f}'):>7} {mark:>8}")
+    v = significance.judge(rows, min_n=MIN_TRADES)
+    print(f"\nсравнений {v.n_tested}, из них с плюсом {v.n_positive}; "
+          f"после поправки на перебор (FDR {v.alpha:g}) значимых "
+          f"{v.n_significant}.")
+
+
+def _p(row: dict) -> float | None:
+    """p-value среднего R строки; None, если считать не из чего."""
+    return significance.p_value(row["exp_net"], row.get("sd") or 0.0, row["n"])
 
 
 def main() -> None:

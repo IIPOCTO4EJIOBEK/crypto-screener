@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from statistics import stdev
 
 from src.analysis.formations import Formation, detect_all
 from src.backtest.costs import Costs, cost_r
@@ -155,6 +156,7 @@ class Stats:
     total_r: float
     total_r_net: float = 0.0
     total_cost: float = 0.0
+    sd: float = 0.0        # разброс результата по сделкам, в R
 
     @property
     def win_rate(self) -> float:
@@ -187,13 +189,18 @@ def _build(groups: dict) -> list[Stats]:
     out = []
     for key, ts in groups.items():
         kind, tf = key if isinstance(key, tuple) else (key, "")
+        nets = [t.r_net for t in ts]
+        # разброс нужен для значимости среднего: без него нельзя отличить
+        # ровный плюс от среднего, собранного из редких крупных выигрышей
+        sd = stdev(nets) if len(nets) > 1 else 0.0
         out.append(Stats(kind, tf, len(ts),
                          sum(1 for t in ts if t.outcome == "target"),
                          sum(1 for t in ts if t.outcome == "stop"),
                          sum(1 for t in ts if t.outcome == "timeout"),
                          sum(t.r for t in ts),
                          sum(t.r_net for t in ts),
-                         sum(t.cost_r for t in ts)))
+                         sum(t.cost_r for t in ts),
+                         sd))
     out.sort(key=lambda s: -s.n)
     return out
 
