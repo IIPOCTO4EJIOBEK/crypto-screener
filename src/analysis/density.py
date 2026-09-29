@@ -140,8 +140,11 @@ class DensityTracker:
             if old is None:
                 self._live[k] = d
                 continue
-            # заявка «выросла» — значит, её не только ели, но и подставляли
-            grown = d.size > old.size
+            # заявка «выросла» — значит, её не только ели, но и подставляли.
+            # eaten — это не сумма перепадов, а сколько объёма нет сейчас
+            # относительно наблюдавшегося максимума: суммировать перепады
+            # нельзя, при монотонном убывании пик 100 → 90 → 80 даёт 30
+            # вместо 20.
             old.size = d.size
             old.notional = d.notional
             old.distance_pct = d.distance_pct
@@ -149,13 +152,14 @@ class DensityTracker:
             old.snapshots += 1
             old.max_size = max(old.max_size, d.size)
             old.min_size = min(old.min_size, d.size)
-            old.eaten += max(0.0, old.max_size - d.size) if not grown else 0.0
+            old.eaten = max(0.0, old.max_size - old.size)
 
-        # исчезнувшие переносим в историю
+        # исчезнувшие переносим в историю. Живые сюда НЕ добавляем: иначе
+        # history превращается в лог наблюдений, и vanished_near, который
+        # ищет исчезнувшие, возвращает то, что стоит в стакане прямо сейчас.
         for k in [k for k in self._live if k not in seen]:
             self.history.append(self._live.pop(k))
 
-        self.history.extend(current)
         return current
 
     def vanished_near(self, price: float, within_pct: float = 0.3) -> list[Density]:
@@ -175,8 +179,13 @@ class DensityTracker:
         score = 0.0
         if d.age_ms < self.min_life_ms:
             score += 0.3
-        if d.distance_pct >= 0 and d.side == "ask" and d.distance_pct < 0.1:
-            score += 0.2  # стоит вплотную к цене и не естся
+        # Стоит близко к цене и при этом не съедается — заявка для вида.
+        # Нижняя граница обязательна: всё, что ближе MIN_DISTANCE_PCT,
+        # find_densities отбрасывает как верх стакана, и условие вида
+        # «distance_pct < MIN_DISTANCE_PCT» не выполнилось бы никогда.
+        if (d.eaten == 0 and MIN_DISTANCE_PCT <= abs(d.distance_pct)
+                < MIN_DISTANCE_PCT * 2.5):
+            score += 0.2
         if d.size < d.max_size * 0.5:
             score += 0.3  # объём просел вдвое
         if d.snapshots <= 2:

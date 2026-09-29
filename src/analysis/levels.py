@@ -121,10 +121,14 @@ def horizontal_levels(candles: list[Candle], tf: str = "5m",
                                         skip_recent=skip_recent):
         if price <= 0:
             continue
+        # хай пивота даёт сопротивление, лой — поддержку. Сравнивать надо
+        # именно с типом уровня: у пивота kind это "high"/"low", у Level —
+        # "resistance"/"support", напрямую они не совпадают.
+        k = "resistance" if kind == "high" else "support"
         # ищем близкий уровень того же типа
         hit = None
         for lv in levels:
-            if lv.kind == kind and abs(lv.price - price) / price <= tol:
+            if lv.kind == k and abs(lv.price - price) / price <= tol:
                 hit = lv
                 break
         if hit:
@@ -137,10 +141,8 @@ def horizontal_levels(candles: list[Candle], tf: str = "5m",
         if kind == "high":
             # уровень пробит, если цена ушла выше больше чем на допуск
             broken = any(c.high > price * (1 + tol) for c in after)
-            k = "resistance"
         else:
             broken = any(c.low < price * (1 - tol) for c in after)
-            k = "support"
         levels.append(Level(price, k, 1, broken,
                             candles[idx].ts, candles[idx].ts))
 
