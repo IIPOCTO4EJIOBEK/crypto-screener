@@ -41,7 +41,7 @@ crypto-exchange/
 ├── docs/                 описание проекта и исследование
 │   ├── research/         разбор источников и проверки на данных (01…10)
 │   └── tiger/            документация брокера
-├── tests/                тесты: 47 штук, `python -m pytest tests/ -q`
+├── tests/                тесты, `python -m pytest tests/ -q`
 └── tools/
     ├── live/             живой контур: сбор, измерение, скринер
     ├── news/             разовые выгрузки и замеры по листингам
@@ -71,11 +71,41 @@ crypto-exchange/
 
 ---
 
-## Запуск
+## Живой контур
+
+Три шага, каждый запускается из корня проекта модулем — `PYTHONPATH` не нужен.
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest tests/ -q          # весь набор, меньше секунды
 ```
 
-Данные и тесты — см. `docs/`.
+```bash
+# 1. накопить живые данные: свечи, стакан (цикл раз в 60 с, копит в data/screener.db)
+.venv/bin/python -m tools.live.collect --once      # один круг
+.venv/bin/python -m tools.live.collect --loop 60   # то же по кругу, раз в минуту
+
+# 2. измерить ожидаемость формаций по архиву и записать её в базу
+#    (порядка часа на 8 монет × 3 таймфрейма: работа растёт как n²/шаг,
+#     подробности — в комментарии к STEP_BY_TF)
+.venv/bin/python -m tools.live.refresh --days 45
+
+# 3. отранжировать сегодняшние сигналы по измеренному R после издержек
+.venv/bin/python -m tools.live.screen --db data/screener.db --html /tmp/screen.html
+```
+
+Отчёт по издержкам отдельно, если нужно посмотреть, сколько именно съедает
+тариф при разных стопах:
+
+```bash
+.venv/bin/python -m tools.backtest_costs --symbols BTCUSDT ETHUSDT --tfs 5m 1h
+```
+
+Порядок обязателен: скринер сам ничего не считает. Он читает измерение из
+`formation_stats`, и на пустой таблице честно печатает «сигналов N, из них с
+измерением 0», а не подставляет уверенность детектора вместо ожидаемости.
+
+---
+
+Данные и разбор результатов — см. `docs/`.

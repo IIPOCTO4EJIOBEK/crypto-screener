@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-import sys
+import argparse
 import time
 
 from src.backtest.costs import Costs
@@ -30,18 +30,28 @@ TFS = ("5m", "15m", "1h")
 
 
 def main() -> None:
-    symbols = sys.argv[1:] or SYMBOLS
-    costs = Costs(taker_fee=0.0004, slippage=0.0001, funding=True)
-    start, end = window(WINDOW_DAYS)
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--symbols", nargs="+", default=SYMBOLS, help="монеты")
+    p.add_argument("--tfs", nargs="+", default=list(TFS), help="таймфреймы")
+    p.add_argument("--days", type=int, default=WINDOW_DAYS, help="длина окна, суток")
+    p.add_argument("--fee", type=float, default=0.0004, help="комиссия за сторону")
+    p.add_argument("--slippage", type=float, default=0.0001, help="проскальзывание за сторону")
+    p.add_argument("--no-funding", action="store_true", help="не учитывать фандинг")
+    a = p.parse_args()
+
+    costs = Costs(taker_fee=a.fee, slippage=a.slippage,
+                  funding=not a.no_funding)
+    start, end = window(a.days)
 
     def progress(sym, tf, n, loaded, missed):
         print(f"{sym:9} {tf:4} сделок {n:5}  месяцев фандинга {loaded}"
               f" (+{missed} нет в архиве)", flush=True)
 
     t0 = time.time()
-    print(f"окно {start} … {end} ({WINDOW_DAYS} суток, архив Binance), "
-          f"монет {len(symbols)}, таймфреймов {len(TFS)}\n", flush=True)
-    trades = table(symbols, TFS, costs=costs, progress=progress)
+    print(f"окно {start} … {end} ({a.days} суток, архив Binance), "
+          f"монет {len(a.symbols)}, таймфреймов {len(a.tfs)}\n", flush=True)
+    trades = table(list(a.symbols), tuple(a.tfs), days=a.days, costs=costs,
+                   progress=progress)
     print()
     print(format_report(trades, f"с издержками: {costs}"))
     print(f"\nсделок {len(trades)}, всего времени {time.time() - t0:.1f} с")
