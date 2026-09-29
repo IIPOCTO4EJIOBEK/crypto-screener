@@ -30,6 +30,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from src.analysis.formations import Formation, detect_all
+from src.backtest.costs import Costs, cost_r
+from src.data.archive import FundingRate
 from src.data.market import Candle
 
 HISTORY = 300     # сколько свечей видит детектор в каждом срезе
@@ -43,11 +45,23 @@ class Trade:
     outcome: str    # "target" | "stop" | "timeout"
     r: float        # результат в единицах риска: −1 это стоп
     bars: int       # через сколько свечей закрылась
+    entry: float = 0.0
+    stop: float = 0.0
+    side: str = ""
+    entry_ms: int = 0
+    exit_ms: int = 0
+    cost_r: float = 0.0    # издержки в единицах риска
+    r_net: float = 0.0     # результат за вычетом издержек
 
     @property
     def key(self) -> tuple[str, str, int]:
         return (self.formation.kind, self.formation.direction,
                 self.formation.ts)
+
+    @property
+    def stop_pct(self) -> float:
+        """Расстояние до стопа в долях цены — знаменатель издержек в R."""
+        return abs(self.entry - self.stop) / self.entry if self.entry else 0.0
 
 
 def simulate(formation: Formation, candles: list[Candle], start: int,
@@ -67,6 +81,13 @@ def simulate(formation: Formation, candles: list[Candle], start: int,
     long = formation.direction == "long"
 
     risk = abs(entry - stop)
+
+    def make(outcome: str, r: float, bars: int) -> Trade:
+        idx = min(start + bars - 1, len(candles) - 1)
+        return Trade(formation, outcome, r, bars, entry=entry, stop=stop,
+                     side=formation.direction, entry_ms=candles[start].ts,
+                     exit_ms=candles[idx].ts)
+
     for k, c in enumerate(candles[start:start + horizon], start=1):
         if long:
             hit_stop = c.low <= stop
@@ -75,20 +96,27 @@ def simulate(formation: Formation, candles: list[Candle], start: int,
             hit_stop = c.high >= stop
             hit_target = c.low <= target
         if hit_stop:      # стоп проверяется первым: см. оговорку выше
-            return Trade(formation, "stop", -1.0, k)
+            return make("stop", -1.0, k)
         if hit_target:
-            return Trade(formation, "target", abs(target - entry) / risk, k)
+            return make("target", abs(target - entry) / risk, k)
 
     last = candles[min(start + horizon, len(candles)) - 1]
     move = (last.close - entry) if long else (entry - last.close)
-    return Trade(formation, "timeout", move / risk, horizon)
+    return make("timeout", move / risk, horizon)
 
 
 def walk(candles: list[Candle], tf: str, symbol: str, exchange: str,
          *, history: int = HISTORY, step: int = STEP,
          horizon: int = HORIZON, btc: list[Candle] | None = None,
-         limit: int = 8) -> list[Trade]:
-    """Пройти историю срезами и собрать сделки по найденным формациям."""
+         limit: int = 8, costs: Costs | None = None,
+         funding: list[FundingRate] | None = None) -> list[Trade]:
+    """Пройти историю срезами и собрать сделки по найденным формациям.
+
+    Если переданы costs, у каждой сделки считается r_net — результат за
+    вычетом комиссии, проскальзывания и (при наличии расписания) фандинга.
+    Без costs r_net остаётся равным r: прогон без издержек не должен
+    выглядеть как прогон с нулевыми издержками.
+    """
     trades: list[Trade] = []
     seen: set[int] = set()
     for i in range(max(history, 40), len(candles) - 1, step):
@@ -106,6 +134,12 @@ def walk(candles: list[Candle], tf: str, symbol: str, exchange: str,
             if tr is None:
                 continue
             seen.add(f.ts)
+            if costs is not None:
+                tr.cost_r = cost_r(tr.entry, tr.stop, tr.entry_ms, tr.exit_ms,
+                                   tr.side, costs, funding)
+                tr.r_net = tr.r - tr.cost_r
+            else:
+                tr.r_net = tr.r
             trades.append(tr)
     return trades
 
@@ -119,6 +153,8 @@ class Stats:
     stop: int
     timeout: int
     total_r: float
+    total_r_net: float = 0.0
+    total_cost: float = 0.0
 
     @property
     def win_rate(self) -> float:
@@ -127,6 +163,14 @@ class Stats:
     @property
     def expectancy(self) -> float:
         return self.total_r / self.n if self.n else 0.0
+
+    @property
+    def expectancy_net(self) -> float:
+        return self.total_r_net / self.n if self.n else 0.0
+
+    @property
+    def cost(self) -> float:
+        return self.total_cost / self.n if self.n else 0.0
 
 
 def rr_bucket(rr: float) -> str:
@@ -147,7 +191,9 @@ def _build(groups: dict) -> list[Stats]:
                          sum(1 for t in ts if t.outcome == "target"),
                          sum(1 for t in ts if t.outcome == "stop"),
                          sum(1 for t in ts if t.outcome == "timeout"),
-                         sum(t.r for t in ts)))
+                         sum(t.r for t in ts),
+                         sum(t.r_net for t in ts),
+                         sum(t.cost_r for t in ts)))
     out.sort(key=lambda s: -s.n)
     return out
 
@@ -174,20 +220,22 @@ def format_report(trades: list[Trade], title: str = "") -> str:
     lines.append(f"сделок всего: {len(trades)}")
     lines.append("")
     lines.append("формация                 ТФ     сделок  цель  стоп  таймаут  "
-                 "доля цели  средний R  сумма R")
+                 "доля цели  средний R  издержки  средний R net  сумма R net")
     for s in kinds:
         lines.append(f"{s.kind:23} {s.tf:5} {s.n:7} {s.target:6} "
                      f"{s.stop:5} {s.timeout:8} {s.win_rate:9.1f}% "
-                     f"{s.expectancy:+9.3f} {s.total_r:+8.2f}")
+                     f"{s.expectancy:+9.3f} {s.cost:9.3f} "
+                     f"{s.expectancy_net:+13.3f} {s.total_r_net:+12.2f}")
     for head, group in (("таймфрейм", tfs), ("направление", dirs),
                         ("соотношение прибыль/риск", rrs)):
         lines.append("")
         lines.append(f"{head:26} сделок  цель  стоп  таймаут  доля цели  "
-                     f"средний R  сумма R")
+                     f"средний R  издержки  средний R net  сумма R net")
         for s in group:
             lines.append(f"{s.kind:26} {s.n:7} {s.target:6} {s.stop:5} "
                          f"{s.timeout:8} {s.win_rate:9.1f}% "
-                         f"{s.expectancy:+9.3f} {s.total_r:+8.2f}")
+                         f"{s.expectancy:+9.3f} {s.cost:9.3f} "
+                         f"{s.expectancy_net:+13.3f} {s.total_r_net:+12.2f}")
     return "\n".join(lines)
 
 
