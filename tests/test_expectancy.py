@@ -152,3 +152,34 @@ def test_окно_свечей_не_склеивается_из_двух_рын�
     assert len(perp) == len(candles), "окно склеило два рынка"
     assert [c.ts for c in perp] == [c.ts for c in candles]
     assert len(_candles(conn, "BTCUSDT", "5m", "binance")) == len(candles)
+
+
+def test_измерение_не_смешивает_два_прогона():
+    """Формация без сделок в новом прогоне не должна остаться строкой старого.
+
+    Иначе таблица показывает два измерения как одно, а «измерение от» на
+    странице берёт дату посторонних суток — так и вышло 30.09.2026: 24 строки
+    пересчитаны, одна (zakol 1h, n=1) осталась от 29.09 и назвала датой себя.
+    """
+    conn = empty_db()
+    db.upsert_formation_stats(conn, [stats("bounce", "1h", 40, -0.1),
+                                     stats("zakol", "1h", 1, 2.0)])
+    assert len(db.load_formation_stats(conn)) == 2
+
+    # второй прогон по 1h: zakol в нём не встретился вовсе
+    db.upsert_formation_stats(conn, [stats("bounce", "1h", 50, -0.2)], ("1h",))
+    left = db.load_formation_stats(conn)
+    assert set(left) == {("bounce", "1h")}, "строка прошлого прогона уцелела"
+    assert left[("bounce", "1h")]["n"] == 50
+
+
+def test_пересчёт_одного_таймфрейма_не_трогает_другие():
+    """Прогон по 1h не должен стирать измерение 5m: его в этом прогоне нет."""
+    conn = empty_db()
+    db.upsert_formation_stats(conn, [stats("bounce", "1h", 40, -0.1),
+                                     stats("bounce", "5m", 30, 0.2)])
+    db.upsert_formation_stats(conn, [stats("bounce", "1h", 44, -0.3)], ("1h",))
+    left = db.load_formation_stats(conn)
+    assert set(left) == {("bounce", "1h"), ("bounce", "5m")}
+    assert left[("bounce", "1h")]["n"] == 44
+    assert left[("bounce", "5m")]["n"] == 30

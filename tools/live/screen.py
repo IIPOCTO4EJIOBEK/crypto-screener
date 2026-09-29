@@ -371,8 +371,18 @@ def main() -> None:
     found, notes = signals(conn, tuple(a.tfs), a.exchange)
     rows = rank(found, stats, conn, costs, a.exchange)
 
-    measured_on = next((m["measured_on"] for m in stats.values()), None)
-    scope = next((m["symbol_scope"] for m in stats.values()), None)
+    # Строк измерения может оказаться больше одного прогона (база, записанная
+    # до того, как запись стала атомарной). Тогда одна дата на странице была бы
+    # неправдой, поэтому показывается диапазон, а не первая попавшаяся строка.
+    dates = sorted({m["measured_on"] for m in stats.values() if m["measured_on"]})
+    scopes = sorted({m["symbol_scope"] for m in stats.values() if m["symbol_scope"]})
+    if not dates:
+        measured_on = None
+    elif len(dates) == 1:
+        measured_on = dates[0]
+    else:
+        measured_on = f"{dates[0]}…{dates[-1]}"
+    scope = "; ".join(scopes) if scopes else None
     meta = {
         "when": datetime.now(MSK).strftime("%Y-%m-%d %H:%M"),
         "market": _market_label(a.exchange),

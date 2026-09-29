@@ -245,17 +245,28 @@ _STATS_SQL = (
 
 
 def upsert_formation_stats(conn: sqlite3.Connection,
-                           rows: list[dict]) -> int:
+                           rows: list[dict],
+                           tfs: tuple[str, ...] | None = None) -> int:
     """Записать измеренную ожидаемость формаций, по строке на (формация, ТФ).
 
     Перезапись, а не накопление: скринеру нужно последнее измерение, а не
     история измерений — она бы только позволила выбрать удобное задним числом.
+
+    `tfs` — таймфреймы прогона; их строки стираются перед вставкой. Без этого
+    измерение выходит смешанным: формация, не давшая в прогоне ни одной сделки,
+    остаётся строкой от прошлого раза со своей датой, и таблица показывает два
+    измерения как одно. Ровно так на странице появилось «измерение от
+    2026-09-29» при 24 строках, пересчитанных 30.09.
     """
-    if not rows:
-        return 0
-    conn.executemany(_STATS_SQL,
-                     [tuple(r.get(c) for c in _STATS_COLS) for r in rows])
-    conn.commit()
+    with conn:                      # удаление и вставка — одной транзакцией
+        if tfs:
+            placeholders = ", ".join("?" * len(tfs))
+            conn.execute(
+                f"DELETE FROM formation_stats WHERE tf IN ({placeholders})",
+                tfs)
+        if rows:
+            conn.executemany(_STATS_SQL,
+                             [tuple(r.get(c) for c in _STATS_COLS) for r in rows])
     return len(rows)
 
 
