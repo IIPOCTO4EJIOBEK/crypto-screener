@@ -1,0 +1,11 @@
+.env
+*.key
+*.pem
+*.p12
+__pycache__/
+.venv/
+data/*.db
+data/*.parquet
+data/*.csv
+docs/tiger/
+.DS_Store
