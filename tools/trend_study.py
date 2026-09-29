@@ -46,6 +46,15 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT",
 FIRST_MONTH = "2020-01"     # первая полная история BTCUSDT в архиве
 CONTROLS = 200              # сколько случайных входов считать для контроля
 
+# Описание состава в отчёт. По умолчанию — список SYMBOLS выше, но вселенную
+# можно задать иначе (например, составом на дату, §9 документа 16), и тогда
+# оговорка на странице обязана это сказать: иначе страница противоречит
+# собственным числам. Заодно здесь указывается, как состав обошёлся с монетами,
+# снятыми с торгов, — это и есть главная оговорка к таким прогонам.
+DEFAULT_UNIVERSE_NOTE = ("восемь крупнейших перпетуалов по объёму на 2026 год, "
+                         "применённые к истории с 2020-го; монеты, снятые "
+                         "с торгов, в этот состав не входят")
+
 
 def _cache_file(cache: str | None, kind: str, symbols: list[str],
                 first: str, last: str) -> Path | None:
@@ -208,6 +217,10 @@ def main() -> None:
     p.add_argument("--purge", type=int, default=30,
                    help="разрыв между выбором и проверкой, дней")
     p.add_argument("--controls", type=int, default=CONTROLS)
+    p.add_argument("--universe", default=DEFAULT_UNIVERSE_NOTE,
+                   help="как выбран состав монет — эта строка попадает "
+                        "в отчёт как оговорка (по умолчанию: восьмёрка "
+                        "лидеров 2026 года)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--json", default=None, help="куда сложить числа")
     p.add_argument("--cache", default=None, metavar="DIR",
@@ -425,6 +438,7 @@ def main() -> None:
                                for name, rr in results.items()},
                    "условия": {"символы": a.symbols, "первый месяц": a.first,
                                "последний месяц": last,
+                               "вселенная": a.universe,
                                "издержки за круг": costs.round_trip,
                                "фандинг": bool(a.funding),
                                "lookback": a.lookback, "holding": a.holding,
