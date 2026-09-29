@@ -358,8 +358,9 @@ def main() -> None:
     p.add_argument("--db", default=None)
     p.add_argument("--tfs", nargs="+", default=["5m", "15m", "1h"])
     p.add_argument("--exchange", default="binance_futures")
-    p.add_argument("--fee", type=float, default=0.0004)
-    p.add_argument("--slippage", type=float, default=0.0001)
+    p.add_argument("--fee", type=float, default=Costs().taker_fee,
+                   help="комиссия за сторону; по умолчанию — из модели издержек")
+    p.add_argument("--slippage", type=float, default=Costs().slippage)
     p.add_argument("--json", dest="json_path", default=None)
     p.add_argument("--html", dest="html_path", default=None)
     a = p.parse_args()

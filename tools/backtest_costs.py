@@ -34,8 +34,10 @@ def main() -> None:
     p.add_argument("--symbols", nargs="+", default=SYMBOLS, help="монеты")
     p.add_argument("--tfs", nargs="+", default=list(TFS), help="таймфреймы")
     p.add_argument("--days", type=int, default=WINDOW_DAYS, help="длина окна, суток")
-    p.add_argument("--fee", type=float, default=0.0004, help="комиссия за сторону")
-    p.add_argument("--slippage", type=float, default=0.0001, help="проскальзывание за сторону")
+    p.add_argument("--fee", type=float, default=Costs().taker_fee,
+                   help="комиссия за сторону; по умолчанию — из модели издержек")
+    p.add_argument("--slippage", type=float, default=Costs().slippage,
+                   help="проскальзывание за сторону")
     p.add_argument("--no-funding", action="store_true", help="не учитывать фандинг")
     a = p.parse_args()
 
