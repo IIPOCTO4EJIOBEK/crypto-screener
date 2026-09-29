@@ -29,6 +29,8 @@ from datetime import datetime, timedelta, timezone
 
 from src.analysis.formations import Formation, detect_all
 from src.backtest.costs import Costs
+from src.backtest.expectancy import STEP_BY_TF
+from src.backtest.walk import HISTORY
 from src.data.market import Candle
 from src.storage import db
 
@@ -162,15 +164,56 @@ def rank(found: list[Formation], stats: dict, conn, costs: Costs,
     return rows
 
 
-def render_text(rows: list[Row], notes: list[str], stats_n: int) -> str:
+# Оговорки, без которых числа читаются как больше, чем они есть. Собираются
+# функцией, а не лежат абзацем в тексте: их обязательно надо показать и на
+# странице, а два текста про одно и то же разошлись бы.
+def _caveats(meta: dict) -> tuple[str, ...]:
+    steps = ", ".join(f"{tf} — {STEP_BY_TF.get(tf, 5)}" for tf in
+                      (meta.get("tfs") or "").split(", ") if tf)
+    return (
+        f"Измерение считает формацию на всём префиксе свечей: детектор получает "
+        f"историю от {HISTORY} свечей и до конца архива, а срезов за окно "
+        f"берётся по одному на столько свечей ({steps}). Скринер ищет ту же "
+        f"формацию на последних {WINDOW} свечах базы — это не то же самое "
+        f"измерение, совпадает только длина истории у детектора.",
+        f"«n» — сделки по всем монетам измерения ({meta.get('scope') or '—'}) "
+        f"за окно измерения, а не по монете и не по сигналу этой строки: одна "
+        f"и та же формация на разных монетах идёт в одно число.",
+        f"Меньше {MIN_TRADES} сделок в измерении — строка показана, но опорой "
+        f"не считается: на десятке сделок средний R гуляет на единицы.",
+    )
+
+
+def _table_note(stats: dict, rows: list[Row]) -> str:
+    """Строка про саму таблицу измерений, а не про сегодняшние сигналы.
+
+    Два числа «из 25» легко совпадают и читаются как одно: сигналов с
+    измерением и формаций в таблице. Это разные наборы, и путать их нельзя —
+    в таблице плюсовые формации есть, а среди сегодняшних сигналов их может
+    не быть вовсе.
+    """
+    anchors = [m for m in stats.values() if m["n"] >= MIN_TRADES]
+    pos = sum(1 for m in anchors if m["exp_net"] > 0)
+    hit = {(r.kind, r.tf) for r in rows if r.exp_net is not None}
+    pos_keys = {(k, tf) for (k, tf), m in stats.items()
+                if m["n"] >= MIN_TRADES and m["exp_net"] > 0}
+    tail = "сегодня ни одна из них не сработала" if not (pos_keys & hit) \
+        else f"из них сегодня сработало {len(pos_keys & hit)}"
+    return (f"в таблице измерений формаций {len(stats)}, опора (n ≥ "
+            f"{MIN_TRADES}) у {len(anchors)}, в плюсе {pos} — {tail}")
+
+
+def render_text(rows: list[Row], notes: list[str], stats: dict,
+                meta: dict) -> str:
     out: list[str] = []
     measured = [r for r in rows if r.exp_net is not None]
-    out.append(f"сигналов {len(rows)}, из них с измерением {len(measured)}; "
-               f"формаций в таблице измерений {stats_n}")
     neg = sum(1 for r in measured if r.exp_net < 0)
+    out.append(f"сигналов {len(rows)}, из них с измерением {len(measured)}")
     if measured:
-        out.append(f"чистая ожидаемость положительна у {len(measured) - neg} "
-                   f"из {len(measured)}, отрицательна у {neg}")
+        out.append(f"у этих сигналов чистая ожидаемость положительна у "
+                   f"{len(measured) - neg} из {len(measured)}, "
+                   f"отрицательна у {neg}")
+    out.append(_table_note(stats, rows))
     out.append("")
     out.append(f"{'формация':22} {'ТФ':4} {'монета':9} {'стор':5} {'вход':>10} "
                f"{'стоп %':>7} {'R:R':>5} {'изд. R':>7} {'n':>5} "
@@ -193,6 +236,9 @@ def render_text(rows: list[Row], notes: list[str], stats_n: int) -> str:
                "делённые на расстояние до стопа); фандинг в них не входит и "
                "учтён в измеренном «R net». «—» вместо R net — измерение "
                f"отсутствует или сделано меньше чем на {MIN_TRADES} сделках.")
+    out.append("")
+    out.append("оговорки:")
+    out.extend(f"  · {c}" for c in _caveats(meta))
     return "\n".join(out)
 
 
@@ -205,7 +251,8 @@ def to_json(rows: list[Row], notes: list[str], meta: dict) -> str:
     }, ensure_ascii=False, indent=2)
 
 
-def render_html(rows: list[Row], notes: list[str], meta: dict) -> str:
+def render_html(rows: list[Row], notes: list[str], meta: dict,
+                stats: dict) -> str:
     """Страница отчёта. Текст экранируется: монеты и причины — внешние данные."""
     e = html.escape
     measured = [r for r in rows if r.exp_net is not None]
@@ -232,10 +279,11 @@ def render_html(rows: list[Row], notes: list[str], meta: dict) -> str:
         <td class="num">{r.spread_bps:.2f}<div class="sub">{r.band_usdt:,.0f} USDT</div></td>
       </tr>""")
     neg = sum(1 for r in measured if r.exp_net < 0)
-    verdict = ("ни у одной измеренной формации чистая ожидаемость не "
-               "положительна" if measured and neg == len(measured)
-               else f"положительная ожидаемость у {len(measured) - neg} "
-                    f"из {len(measured)}")
+    verdict = (f"ни у одного из {len(measured)} сегодняшних сигналов с "
+               f"измерением формация не в плюсе"
+               if measured and neg == len(measured)
+               else f"из {len(measured)} сегодняшних сигналов с измерением "
+                    f"в плюсе {len(measured) - neg}")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -260,6 +308,11 @@ def render_html(rows: list[Row], notes: list[str], meta: dict) -> str:
   tr.good td:nth-child(9) {{ color:var(--good); }}
   tr.bad  td:nth-child(9) {{ color:var(--bad); }}
   .notes {{ margin-top:18px; color:var(--dim); white-space:pre-wrap; }}
+  .caveat {{ margin-top:18px; padding:10px 12px; border-left:3px solid var(--line);
+             background:#161922; color:var(--dim); }}
+  .caveat b {{ color:var(--fg); font-weight:400; }}
+  .caveat ul {{ margin:6px 0 0; padding-left:18px; }}
+  .caveat li {{ margin-bottom:4px; }}
   .wrap {{ overflow-x:auto; }}
 </style></head><body>
 <h1>Скринер: сигналы и их измеренный результат</h1>
@@ -267,14 +320,16 @@ def render_html(rows: list[Row], notes: list[str], meta: dict) -> str:
   таймфреймы {e(meta['tfs'])} · измерение от {e(meta['measured_on'] or '—')}
   ({e(meta['scope'] or '—')})</div>
 <div class="verdict">{e(verdict)}: измеренных сигналов {len(measured)} из
-  {len(rows)}. Ранжирование — по чистой ожидаемости, а не по уверенности
-  детектора.</div>
+  {len(rows)}. {e(_table_note(stats, rows))}. Ранжирование — по чистой
+  ожидаемости, а не по уверенности детектора.</div>
 <div class="wrap"><table>
   <thead><tr><th>формация</th><th>ТФ</th><th>монета</th><th>сторона</th>
   <th>вход</th><th>стоп</th><th>цель</th><th>издержки сделки</th>
   <th>R net (измерено)</th><th>уверенность</th><th>спред / объём</th></tr></thead>
   <tbody>{''.join(body)}</tbody>
 </table></div>
+<div class="caveat"><b>Чего эти числа не значат</b>
+<ul>{''.join(f'<li>{e(c)}</li>' for c in _caveats(meta))}</ul></div>
 <div class="notes">{e(chr(10).join(notes)) if notes else ''}</div>
 </body></html>
 """
@@ -306,14 +361,14 @@ def main() -> None:
         "measured_on": measured_on,
         "scope": scope,
     }
-    print(render_text(rows, notes, len(stats)))
+    print(render_text(rows, notes, stats, meta))
     if a.json_path:
         with open(a.json_path, "w", encoding="utf-8") as fh:
             fh.write(to_json(rows, notes, meta))
         print(f"\nJSON: {a.json_path}")
     if a.html_path:
         with open(a.html_path, "w", encoding="utf-8") as fh:
-            fh.write(render_html(rows, notes, meta))
+            fh.write(render_html(rows, notes, meta, stats))
         print(f"страница: {a.html_path}")
 
 

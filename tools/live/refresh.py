@@ -41,8 +41,6 @@ def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
                  exp_net=round(s.expectancy_net, 4),
                  cost=round(s.cost, 4)) for s in stats]
     written = db.upsert_formation_stats(conn, rows)
-    if progress:
-        progress(rows)
     return written
 
 
