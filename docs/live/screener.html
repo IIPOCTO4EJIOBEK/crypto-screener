@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Скринер</title>
+<style>
+  :root { --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
+           --good:#3ddc97; --bad:#ff6b6b; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+          font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .meta { color:var(--dim); margin-bottom:16px; }
+  .verdict { padding:10px 12px; border-left:3px solid var(--bad);
+              background:#1a1d26; margin-bottom:18px; }
+  table { border-collapse:collapse; width:100%; }
+  th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line);
+           vertical-align:top; }
+  th { color:var(--dim); font-weight:400; position:sticky; top:0;
+        background:var(--bg); }
+  td.num { text-align:right; white-space:nowrap; }
+  .sub { color:var(--dim); font-size:11px; }
+  .long { color:var(--good); } .short { color:var(--bad); }
+  tr.good td:nth-child(9) { color:var(--good); }
+  tr.bad  td:nth-child(9) { color:var(--bad); }
+  .notes { margin-top:18px; color:var(--dim); white-space:pre-wrap; }
+  .caveat { margin-top:18px; padding:10px 12px; border-left:3px solid var(--line);
+             background:#161922; color:var(--dim); }
+  .caveat b { color:var(--fg); font-weight:400; }
+  .caveat ul { margin:6px 0 0; padding-left:18px; }
+  .caveat li { margin-bottom:4px; }
+  .wrap { overflow-x:auto; }
+</style></head><body>
+<h1>Скринер: сигналы и их измеренный результат</h1>
+<div class="meta">2026-09-30 02:29 МСК · монет 8 ·
+  таймфреймы 5m, 15m, 1h · измерение от 2026-09-30
+  (BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,AVAXUSDT)<br>рынок: Binance USDT-M перпетуал (fapi.binance.com)</div>
+<div class="verdict">ни у одного из 17 сегодняшних сигналов с измерением формация не в плюсе: измеренных сигналов 17 из
+  40. в таблице измерений формаций 24, опора (n ≥ 30) у 21, в плюсе 5, значимых после поправки на перебор (FDR 0.05) 11, из них с плюсом 1 — сегодня ни одна из них не сработала. Ранжирование — по чистой
+  ожидаемости, а не по уверенности детектора.</div>
+<div class="wrap"><table>
+  <thead><tr><th>формация</th><th>ТФ</th><th>монета</th><th>сторона</th>
+  <th>вход</th><th>стоп</th><th>цель</th><th>издержки сделки</th>
+  <th>R net (измерено)</th><th>уверенность</th><th>спред / объём</th></tr></thead>
+  <tbody>
+      <tr class="bad" title="касание уровня 2698.8800, хвост 66% свечи; уровень удержал цену; цель ближе стопа — соотношение хуже 1:0.8; событие 1 свечей назад">
+        <td>bounce<div class="sub">Отскок уровня</div></td>
+        <td>5m</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">2686.95</td>
+        <td class="num">2700.44<div class="sub">0.50 %</div></td>
+        <td class="num">2684.81<div class="sub">R:R 0.16</div></td>
+        <td class="num">0.239 R</td>
+        <td class="num">-0.052 R<div class="sub">n=145</div></td>
+        <td class="num">0.42</td>
+        <td class="num">0.04<div class="sub">2,833,986 USDT</div></td>
+      </tr>
+      <tr class="bad" title="касание уровня 83371.9000, хвост 57% свечи; уровень удержал цену; цель ближе стопа — соотношение хуже 1:0.8">
+        <td>bounce<div class="sub">Отскок уровня</div></td>
+        <td>5m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">83523.5</td>
+        <td class="num">83136.3<div class="sub">0.46 %</div></td>
+        <td class="num">83674<div class="sub">R:R 0.39</div></td>
+        <td class="num">0.259 R</td>
+        <td class="num">-0.052 R<div class="sub">n=145</div></td>
+        <td class="num">0.39</td>
+        <td class="num">0.01<div class="sub">1,315,104 USDT</div></td>
+      </tr>
+      <tr class="bad" title="цена проколола минимум 756.1100 и вернулась выше — сработали стопы под уровнем; движение против толпы: продавцы отдали позиции по худшей цене">
+        <td>liquidity_sweep<div class="sub">Smart Money: сбор стопов</div></td>
+        <td>1h</td>
+        <td><b>BNBUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">758.45</td>
+        <td class="num">754.99<div class="sub">0.46 %</div></td>
+        <td class="num">765.37<div class="sub">R:R 2.00</div></td>
+        <td class="num">0.263 R</td>
+        <td class="num">-0.055 R<div class="sub">n=121</div></td>
+        <td class="num">0.50</td>
+        <td class="num">0.13<div class="sub">589,498 USDT</div></td>
+      </tr>
+      <tr class="bad" title="закрытие за уровнем 119.0800 (1 касаний); ушли за уровень на 0.01% (допуск 0.59%); свеча закрылась в сторону пробоя, без отката">
+        <td>breakout<div class="sub">Пробой уровня</div></td>
+        <td>15m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">119.09</td>
+        <td class="num">118.376<div class="sub">0.60 %</div></td>
+        <td class="num">120.53<div class="sub">R:R 2.02</div></td>
+        <td class="num">0.200 R</td>
+        <td class="num">-0.083 R<div class="sub">n=597</div></td>
+        <td class="num">0.50</td>
+        <td class="num">0.84<div class="sub">1,570,668 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 1.4996 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; до пробоя уровень держался 2 касания; событие 1 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>15m</td>
+        <td><b>XRPUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">1.4959</td>
+        <td class="num">1.50841<div class="sub">0.84 %</div></td>
+        <td class="num">1.47163<div class="sub">R:R 1.94</div></td>
+        <td class="num">0.143 R</td>
+        <td class="num">-0.155 R<div class="sub">n=1162</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.67<div class="sub">656,030 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 119.0800 был пробит и стал поддержкой; цена вернулась к уровню и не закрепилась за ним">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>15m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">119.09</td>
+        <td class="num">118.376<div class="sub">0.60 %</div></td>
+        <td class="num">120.53<div class="sub">R:R 2.02</div></td>
+        <td class="num">0.200 R</td>
+        <td class="num">-0.155 R<div class="sub">n=1162</div></td>
+        <td class="num">0.45</td>
+        <td class="num">0.84<div class="sub">1,570,668 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 83728.0000 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; цель ближе стопа — соотношение хуже 1:0.8">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>15m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">83523.5</td>
+        <td class="num">84222.8<div class="sub">0.84 %</div></td>
+        <td class="num">83057<div class="sub">R:R 0.67</div></td>
+        <td class="num">0.143 R</td>
+        <td class="num">-0.155 R<div class="sub">n=1162</div></td>
+        <td class="num">0.30</td>
+        <td class="num">0.01<div class="sub">1,857,169 USDT</div></td>
+      </tr>
+      <tr class="bad" title="закрытие за уровнем 1.4967 (2 касаний); ушли за уровень на 0.26% (допуск 0.79%); уровень держался 2 касания; свеча закрылась в сторону пробоя, без отката; событие 1 свечей назад">
+        <td>breakout<div class="sub">Пробой уровня</div></td>
+        <td>1h</td>
+        <td><b>XRPUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">1.4928</td>
+        <td class="num">1.50854<div class="sub">1.05 %</div></td>
+        <td class="num">1.4704<div class="sub">R:R 1.42</div></td>
+        <td class="num">0.114 R</td>
+        <td class="num">-0.163 R<div class="sub">n=432</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.67<div class="sub">656,030 USDT</div></td>
+      </tr>
+      <tr class="bad" title="закрытие за уровнем 11.4040 (1 касаний); ушли за уровень на 0.46% (допуск 0.79%); свеча закрылась в сторону пробоя, без отката">
+        <td>breakout<div class="sub">Пробой уровня</div></td>
+        <td>1h</td>
+        <td><b>AVAXUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">11.457</td>
+        <td class="num">11.3138<div class="sub">1.25 %</div></td>
+        <td class="num">13.269<div class="sub">R:R 12.65</div></td>
+        <td class="num">0.096 R</td>
+        <td class="num">-0.163 R<div class="sub">n=432</div></td>
+        <td class="num">0.50</td>
+        <td class="num">0.87<div class="sub">50,895 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 83903.0333 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; до пробоя уровень держался 3 касания; цель ближе стопа — соотношение хуже 1:0.8; событие 2 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>5m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">83506.9</td>
+        <td class="num">84265.8<div class="sub">0.91 %</div></td>
+        <td class="num">83371.9<div class="sub">R:R 0.18</div></td>
+        <td class="num">0.132 R</td>
+        <td class="num">-0.233 R<div class="sub">n=1750</div></td>
+        <td class="num">0.45</td>
+        <td class="num">0.01<div class="sub">1,857,169 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 1.4996 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; до пробоя уровень держался 2 касания; цель ближе стопа — соотношение хуже 1:0.8; событие 2 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>5m</td>
+        <td><b>XRPUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">1.4938</td>
+        <td class="num">1.50603<div class="sub">0.82 %</div></td>
+        <td class="num">1.4892<div class="sub">R:R 0.38</div></td>
+        <td class="num">0.147 R</td>
+        <td class="num">-0.233 R<div class="sub">n=1750</div></td>
+        <td class="num">0.45</td>
+        <td class="num">0.67<div class="sub">656,030 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 0.0944 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; цель ближе стопа — соотношение хуже 1:0.8; событие 2 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>5m</td>
+        <td><b>DOGEUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">0.09388</td>
+        <td class="num">0.0947981<div class="sub">0.98 %</div></td>
+        <td class="num">0.093275<div class="sub">R:R 0.66</div></td>
+        <td class="num">0.123 R</td>
+        <td class="num">-0.233 R<div class="sub">n=1750</div></td>
+        <td class="num">0.30</td>
+        <td class="num">1.06<div class="sub">428,270 USDT</div></td>
+      </tr>
+      <tr class="bad" title="структура была нисходящей: максимумы и минимумы падали; цена закрылась выше последнего максимума 10.7240 — последовательность сломана; событие 1 свечей назад">
+        <td>structure_break<div class="sub">Слом структуры</div></td>
+        <td>1h</td>
+        <td><b>AVAXUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">11.327</td>
+        <td class="num">10.142<div class="sub">10.46 %</div></td>
+        <td class="num">12.512<div class="sub">R:R 1.00</div></td>
+        <td class="num">0.011 R</td>
+        <td class="num">-0.302 R<div class="sub">n=105</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.87<div class="sub">50,895 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 0.0949 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; до пробоя уровень держался 2 касания; событие 1 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>1h</td>
+        <td><b>DOGEUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">0.09363</td>
+        <td class="num">0.0956256<div class="sub">2.13 %</div></td>
+        <td class="num">0.0913775<div class="sub">R:R 1.13</div></td>
+        <td class="num">0.056 R</td>
+        <td class="num">-0.326 R<div class="sub">n=692</div></td>
+        <td class="num">0.60</td>
+        <td class="num">1.06<div class="sub">428,270 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 119.7800 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; событие 1 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>1h</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">118.76</td>
+        <td class="num">120.728<div class="sub">1.66 %</div></td>
+        <td class="num">115.86<div class="sub">R:R 1.47</div></td>
+        <td class="num">0.072 R</td>
+        <td class="num">-0.326 R<div class="sub">n=692</div></td>
+        <td class="num">0.45</td>
+        <td class="num">0.84<div class="sub">2,099,787 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 11.1290 был пробит и стал поддержкой; цена вернулась к уровню и не закрепилась за ним; цель ближе стопа — соотношение хуже 1:0.8; событие 2 свечей назад">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>1h</td>
+        <td><b>AVAXUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">11.278</td>
+        <td class="num">11.041<div class="sub">2.10 %</div></td>
+        <td class="num">11.281<div class="sub">R:R 0.01</div></td>
+        <td class="num">0.057 R</td>
+        <td class="num">-0.326 R<div class="sub">n=692</div></td>
+        <td class="num">0.30</td>
+        <td class="num">0.87<div class="sub">50,895 USDT</div></td>
+      </tr>
+      <tr class="bad" title="уровень 2714.4100 был пробит и стал сопротивлением; цена вернулась к уровню и не закрепилась за ним; цель ближе стопа — соотношение хуже 1:0.8">
+        <td>retest<div class="sub">Ретест уровня</div></td>
+        <td>1h</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">2688.18</td>
+        <td class="num">2735.88<div class="sub">1.77 %</div></td>
+        <td class="num">2668.67<div class="sub">R:R 0.41</div></td>
+        <td class="num">0.068 R</td>
+        <td class="num">-0.326 R<div class="sub">n=692</div></td>
+        <td class="num">0.30</td>
+        <td class="num">0.04<div class="sub">2,833,986 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 822.5000 до 253.1000 (31% прежнего); волатильность NATR 0.116% → 0.058%; коэффициент эффективности 0.05 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">83330.2</td>
+        <td class="num">83625<div class="sub">0.35 %</div></td>
+        <td class="num">83077.1<div class="sub">R:R 0.86</div></td>
+        <td class="num">0.339 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.01<div class="sub">1,857,169 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 822.5000 до 253.1000 (31% прежнего); волатильность NATR 0.116% → 0.058%; коэффициент эффективности 0.05 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">83666.8</td>
+        <td class="num">83371.9<div class="sub">0.35 %</div></td>
+        <td class="num">83919.9<div class="sub">R:R 0.86</div></td>
+        <td class="num">0.340 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.01<div class="sub">1,315,104 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 32.8800 до 11.2200 (34% прежнего); волатильность NATR 0.158% → 0.102%; коэффициент эффективности 0.24 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">2683.25</td>
+        <td class="num">2695.81<div class="sub">0.47 %</div></td>
+        <td class="num">2672.03<div class="sub">R:R 0.89</div></td>
+        <td class="num">0.256 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.04<div class="sub">2,833,986 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 32.8800 до 11.2200 (34% прежнего); волатильность NATR 0.158% → 0.102%; коэффициент эффективности 0.24 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">2697.16</td>
+        <td class="num">2684.59<div class="sub">0.47 %</div></td>
+        <td class="num">2708.38<div class="sub">R:R 0.89</div></td>
+        <td class="num">0.258 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.04<div class="sub">2,766,527 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 82.3400 до 32.8800 (40% прежнего); волатильность NATR 0.511% → 0.238%; коэффициент эффективности 0.22 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">2664.67</td>
+        <td class="num">2698.88<div class="sub">1.28 %</div></td>
+        <td class="num">2631.79<div class="sub">R:R 0.96</div></td>
+        <td class="num">0.093 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.04<div class="sub">2,833,986 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 82.3400 до 32.8800 (40% прежнего); волатильность NATR 0.511% → 0.238%; коэффициент эффективности 0.22 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>ETHUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">2700.23</td>
+        <td class="num">2666<div class="sub">1.27 %</div></td>
+        <td class="num">2733.11<div class="sub">R:R 0.96</div></td>
+        <td class="num">0.095 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.04<div class="sub">2,766,527 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 2.2100 до 0.7800 (35% прежнего); волатильность NATR 0.218% → 0.172%; коэффициент эффективности 0.10 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">118.471</td>
+        <td class="num">119.31<div class="sub">0.71 %</div></td>
+        <td class="num">117.691<div class="sub">R:R 0.93</div></td>
+        <td class="num">0.169 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.84<div class="sub">2,099,787 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 2.2100 до 0.7800 (35% прежнего); волатильность NATR 0.218% → 0.172%; коэффициент эффективности 0.10 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">119.37</td>
+        <td class="num">118.53<div class="sub">0.70 %</div></td>
+        <td class="num">120.15<div class="sub">R:R 0.93</div></td>
+        <td class="num">0.171 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.84<div class="sub">1,570,668 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0480 до 0.0127 (26% прежнего); волатильность NATR 0.264% → 0.202%; коэффициент эффективности 0.32 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным; событие 2 свечей назад">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>XRPUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">1.48846</td>
+        <td class="num">1.5019<div class="sub">0.90 %</div></td>
+        <td class="num">1.47576<div class="sub">R:R 0.94</div></td>
+        <td class="num">0.133 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.67<div class="sub">656,030 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0480 до 0.0127 (26% прежнего); волатильность NATR 0.264% → 0.202%; коэффициент эффективности 0.32 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным; событие 2 свечей назад">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>5m</td>
+        <td><b>XRPUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">1.50265</td>
+        <td class="num">1.4892<div class="sub">0.90 %</div></td>
+        <td class="num">1.51535<div class="sub">R:R 0.94</div></td>
+        <td class="num">0.134 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.65</td>
+        <td class="num">0.67<div class="sub">935,941 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 16.5000 до 8.3600 (51% прежнего); волатильность NATR 0.403% → 0.237%; коэффициент эффективности 0.16 — цена ходит вбок, направленного движения нет; текущая свеча — самая узкая за 7 свечей; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>BNBUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">750.375</td>
+        <td class="num">759.11<div class="sub">1.16 %</div></td>
+        <td class="num">742.015<div class="sub">R:R 0.96</div></td>
+        <td class="num">0.103 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.13<div class="sub">729,907 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 16.5000 до 8.3600 (51% прежнего); волатильность NATR 0.403% → 0.237%; коэффициент эффективности 0.16 — цена ходит вбок, направленного движения нет; текущая свеча — самая узкая за 7 свечей; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>BNBUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">759.49</td>
+        <td class="num">750.75<div class="sub">1.15 %</div></td>
+        <td class="num">767.85<div class="sub">R:R 0.96</div></td>
+        <td class="num">0.104 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.13<div class="sub">589,498 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 4.0400 до 2.2100 (55% прежнего); волатильность NATR 0.684% → 0.387%; коэффициент эффективности 0.13 — цена ходит вбок, направленного движения нет; текущая свеча — самая узкая за 7 свечей; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным; событие 2 свечей назад">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">117.231</td>
+        <td class="num">119.5<div class="sub">1.94 %</div></td>
+        <td class="num">115.021<div class="sub">R:R 0.97</div></td>
+        <td class="num">0.062 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.84<div class="sub">2,099,787 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 4.0400 до 2.2100 (55% прежнего); волатильность NATR 0.684% → 0.387%; коэффициент эффективности 0.13 — цена ходит вбок, направленного движения нет; текущая свеча — самая узкая за 7 свечей; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным; событие 2 свечей назад">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>SOLUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">119.56</td>
+        <td class="num">117.29<div class="sub">1.90 %</div></td>
+        <td class="num">121.77<div class="sub">R:R 0.97</div></td>
+        <td class="num">0.063 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.60</td>
+        <td class="num">0.84<div class="sub">1,570,668 USDT</div></td>
+      </tr>
+      <tr class="plain" title="восходящая линия по 3 экстремумам на 751.0869; цена коснулась линии и закрылась выше; вход по цене линии, стоп за границу шума (0.36%); событие 2 свечей назад">
+        <td>trendline_bounce<div class="sub">Отскок от наклонной</div></td>
+        <td>1h</td>
+        <td><b>BNBUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">751.087</td>
+        <td class="num">748.386<div class="sub">0.36 %</div></td>
+        <td class="num">756.489<div class="sub">R:R 2.00</div></td>
+        <td class="num">0.334 R</td>
+        <td class="num">мало сделок (n=17)<div class="sub">n=17</div></td>
+        <td class="num">0.53</td>
+        <td class="num">0.13<div class="sub">589,498 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0115 до 0.0060 (52% прежнего); волатильность NATR 1.042% → 0.638%; коэффициент эффективности 0.06 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>ADAUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">0.23948</td>
+        <td class="num">0.2456<div class="sub">2.56 %</div></td>
+        <td class="num">0.23348<div class="sub">R:R 0.98</div></td>
+        <td class="num">0.047 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">4.09<div class="sub">103,039 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0115 до 0.0060 (52% прежнего); волатильность NATR 1.042% → 0.638%; коэффициент эффективности 0.06 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>ADAUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">0.245723</td>
+        <td class="num">0.2396<div class="sub">2.49 %</div></td>
+        <td class="num">0.251723<div class="sub">R:R 0.98</div></td>
+        <td class="num">0.048 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">4.09<div class="sub">129,449 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 1674.3000 до 822.5000 (49% прежнего); волатильность NATR 0.390% → 0.187%; коэффициент эффективности 0.28 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">82810.1</td>
+        <td class="num">83674<div class="sub">1.04 %</div></td>
+        <td class="num">81987.6<div class="sub">R:R 0.95</div></td>
+        <td class="num">0.115 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">0.01<div class="sub">1,857,169 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 1674.3000 до 822.5000 (49% прежнего); волатильность NATR 0.390% → 0.187%; коэффициент эффективности 0.28 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>BTCUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">83715.8</td>
+        <td class="num">82851.5<div class="sub">1.03 %</div></td>
+        <td class="num">84538.3<div class="sub">R:R 0.95</div></td>
+        <td class="num">0.116 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">0.01<div class="sub">1,315,104 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0032 до 0.0017 (54% прежнего); волатильность NATR 0.794% → 0.454%; коэффициент эффективности 0.05 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>DOGEUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">0.0926337</td>
+        <td class="num">0.09437<div class="sub">1.87 %</div></td>
+        <td class="num">0.0909437<div class="sub">R:R 0.97</div></td>
+        <td class="num">0.064 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">1.06<div class="sub">428,270 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 0.0032 до 0.0017 (54% прежнего); волатильность NATR 0.794% → 0.454%; коэффициент эффективности 0.05 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>DOGEUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">0.0944172</td>
+        <td class="num">0.09268<div class="sub">1.84 %</div></td>
+        <td class="num">0.0961072<div class="sub">R:R 0.97</div></td>
+        <td class="num">0.065 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.50</td>
+        <td class="num">1.06<div class="sub">383,665 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 1.2690 до 0.5380 (42% прежнего); волатильность NATR 1.237% → 0.759%; коэффициент эффективности 0.49 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>AVAXUSDT</b></td>
+        <td class="short">short</td>
+        <td class="num">11.0005</td>
+        <td class="num">11.544<div class="sub">4.94 %</div></td>
+        <td class="num">10.4625<div class="sub">R:R 0.99</div></td>
+        <td class="num">0.024 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.40</td>
+        <td class="num">0.87<div class="sub">74,905 USDT</div></td>
+      </tr>
+      <tr class="plain" title="диапазон сузился с 1.2690 до 0.5380 (42% прежнего); волатильность NATR 1.237% → 0.759%; коэффициент эффективности 0.49 — цена ходит вбок, направленного движения нет; объём в сжатии упал — интерес к монете пропал, пробой может быть ложным">
+        <td>squeeze<div class="sub">Проторговка</div></td>
+        <td>15m</td>
+        <td><b>AVAXUSDT</b></td>
+        <td class="long">long</td>
+        <td class="num">11.5498</td>
+        <td class="num">11.006<div class="sub">4.71 %</div></td>
+        <td class="num">12.0878<div class="sub">R:R 0.99</div></td>
+        <td class="num">0.025 R</td>
+        <td class="num">не измерено<div class="sub">—</div></td>
+        <td class="num">0.40</td>
+        <td class="num">0.87<div class="sub">50,895 USDT</div></td>
+      </tr></tbody>
+</table></div>
+<div class="caveat"><b>Чего эти числа не значат</b>
+<ul><li>Измерение считает формацию на всём префиксе свечей: детектор получает историю от 300 свечей и до конца архива, а срезов за окно берётся по одному на столько свечей (5m — 36, 15m — 12, 1h — 3). Скринер ищет ту же формацию на последних 300 свечах базы — это не то же самое измерение, совпадает только длина истории у детектора.</li><li>«n» — сделки по всем монетам измерения (BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,AVAXUSDT) за окно измерения, а не по монете и не по сигналу этой строки: одна и та же формация на разных монетах идёт в одно число.</li><li>Меньше 30 сделок в измерении — строка показана, но опорой не считается: на десятке сделок средний R гуляет на единицы.</li></ul></div>
+<div class="notes"></div>
+</body></html>
