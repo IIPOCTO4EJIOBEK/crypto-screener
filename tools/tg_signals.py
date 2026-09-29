@@ -27,7 +27,9 @@ import html
 import json
 import re
 import urllib.request
-from datetime import datetime, timedelta, timezone
+import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from src.data import archive
@@ -37,7 +39,21 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
 CORPUS = Path("data/tg")
 ENTRY_WINDOW_HOURS = 48         # сколько ждём входа в названную зону
 TIMEOUT_HOURS = 7 * 24          # сколько держим сделку после входа
-CONTROL_SHIFT_DAYS = 7
+
+# Контроль «тот же вход, но раньше» делается по нескольким сдвигам сразу.
+# Один произвольный сдвиг — это выбор одной фазы, и он обманывает: в соседнем
+# исследовании потока сделок одиночная выборка дала −0.145 там, где среднее по
+# всем фазам оказалось −0.006…−0.032. Поэтому сдвиг не один, а четыре, и
+# главное число — сводка по ним, а не лучший из них.
+SHIFTS_DAYS = (3, 7, 14, 21)
+CANDLES_BACK_DAYS = max(SHIFTS_DAYS)
+
+# Время показываем по Москве (UTC+3, без перехода на летнее), расчёты — в UTC.
+MSK = timezone(timedelta(hours=3))
+
+
+def _msk(moment: datetime) -> str:
+    return moment.astimezone(MSK).strftime("%Y-%m-%d %H:%M МСК")
 
 POST = re.compile(
     r'tgme_widget_message_wrap.*?'
@@ -129,11 +145,89 @@ def parse_signal(text: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- проверка
+def _csv_text(path: str) -> str:
+    with zipfile.ZipFile(path) as z:
+        names = [n for n in z.namelist() if n.endswith(".csv")]
+        return z.read(names[0]).decode("utf-8", "replace") if names else ""
+
+
+def _month_end(day: date) -> date:
+    return (day.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+
+def _day_rows(symbol: str, day: date) -> list:
+    """Свечи за одни сутки. Отсутствие дня — норма: архив отстаёт на сутки."""
+    try:
+        return archive.parse_klines(_csv_text(archive.daily(symbol, "1m", day)))
+    except Exception:                                  # noqa: BLE001
+        return []
+
+
 def _candles(symbol: str, start: datetime, end: datetime) -> list:
-    series = archive.load_klines(symbol, "1m", start.date(), end.date(), workers=6)
-    return [c for c in series.rows
-            if start.timestamp() * 1000 - 60_000 <= c.ts
-            <= end.timestamp() * 1000]
+    """Свечи 1m за период.
+
+    Полный месяц внутри периода берётся месячным архивом — один запрос вместо
+    тридцати. Края диапазона и текущий месяц идут по дням: месячный файл
+    публикуется только после закрытия месяца. Если месяц не отдался, он
+    добирается по дням — терять его молча нельзя.
+    """
+    day, last = start.date(), end.date()
+    rows: list = []
+    days: list[date] = []
+    while day <= last:
+        month_end = _month_end(day)
+        if day.day == 1 and month_end <= last:
+            try:
+                rows.extend(archive.parse_klines(_csv_text(
+                    archive.monthly(symbol, "1m", day.strftime("%Y-%m")))))
+                day = month_end + timedelta(days=1)
+                continue
+            except Exception:                          # noqa: BLE001
+                pass          # месяц не отдался — доберём его по дням ниже
+        days.append(day)
+        day += timedelta(days=1)
+    if days:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            jobs = [pool.submit(_day_rows, symbol, d) for d in days]
+            for job in as_completed(jobs):
+                rows.extend(job.result())
+    lo = int(start.timestamp() * 1000) - 60_000
+    hi = int(end.timestamp() * 1000)
+    rows = [c for c in rows if lo <= c.ts <= hi]
+    rows.sort(key=lambda c: c.ts)
+    return rows
+
+
+def _setup_key(sig: dict) -> tuple:
+    """Отпечаток сетапа: монета, сторона, вход, стоп, цели.
+
+    Канал перепубликует один и тот же сетап слово в слово через дни и недели:
+    у POLUSDT вход 0.0745 с теми же целями вышел трижды, у HYPEUSDT вход
+    54.8–55.0 — трижды. Первая публикация идёт по цене у зоны, повторы —
+    когда цена уже ушла. Считать повторы независимыми сигналами нельзя:
+    они раздувают выборку и, поскольку до входа в них цена не доходит,
+    ещё и искажают долю сработавших.
+    """
+    return (sig["symbol"], sig["side"], round(sig["lo"], 10),
+            round(sig["hi"], 10),
+            None if sig["stop"] is None else round(sig["stop"], 10),
+            tuple(round(t, 10) for t in sig["targets"]))
+
+
+def _mirror(sig: dict) -> dict:
+    """Тот же сигнал зеркально: вход тот же, стоп и цели отражены от него.
+
+    Просто перевернуть сторону недостаточно. У лонга стоп ниже входа; если
+    оставить его на месте и объявить сделку шортом, стоп окажется не с той
+    стороны, риск выйдет отрицательным и сделка не посчитается вовсе — так
+    контроль превращается в пустую строку отчёта.
+    """
+    entry = (sig["lo"] + sig["hi"]) / 2
+    stop = sig["stop"]
+    return dict(sig,
+                side="short" if sig["side"] == "long" else "long",
+                stop=(2 * entry - stop) if stop is not None else None,
+                targets=[2 * entry - t for t in sig["targets"]])
 
 
 def _evaluate(sig: dict, candles: list, when: datetime) -> dict:
@@ -236,40 +330,66 @@ def main() -> None:
         parsed = [(p, parse_signal(p["text"])) for p in posts]
         parsed = [(p, s) for p, s in parsed if s]
         print(f"\n=== {channel}: сигналов {len(parsed)} "
-              f"из {len(posts)} постов ===")
+              f"из {len(posts)} постов ===", flush=True)
         if not parsed:
             continue
 
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=args.days)
-        by_symbol: dict[str, list] = {}
+
+        # повторы одного сетапа считаем один раз — по первой публикации
+        first: dict[tuple, tuple] = {}
         for post, sig in parsed:
+            key = _setup_key(sig)
+            if key not in first or post["id"] < first[key][0]["id"]:
+                first[key] = (post, sig)
+        uniq = sorted(first.values(), key=lambda ps: ps[0]["id"])
+        print(f"уникальных сетапов {len(uniq)} из {len(parsed)} публикаций "
+              f"(повторов {len(parsed) - len(uniq)})", flush=True)
+
+        by_symbol: dict[str, list] = {}
+        for post, sig in uniq:
             when = datetime.fromisoformat(post["ts"]).astimezone(timezone.utc)
             if when < start:
                 continue
             by_symbol.setdefault(sig["symbol"], []).append((when, sig))
 
-        plain, flipped, shifted = [], [], []
-        for symbol, items in by_symbol.items():
+        print(f"окно проверки {_msk(start)} .. {_msk(end)}; "
+              f"монет {len(by_symbol)} (свечи 1m тянутся по дням из архива)",
+              flush=True)
+
+        plain, flipped = [], []
+        per_shift: dict[int, list] = {d: [] for d in SHIFTS_DAYS}
+        for num, (symbol, items) in enumerate(by_symbol.items(), 1):
             try:
-                candles = _candles(symbol, start - timedelta(days=CONTROL_SHIFT_DAYS),
+                candles = _candles(symbol, start - timedelta(days=CANDLES_BACK_DAYS),
                                    end)
             except Exception as exc:                    # noqa: BLE001
-                print(f"  {symbol}: свечи не загрузились — "
-                      f"{type(exc).__name__}: {exc}")
+                print(f"  [{num}/{len(by_symbol)}] {symbol}: свечи не "
+                      f"загрузились — {type(exc).__name__}: {exc}", flush=True)
                 continue
+            if not candles:
+                print(f"  [{num}/{len(by_symbol)}] {symbol}: свечей в архиве нет",
+                      flush=True)
+                continue
+            print(f"  [{num}/{len(by_symbol)}] {symbol}: свечей {len(candles)}, "
+                  f"сигналов {len(items)}", flush=True)
             for when, sig in items:
                 plain.append(_evaluate(sig, candles, when))
-                other = dict(sig, side="short" if sig["side"] == "long" else "long")
-                flipped.append(_evaluate(other, candles, when))
-                back = when - timedelta(days=CONTROL_SHIFT_DAYS)
-                shifted.append(_evaluate(sig, candles, back))
+                flipped.append(_evaluate(_mirror(sig), candles, when))
+                for shift in SHIFTS_DAYS:
+                    per_shift[shift].append(
+                        _evaluate(sig, candles, when - timedelta(days=shift)))
         for line in _report("как опубликовано", plain):
-            print(line)
+            print(line, flush=True)
         for line in _report("обратное направление", flipped):
-            print(line)
-        for line in _report(f"тот же вход −{CONTROL_SHIFT_DAYS} дн", shifted):
-            print(line)
+            print(line, flush=True)
+        for shift in SHIFTS_DAYS:
+            for line in _report(f"тот же вход −{shift} дн", per_shift[shift]):
+                print(line, flush=True)
+        joined = [r for shift in SHIFTS_DAYS for r in per_shift[shift]]
+        for line in _report("сдвиги вместе (4)", joined):
+            print(line, flush=True)
 
 
 if __name__ == "__main__":
