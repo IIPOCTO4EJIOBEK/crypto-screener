@@ -5,6 +5,8 @@
 __pycache__/
 .venv/
 data/*.db
+data/*.db-wal
+data/*.db-shm
 data/*.parquet
 data/*.csv
 data/*.jsonl
