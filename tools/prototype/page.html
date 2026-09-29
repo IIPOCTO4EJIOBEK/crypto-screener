@@ -128,6 +128,23 @@ footer{margin:16px 0 0;font-size:11.5px;color:var(--muted);line-height:1.6}
 code{background:var(--chip);border:1px solid var(--line);border-radius:5px;padding:1px 5px;
   font-size:11.5px}
 .note{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+.fg{position:relative;margin:20px 0 4px}
+.fg-bar{display:flex;height:12px;border:1px solid var(--line);border-radius:6px;
+  overflow:hidden}
+.fg-bar i{flex:1 0 0}
+.fg-mark{position:absolute;top:-15px;bottom:-3px;width:2px;margin-left:-1px;
+  border-radius:1px;background:var(--c,var(--accent))}
+.fg-mark b{position:absolute;left:50%;top:-1px;font-size:11.5px;font-weight:650;
+  color:var(--c,var(--accent));background:var(--panel);padding:0 3px;white-space:nowrap}
+.news{max-height:330px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.news a,.news .item{display:block;padding:6px 9px;text-decoration:none;color:var(--fg);
+  border-bottom:1px solid var(--line)}
+.news a:last-child,.news .item:last-child{border-bottom:none}
+.news a:hover{background:var(--panel2)}
+.news .meta{display:block;font-size:11px;color:var(--muted)}
+.news .meta .t{font-variant-numeric:tabular-nums;margin-right:6px}
+.news .hl{display:block;margin-top:2px;font-size:12.5px;line-height:1.4}
 @media (max-width:700px){
   .hide-sm{display:none}
   body{padding:10px 10px 34px}
@@ -225,6 +242,11 @@ code{background:var(--chip);border:1px solid var(--line);border-radius:5px;paddi
 </section>
 
 <section>
+  <h2 class="sec">Новостной фон</h2>
+  <div id="news"></div>
+</section>
+
+<section>
   <h2 class="sec">Чего в прототипе нет</h2>
   <div class="panel"><ol class="gaps" id="gaps"></ol></div>
 </section>
@@ -259,13 +281,35 @@ function money(v){
   try{ return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:0}); }
   catch(e){ return String(Math.round(v)); }
 }
+/* Время на странице — московское (UTC+3, без перехода на летнее). К моменту
+   прибавляются три часа, а части читаются как UTC: локальная таймзона машины
+   на вид времени не влияет. */
+var MSK=3*3600*1000;
 function dt(ms){
-  if(!ms) return '—';
-  var d=new Date(ms);
+  if(ms==null||!isFinite(ms)) return '—';
+  var d=new Date(ms+MSK);
   function p(n){return (n<10?'0':'')+n;}
   return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+' '+
-         p(d.getUTCHours())+':'+p(d.getUTCMinutes())+' UTC';
+         p(d.getUTCHours())+':'+p(d.getUTCMinutes())+' МСК';
 }
+function hm(ms){
+  if(ms==null||!isFinite(ms)) return '—';
+  var d=new Date(ms+MSK);
+  function p(n){return (n<10?'0':'')+n;}
+  return p(d.getUTCHours())+':'+p(d.getUTCMinutes());
+}
+// Момент строкой: ISO с офсетом («…+00:00», «…Z») либо «… UTC» из сборщика.
+function stampMs(s){
+  s=String(s==null?'':s);
+  if(!s) return null;
+  if(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)){
+    var t=Date.parse(s); return isFinite(t)?t:null;
+  }
+  var m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if(!m) return null;
+  return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));
+}
+function dtStr(s){var t=stampMs(s);return t==null?'—':dt(t);}
 function ageTxt(c){ return c===0 ? 'на последней закрытой свече' : (c+' свечей назад'); }
 function closestLevel(levels, price){
   var best=null,bd=Infinity;
@@ -284,7 +328,7 @@ var POS = DATA.positioning||{};
 
 /* ---------- шапка ---------- */
 document.getElementById('sub').textContent =
-  'сбор данных: '+DATA.collected_at+' · биржа '+DATA.exchange+
+  'сбор данных: '+dtStr(DATA.collected_at)+' · биржа '+DATA.exchange+
   ' · '+DATA.candles+' свечей на срез · страница самодостаточна (file://)';
 
 var trig = FORM.filter(function(f){return f.triggered;}).length;
@@ -705,6 +749,114 @@ document.addEventListener('keydown',function(e){
   }).join('');
 })();
 
+/* ---------- новостной фон ---------- */
+(function(){
+  var box=document.getElementById('news');
+  var N=DATA.news||{};
+  var fg=N.fear_greed||null;
+  var items=N.headlines||[];
+  var broken=N.broken||[];
+
+  function srcName(s){return String(s==null?'':s).split(':')[0].trim();}
+  // в href из чужих лент кладём только http(s): прочие схемы не ссылки
+  function safeUrl(u){
+    u=String(u==null?'':u);
+    return /^https?:\/\//i.test(u)?u:'';
+  }
+
+  // Границы зон заданы условием; ширина отрезка — из диапазона, поэтому она
+  // в процентах от шкалы, а не равными долями.
+  var ZONES=[
+    {lo:0,hi:25,nm:'крайний страх',w:25,
+     bar:'color-mix(in srgb,var(--short) 32%,var(--panel2))',c:'var(--short)'},
+    {lo:25,hi:45,nm:'страх',w:20,
+     bar:'color-mix(in srgb,var(--warn) 32%,var(--panel2))',c:'var(--warn)'},
+    {lo:45,hi:55,nm:'нейтрально',w:10,
+     bar:'var(--panel2)',c:'var(--muted)'},
+    {lo:55,hi:75,nm:'жадность',w:20,
+     bar:'color-mix(in srgb,var(--long) 24%,var(--panel2))',
+     c:'color-mix(in srgb,var(--long) 62%,var(--muted))'},
+    {lo:75,hi:100,nm:'крайняя жадность',w:25,
+     bar:'color-mix(in srgb,var(--long) 44%,var(--panel2))',c:'var(--long)'}
+  ];
+  function zoneOf(v){
+    if(v<25) return ZONES[0];
+    if(v<45) return ZONES[1];
+    if(v<55) return ZONES[2];
+    if(v<75) return ZONES[3];
+    return ZONES[4];
+  }
+
+  if(!fg&&!items.length){
+    box.innerHTML='<div class="panel"><p class="note">новостной фон не собран — ни '+
+      'индекса страха и жадности, ни заголовков в блобе нет'+
+      (broken.length?'; ленты не открылись: '+esc(broken.map(srcName).join(', ')):'')+
+      '.</p></div>';
+    return;
+  }
+
+  var out=[];
+
+  if(fg&&isFinite(fg.value)){
+    var v=Number(fg.value), z=zoneOf(v);
+    var pct=Math.max(0,Math.min(100,v));
+    var shift=pct<10?0:(pct>90?-100:-50);   // у краёв подпись уходит внутрь шкалы
+    out.push('<div class="panel">');
+    out.push('<div class="chips">'+
+      '<span class="chip">индекс страха и жадности <b style="color:'+z.c+'">'+nm(v,0)+
+        '</b></span>'+
+      '<span class="chip">зона <b style="color:'+z.c+'">'+esc(z.nm)+'</b></span>'+
+      (fg.label?'<span class="chip">метка сервиса <b>'+esc(fg.label)+'</b></span>':'')+
+      '<span class="chip">замер <b>'+esc(dtStr(fg.at))+
+        '</b></span></div>');
+    out.push('<div class="fg"><div class="fg-bar">'+ZONES.map(function(x){
+      return '<i style="flex-grow:'+x.w+';background:'+x.bar+'"></i>';}).join('')+
+      '</div><div class="fg-mark" style="left:'+nm(pct,2)+'%;--c:'+z.c+'">'+
+      '<b style="transform:translateX('+shift+'%)">'+nm(v,0)+'</b></div></div>');
+    out.push('<div class="legend">'+ZONES.map(function(x){
+      return '<span><i style="border-color:'+x.c+'"></i>'+x.lo+'–'+x.hi+' '+
+        esc(x.nm)+'</span>';}).join('')+'</div>');
+    out.push('<p class="note">Индекс страха и жадности — внешний сервис, шкала 0–100: '+
+      '0 — паника, 100 — эйфория. Время замера — московское (МСК).</p>');
+    out.push('</div>');
+  } else {
+    out.push('<div class="panel"><p class="note">индекс страха и жадности не получен — '+
+      'ни значения, ни метки в блобе нет.</p></div>');
+  }
+
+  if(items.length){
+    var srcs={};
+    items.forEach(function(it){ if(it&&it.source) srcs[it.source]=1; });
+    out.push('<div class="chips" style="margin:12px 0 6px">'+
+      '<span class="chip">заголовков <b>'+items.length+'</b></span>'+
+      '<span class="chip">изданий <b>'+Object.keys(srcs).length+'</b></span>'+
+      '<span class="chip">время ленты <b>МСК</b></span></div>');
+    out.push('<div class="news">'+items.map(function(it){
+      it=it||{};
+      var t=stampMs(it.at);
+      var meta='<span class="meta"><span class="t">'+(t==null?'—':hm(t))+'</span>'+
+        '<span class="tag">'+esc(it.source||'издание неизвестно')+'</span></span>';
+      var title='<span class="hl">'+esc(it.title||'')+'</span>';
+      var href=safeUrl(it.link);
+      return href
+        ? '<a href="'+esc(href)+'" target="_blank" rel="noopener">'+meta+title+'</a>'
+        : '<div class="item">'+meta+title+'</div>';
+    }).join('')+'</div>');
+  } else {
+    out.push('<p class="note" style="margin-top:12px">заголовков нет — ни одна лента '+
+      'не отдала ни одной строки.</p>');
+  }
+
+  if(broken.length){
+    out.push('<p class="note" style="color:var(--warn)">не открылись: '+
+      esc(broken.map(srcName).join(', '))+'</p>');
+  }
+  out.push('<p class="note">Заголовки и индекс — внешний фон, а не сигнал: в расчётах '+
+    'разборов они не участвуют.</p>');
+
+  box.innerHTML=out.join('');
+})();
+
 /* ---------- пробелы ---------- */
 (function(){
   var staticGaps=[
@@ -729,7 +881,7 @@ document.addEventListener('keydown',function(e){
 
 /* ---------- подвал ---------- */
 document.getElementById('foot').innerHTML =
-  'сбор завершён: '+esc(DATA.collected_at)+' · сбор занял '+esc(DATA.duration_sec)+' с<br>'+
+  'сбор завершён: '+esc(dtStr(DATA.collected_at))+' · сбор занял '+esc(DATA.duration_sec)+' с<br>'+
   'пересборка: <code>cd '+(DATA.repo||'/mnt/data/projects/crypto-exchange')+
   ' && .venv/bin/python -m tools.prototype.build</code><br>'+
   'источник: '+esc(DATA.exchange)+' (свечи — публичный market data), стакан — архив bookDepth'+
