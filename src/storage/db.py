@@ -352,11 +352,20 @@ def count_rows(conn: sqlite3.Connection, table: str) -> int:
     return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
-def symbols_present(conn: sqlite3.Connection) -> list[str]:
-    """Монеты, по которым в базе есть хоть один снимок."""
-    rows = conn.execute(
-        "SELECT DISTINCT symbol FROM book_snapshots ORDER BY symbol").fetchall()
-    return [r[0] for r in rows]
+def symbols_present(conn: sqlite3.Connection,
+                    exchange: str | None = None) -> list[str]:
+    """Монеты, по которым в базе есть хоть один снимок стакана.
+
+    Биржа задаётся явно: спот и перп одного и того же символа лежат в базе
+    рядом, и без фильтра список смешал бы два рынка.
+    """
+    sql = "SELECT DISTINCT symbol FROM book_snapshots"
+    params: list = []
+    if exchange:
+        sql += " WHERE exchange = ?"
+        params.append(exchange)
+    sql += " ORDER BY symbol"
+    return [r[0] for r in conn.execute(sql, params).fetchall()]
 
 
 if __name__ == "__main__":

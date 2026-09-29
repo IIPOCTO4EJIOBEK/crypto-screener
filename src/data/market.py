@@ -111,10 +111,32 @@ def _get(url: str, params: dict | None = None, use_proxy: bool = False) -> objec
 
 
 # --------------------------------------------------------------------------
-# Binance — публичный market data отдаётся через data-api.binance.vision,
-# торговый домен api.binance.com из РФ закрыт (451).
+# Binance — два рынка, и это не одно и то же.
+#
+# Спот: публичный market data отдаётся через data-api.binance.vision. Маршрут
+# через прокси: vision отвечает через прокси за 2 с целиком, напрямую —
+# медленно и с обрывом.
+#
+# Перпетуал USDT-M: fapi.binance.com. Прокси здесь не помощник, а препятствие:
+# он стоит в США, Binance закрывает США, и 451 «restricted location» приходит
+# именно на запрос через прокси. Напрямую тот же адрес отвечает 200 (проверено
+# 30.09.2026: 10 запросов из 10). Поэтому у фьючерсных функций use_proxy=False.
+# Раньше в этом месте стояло, что домен закрыт из РФ по обоим маршрутам: это
+# было неверно дважды — не из РФ и не по обоим.
+#
+# Что берём откуда: измерение и живые сигналы — из перпа (там исполнение,
+# ликвидность и шорт), спот — контрольный ряд для базиса.
 # --------------------------------------------------------------------------
 _BINANCE = "https://data-api.binance.vision"
+_BINANCE_FAPI = "https://fapi.binance.com"
+
+# fapi принимает стакан только этими ступенями, произвольное число — ошибка.
+_FAPI_DEPTH = (5, 10, 20, 50, 100, 500, 1000)
+
+
+def _fapi_depth(depth: int) -> int:
+    allowed = [n for n in _FAPI_DEPTH if n <= depth]
+    return allowed[-1] if allowed else _FAPI_DEPTH[0]
 
 
 def binance_ohlcv(symbol: str, interval: str = "1m", limit: int = 1000,
@@ -132,6 +154,26 @@ def binance_orderbook(symbol: str, depth: int = 100) -> OrderBook:
                {"symbol": symbol.upper(), "limit": min(depth, 5000)},
                use_proxy=True)
     return OrderBook("binance", symbol.upper(), int(time.time() * 1000),
+                     [Level(float(p), float(q)) for p, q in raw["bids"]],
+                     [Level(float(p), float(q)) for p, q in raw["asks"]])
+
+
+def binance_futures_ohlcv(symbol: str, interval: str = "1m", limit: int = 1000,
+                          end_ms: int | None = None) -> list[Candle]:
+    """Свечи USDT-M перпетуала. Те же поля, что у спота, лимит до 1500."""
+    params = {"symbol": symbol.upper(), "interval": interval, "limit": min(limit, 1500)}
+    if end_ms:
+        params["endTime"] = end_ms
+    raw = _get(f"{_BINANCE_FAPI}/fapi/v1/klines", params, use_proxy=False)
+    return [Candle(int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4]),
+                   float(c[5]), float(c[7]), int(c[8])) for c in raw]
+
+
+def binance_futures_orderbook(symbol: str, depth: int = 100) -> OrderBook:
+    raw = _get(f"{_BINANCE_FAPI}/fapi/v1/depth",
+               {"symbol": symbol.upper(), "limit": _fapi_depth(depth)},
+               use_proxy=False)
+    return OrderBook("binance_futures", symbol.upper(), int(time.time() * 1000),
                      [Level(float(p), float(q)) for p, q in raw["bids"]],
                      [Level(float(p), float(q)) for p, q in raw["asks"]])
 
@@ -216,6 +258,7 @@ def okx_orderbook(symbol: str, depth: int = 50) -> OrderBook:
 
 EXCHANGES = {
     "binance": (binance_ohlcv, binance_orderbook),
+    "binance_futures": (binance_futures_ohlcv, binance_futures_orderbook),
     "bybit": (bybit_ohlcv, bybit_orderbook),
     "okx": (okx_ohlcv, okx_orderbook),
 }

@@ -13,8 +13,9 @@ from datetime import date
 from src.analysis.formations import Formation
 from src.backtest.costs import Costs
 from src.backtest.expectancy import STEP_BY_TF, window
+from src.data.market import Candle
 from src.storage import db
-from tools.live.screen import MIN_TRADES, rank
+from tools.live.screen import MIN_TRADES, _candles, rank
 
 
 def formation(kind: str = "breakout", tf: str = "5m", symbol: str = "BTCUSDT",
@@ -123,9 +124,31 @@ def test_снимок_стакана_берётся_со_стороны_вход
                          ask_10bps=4000.0, bid_25bps=5000.0, ask_25bps=6000.0,
                          bid_50bps=7000.0, ask_50bps=8000.0)
     db.insert_book_snapshots(conn, [ob])
+    # биржа задана явно: снимок выше положен от спота, а проверяем мы выбор
+    # стороны входа, а не совпадение с умолчанием rank()
     rows = rank([formation(direction="long"), formation(direction="short")],
-                {}, conn, Costs())
+                {}, conn, Costs(), "binance")
     by_dir = {r.direction: r for r in rows}
     assert by_dir["long"].band_usdt == 3000.0
     assert by_dir["short"].band_usdt == 4000.0
     assert by_dir["long"].mid == 100.0
+
+
+def test_окно_свечей_не_склеивается_из_двух_рынков():
+    """Спот и перп одного символа лежат в базе по одним таймстемпам.
+
+    Без фильтра по бирже окно скринера собрало бы свечи двух рынков вперемешку,
+    и формации искались бы на цене, которой не существует ни на одном из них.
+    Проверка держит фильтр, а не конкретное имя биржи.
+    """
+    conn = empty_db()
+    candles = [Candle(ts=1000 + i * 60_000, open=100.0, high=101.0, low=99.0,
+                      close=100.0 + i, volume=1.0, quote_volume=100.0, trades=1)
+               for i in range(5)]
+    db.insert_candles(conn, "BTCUSDT", "binance", "5m", candles)
+    db.insert_candles(conn, "BTCUSDT", "binance_futures", "5m", candles)
+
+    perp = _candles(conn, "BTCUSDT", "5m", "binance_futures")
+    assert len(perp) == len(candles), "окно склеило два рынка"
+    assert [c.ts for c in perp] == [c.ts for c in candles]
+    assert len(_candles(conn, "BTCUSDT", "5m", "binance")) == len(candles)

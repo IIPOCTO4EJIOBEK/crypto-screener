@@ -90,31 +90,36 @@ class Row:
             else (1, 0.0, -self.confidence)
 
 
-def _candles(conn, symbol: str, tf: str, limit: int = WINDOW) -> list[Candle]:
-    rows = db.latest_candles(conn, limit, symbol=symbol, timeframe=tf)
+def _candles(conn, symbol: str, tf: str, exchange: str,
+             limit: int = WINDOW) -> list[Candle]:
+    """Свечи одной биржи. Фильтр обязателен: спот и перп одного символа
+    лежат в базе рядом и по одним и тем же таймстемпам — без фильтра окно
+    склеилось бы из двух рынков."""
+    rows = db.latest_candles(conn, limit, symbol=symbol, timeframe=tf,
+                             exchange=exchange)
     return [Candle(r["open_ts"], r["open"], r["high"], r["low"], r["close"],
                    r["volume"], r["quote_volume"], r["trades"])
             for r in reversed(rows)]
 
 
-def _books(conn) -> dict[str, dict]:
+def _books(conn, exchange: str) -> dict[str, dict]:
     """Последний снимок стакана по каждой монете, одним запросом."""
     out: dict[str, dict] = {}
-    for row in db.latest_book_snapshots(conn, 10_000):
+    for row in db.latest_book_snapshots(conn, 10_000, exchange=exchange):
         out.setdefault(row["symbol"], dict(row))
     return out
 
 
-def signals(conn, tfs: tuple[str, ...], exchange: str = "binance",
+def signals(conn, tfs: tuple[str, ...], exchange: str = "binance_futures",
             min_candles: int = 60) -> tuple[list[Formation], list[str]]:
     """Формации по всем монетам базы. Второе — что не удалось разобрать."""
     found: list[Formation] = []
     notes: list[str] = []
-    symbols = db.symbols_present(conn)
+    symbols = db.symbols_present(conn, exchange)
     btc_by_tf: dict[str, list[Candle]] = {}
     for sym in symbols:
         for tf in tfs:
-            cs = _candles(conn, sym, tf)
+            cs = _candles(conn, sym, tf, exchange)
             if len(cs) < min_candles:
                 notes.append(f"{sym} {tf}: свечей {len(cs)}, разбор пропущен "
                              f"(нужно {min_candles})")
@@ -122,7 +127,7 @@ def signals(conn, tfs: tuple[str, ...], exchange: str = "binance",
             btc = None
             if sym != "BTCUSDT":
                 if tf not in btc_by_tf:
-                    btc_by_tf[tf] = _candles(conn, "BTCUSDT", tf)
+                    btc_by_tf[tf] = _candles(conn, "BTCUSDT", tf, exchange)
                 btc = btc_by_tf[tf] or None
             try:
                 found.extend(detect_all(cs, tf, sym, exchange, btc=btc))
@@ -132,10 +137,10 @@ def signals(conn, tfs: tuple[str, ...], exchange: str = "binance",
 
 
 def rank(found: list[Formation], stats: dict, conn, costs: Costs,
-         exchange: str = "binance") -> list[Row]:
+         exchange: str = "binance_futures") -> list[Row]:
     """Собрать строки отчёта и отсортировать по чистой ожидаемости."""
     rows: list[Row] = []
-    books = _books(conn)
+    books = _books(conn, exchange)
     for f in found:
         if not f.targets:
             continue
@@ -184,6 +189,18 @@ def _caveats(meta: dict) -> tuple[str, ...]:
     )
 
 
+def _market_label(exchange: str) -> str:
+    """Название рынка для отчёта: в базе лежат спот и перп, и их путать нельзя.
+
+    Спот и перп одного символа — разные цены (перп обычно ниже на несколько
+    базисных пунктов), поэтому отчёт без имени рынка читается неоднозначно.
+    """
+    return {
+        "binance_futures": "Binance USDT-M перпетуал (fapi.binance.com)",
+        "binance": "Binance спот (data-api.binance.vision)",
+    }.get(exchange, exchange)
+
+
 def _table_note(stats: dict, rows: list[Row]) -> str:
     """Строка про саму таблицу измерений, а не про сегодняшние сигналы.
 
@@ -208,6 +225,7 @@ def render_text(rows: list[Row], notes: list[str], stats: dict,
     out: list[str] = []
     measured = [r for r in rows if r.exp_net is not None]
     neg = sum(1 for r in measured if r.exp_net < 0)
+    out.append(f"рынок: {meta['market']}")
     out.append(f"сигналов {len(rows)}, из них с измерением {len(measured)}")
     if measured:
         out.append(f"у этих сигналов чистая ожидаемость положительна у "
@@ -318,7 +336,7 @@ def render_html(rows: list[Row], notes: list[str], meta: dict,
 <h1>Скринер: сигналы и их измеренный результат</h1>
 <div class="meta">{e(meta['when'])} МСК · монет {meta['symbols']} ·
   таймфреймы {e(meta['tfs'])} · измерение от {e(meta['measured_on'] or '—')}
-  ({e(meta['scope'] or '—')})</div>
+  ({e(meta['scope'] or '—')})<br>рынок: {e(meta['market'])}</div>
 <div class="verdict">{e(verdict)}: измеренных сигналов {len(measured)} из
   {len(rows)}. {e(_table_note(stats, rows))}. Ранжирование — по чистой
   ожидаемости, а не по уверенности детектора.</div>
@@ -339,7 +357,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default=None)
     p.add_argument("--tfs", nargs="+", default=["5m", "15m", "1h"])
-    p.add_argument("--exchange", default="binance")
+    p.add_argument("--exchange", default="binance_futures")
     p.add_argument("--fee", type=float, default=0.0004)
     p.add_argument("--slippage", type=float, default=0.0001)
     p.add_argument("--json", dest="json_path", default=None)
@@ -356,7 +374,8 @@ def main() -> None:
     scope = next((m["symbol_scope"] for m in stats.values()), None)
     meta = {
         "when": datetime.now(MSK).strftime("%Y-%m-%d %H:%M"),
-        "symbols": len(db.symbols_present(conn)),
+        "market": _market_label(a.exchange),
+        "symbols": len(db.symbols_present(conn, a.exchange)),
         "tfs": ", ".join(a.tfs),
         "measured_on": measured_on,
         "scope": scope,

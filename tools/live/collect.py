@@ -1,8 +1,12 @@
 """Сборщик живых данных: опрашивает публичные стаканы и свечи, пишет в sqlite.
 
 Сеть берётся целиком из `src/data/market.py` — там уже решён маршрут по
-биржам (Binance идёт через прокси, Bybit и OKX напрямую) и есть повтор при
-обрыве. Здесь только расписание и запись.
+биржам (перп Binance идёт напрямую, спот Binance через прокси, Bybit и OKX
+напрямую) и есть повтор при обрыве. Здесь только расписание и запись.
+
+По умолчанию собирается USDT-M перпетуал: там исполнение и ликвидность, и
+там же считалось измерение. Спот (`--exchange binance`) остаётся отдельным
+рядом — он нужен для базиса, а не для сигналов.
 
 Запуск:
 
@@ -113,8 +117,9 @@ def main(argv: list[str] | None = None) -> int:
                          f"{DEFAULT_INTERVAL}; без флага — один круг")
     ap.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS),
                     help="список монет через запятую")
-    ap.add_argument("--exchange", default="binance",
-                    choices=sorted(market.EXCHANGES), help="биржа (по умолчанию binance)")
+    ap.add_argument("--exchange", default="binance_futures",
+                    choices=sorted(market.EXCHANGES),
+                    help="биржа (по умолчанию binance_futures — перп)")
     ap.add_argument("--timeframes", default=",".join(DEFAULT_TIMEFRAMES),
                     help="таймфреймы свечей через запятую")
     ap.add_argument("--candle-limit", type=int, default=DEFAULT_CANDLE_LIMIT,
