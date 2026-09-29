@@ -446,6 +446,7 @@ function chartSVG(f){
   function Y(v){ return MT+ph*(1-(v-lo)/(hi-lo)); }
   var bw=Math.max(1.5,(pw/n)*0.62);
   var out=['<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'];
+  var marks=[];
   for(i=0;i<n;i++){
     var c=cs[i], up=c[4]>=c[1], col=up?'var(--long)':'var(--short)';
     var x=X(i), yh=Y(c[2]), yl=Y(c[3]);
@@ -461,8 +462,25 @@ function chartSVG(f){
     if(y<MT-1||y>MT+ph+1) return;
     out.push('<line x1="0" y1="'+y.toFixed(1)+'" x2="'+pw+'" y2="'+y.toFixed(1)+
              '" stroke="'+r[2]+'" stroke-width="1.2" stroke-dasharray="5 4"/>');
-    out.push('<text x="'+(pw+4)+'" y="'+(y+3.4).toFixed(1)+'" fill="'+r[2]+
-             '" font-size="9.5">'+esc(r[0])+'</text>');
+    marks.push({y:y, name:r[0], color:r[2]});
+  });
+  // Подписи разводятся по вертикали: вход, стоп и уровень часто стоят в
+  // нескольких пикселях друг от друга, и текст без этого наезжает. Линия
+  // остаётся на своей цене, сдвигается только надпись.
+  marks.sort(function(a,b){return a.y-b.y;});
+  var gap=11, top=MT+1, bot=MT+ph-1, k;
+  for(k=0;k<marks.length;k++){
+    if(k>0 && marks[k].y-marks[k-1].y<gap) marks[k].y=marks[k-1].y+gap;
+  }
+  if(marks.length){
+    var over=marks[marks.length-1].y-bot;
+    if(over>0) for(k=0;k<marks.length;k++) marks[k].y-=over;
+    var under=top-marks[0].y;
+    if(under>0) for(k=0;k<marks.length;k++) marks[k].y+=under;
+  }
+  marks.forEach(function(m){
+    out.push('<text x="'+(pw+4)+'" y="'+(m.y+3.2).toFixed(1)+'" fill="'+m.color+
+             '" font-size="9.5">'+esc(m.name)+'</text>');
   });
   out.push('</svg>');
   return out.join('');
