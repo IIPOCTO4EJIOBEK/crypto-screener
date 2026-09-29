@@ -9,4 +9,6 @@ data/*.parquet
 data/*.csv
 docs/tiger/
 tools/news/delist_raw.json
+tools/prototype/data.json
+tools/prototype/index.html
 .DS_Store
