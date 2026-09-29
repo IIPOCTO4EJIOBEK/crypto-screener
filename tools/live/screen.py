@@ -216,6 +216,11 @@ def _table_note(stats: dict, rows: list[Row]) -> str:
     # поправка на перебор считается по строкам-опорам: плюс на трёх сделках
     # ничего не значит, и включать его в счёт значимых сравнений нечестно
     verdict = significance.judge([dict(m) for m in anchors], min_n=MIN_TRADES)
+    # «значимых N» без направления читается как хорошая новость, а значимой
+    # бывает и устойчивая потеря: издержки съедают край. Поэтому рядом стоит,
+    # сколько из значимых с плюсом.
+    sig_plus = sum(1 for m, ok in zip(anchors, verdict.flags)
+                   if ok and m["exp_net"] > 0)
     hit = {(r.kind, r.tf) for r in rows if r.exp_net is not None}
     pos_keys = {(k, tf) for (k, tf), m in stats.items()
                 if m["n"] >= MIN_TRADES and m["exp_net"] > 0}
@@ -224,7 +229,7 @@ def _table_note(stats: dict, rows: list[Row]) -> str:
     return (f"в таблице измерений формаций {len(stats)}, опора (n ≥ "
             f"{MIN_TRADES}) у {len(anchors)}, в плюсе {pos}, значимых после "
             f"поправки на перебор (FDR {verdict.alpha:g}) "
-            f"{verdict.n_significant} — {tail}")
+            f"{verdict.n_significant}, из них с плюсом {sig_plus} — {tail}")
 
 
 def render_text(rows: list[Row], notes: list[str], stats: dict,

@@ -109,6 +109,34 @@ def test_вердикт_видит_настоящий_сдвиг():
     assert v.n_significant == 1
 
 
+def test_метки_выровнены_по_строкам():
+    """flags идёт в порядке строк, а не в порядке p-value.
+
+    Иначе отчёт помечает «значимо» не те строки: в таблице refresh строки
+    отсортированы по доходности, а гипотезы отбрасываются по возрастанию
+    p-value — это разные порядки. Строка, не попавшая в счёт, обязана
+    получить None, а не False: «не проверялась» и «проверена и не значима» —
+    разные утверждения.
+    """
+    rows = [dict(kind="short", tf="5m", n=3, exp_net=2.0, sd=1.0),
+            dict(kind="weak", tf="5m", n=200, exp_net=0.07, sd=1.0),
+            dict(kind="strong", tf="5m", n=500, exp_net=0.30, sd=1.0),
+            dict(kind="nosd", tf="5m", n=400, exp_net=0.50, sd=0.0)]
+    v = judge(rows, alpha=0.05, min_n=30)
+    assert v.flags == [None, False, True, None], v.flags
+    assert len(v.flags) == len(rows)
+    assert sum(1 for f in v.flags if f) == v.n_significant
+
+
+def test_метки_не_зависят_от_порядка_строк():
+    rows = [dict(kind="strong", tf="5m", n=500, exp_net=0.30, sd=1.0),
+            dict(kind="weak", tf="5m", n=200, exp_net=0.07, sd=1.0)]
+    a = judge(rows, alpha=0.05, min_n=30)
+    b = judge(list(reversed(rows)), alpha=0.05, min_n=30)
+    assert a.n_significant == b.n_significant
+    assert a.flags == list(reversed(b.flags))
+
+
 def test_разница_sharpe_не_определена_на_совпадающих_рядах():
     """Один и тот же ряд: различия нет, и число не должно притворяться им."""
     r = [0.01, -0.005, 0.02, 0.004, -0.002]

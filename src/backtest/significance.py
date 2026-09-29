@@ -31,7 +31,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Константа Эйлера-Маскерони — входит в оценку ожидаемого максимума Sharpe.
 EULER = 0.5772156649015329
@@ -145,13 +145,21 @@ def p_value(mean: float, sd: float, n: int) -> float | None:
 
 @dataclass(frozen=True)
 class Verdict:
-    """Итог поправки на перебор по всей таблице измерения."""
+    """Итог поправки на перебор по всей таблице измерения.
+
+    `flags` выровнен по входным строкам: True — строка значима после поправки,
+    False — проверялась и не значима, None — в счёт не вошла (мало сделок или
+    нет разброса). Печатать метку значимости из flags, а не своим прогоном
+    Бенджамини-Хохберга: иначе метки строк и итог считаются по разным наборам
+    и противоречат друг другу.
+    """
 
     n_tested: int          # сколько сравнений проверялось
     n_positive: int        # сколько из них с положительным средним
     n_significant: int     # сколько значимо после поправки (FDR)
     alpha: float
     dsr: float | None      # Deflated Sharpe лучшей строки, 0..1
+    flags: list[bool | None] = field(default_factory=list)
 
 
 def _sharpe(mean: float, sd: float) -> float | None:
@@ -251,8 +259,8 @@ def judge(rows: list[dict], alpha: float = 0.05,
     не определён, а по трём определяется так, что случайный плюс выглядит
     находкой. Порог задаёт вызывающий — у скринера он свой (MIN_TRADES).
     """
-    tested, pvals = [], []
-    for r in rows:
+    tested, pvals, idx = [], [], []
+    for i, r in enumerate(rows):
         sd = r.get("sd")
         if not sd or r["n"] < min_n:
             continue
@@ -261,8 +269,12 @@ def judge(rows: list[dict], alpha: float = 0.05,
             continue
         tested.append(r)
         pvals.append(p)
+        idx.append(i)
     n_positive = sum(1 for r in tested if r["exp_net"] > 0)
     flags = benjamini_hochberg(pvals, alpha)
+    marks: list[bool | None] = [None] * len(rows)
+    for i, ok in zip(idx, flags):
+        marks[i] = ok
     dsr = None
     if tested:
         best = max(tested, key=lambda r: r["exp_net"])
@@ -273,4 +285,4 @@ def judge(rows: list[dict], alpha: float = 0.05,
             var = sum((s - mean_sharpe) ** 2 for s in sharpes) / len(sharpes)
             dsr = deflated_sharpe(_sharpe(best["exp_net"], best["sd"]),
                                   best["n"], math.sqrt(var), len(tested))
-    return Verdict(len(tested), n_positive, sum(flags), alpha, dsr)
+    return Verdict(len(tested), n_positive, sum(flags), alpha, dsr, marks)

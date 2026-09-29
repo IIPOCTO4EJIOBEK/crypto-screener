@@ -50,20 +50,22 @@ def _print_rows(rows: list[dict]) -> None:
     print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'цель %':>7} "
           f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'значимо':>8}")
     order = sorted(rows, key=lambda r: -r["exp_net"])
-    flags = significance.benjamini_hochberg(
-        [p for p in (_p(r) for r in order) if p is not None])
-    flag_iter = iter(flags)
-    for r in order:
+    # Один вызов на таблицу: метки строк и итог обязаны считаться по одному
+    # набору сравнений, иначе итог говорит «значимых 11», а строки — другое.
+    v = significance.judge(order, min_n=MIN_TRADES)
+    for r, ok in zip(order, v.flags):
         p = _p(r)
-        mark = ("—" if p is None
-                else ("да" if next(flag_iter) else "нет"))
+        mark = "—" if ok is None else ("да" if ok else "нет")
         print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r['win_rate']:7.1f} "
               f"{r['exp_gross']:+8.3f} {r['cost']:9.3f} {r['exp_net']:+8.3f} "
               f"{('—' if p is None else f'{p:7.4f}'):>7} {mark:>8}")
-    v = significance.judge(rows, min_n=MIN_TRADES)
+    n_sig_plus = sum(1 for r, ok in zip(order, v.flags)
+                     if ok and r["exp_net"] > 0)
     print(f"\nсравнений {v.n_tested}, из них с плюсом {v.n_positive}; "
           f"после поправки на перебор (FDR {v.alpha:g}) значимых "
-          f"{v.n_significant}.")
+          f"{v.n_significant} — из них с плюсом {n_sig_plus}.")
+    print(f"«—» в столбце значимости — строка в счёт не вошла: сделок меньше "
+          f"{MIN_TRADES} или нет разброса R по сделкам.")
 
 
 def _p(row: dict) -> float | None:
