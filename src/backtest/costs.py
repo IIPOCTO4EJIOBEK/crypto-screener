@@ -38,6 +38,7 @@
 
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass
 
 from src.data.archive import FundingRate
@@ -62,15 +63,25 @@ class Costs:
         return 2.0 * self.per_side
 
 
+def _calc_time(event: FundingRate) -> int:
+    """Ключ сортировки расписания — время начисления."""
+    return event.calc_time
+
+
 def funding_between(schedule: list[FundingRate], start_ms: int,
                     end_ms: int) -> float:
     """Сумма ставок, начисленных за время удержания (начисления строго после
-    входа и не позже выхода)."""
-    total = 0.0
-    for event in schedule:
-        if start_ms < event.calc_time <= end_ms:
-            total += event.last_funding_rate
-    return total
+    входа и не позже выхода).
+
+    Расписание обязано быть упорядочено по времени начисления — так его
+    отдаёт загрузчик архива, читающий месячные файлы по порядку. На этом
+    держится бинарный поиск: за восемь лет у BTCUSDT набирается 7305
+    начислений, и линейный перебор на каждом интервале удержания превращал
+    прогон сетки параметров в часы счёта.
+    """
+    lo = bisect.bisect_right(schedule, start_ms, key=_calc_time)
+    hi = bisect.bisect_right(schedule, end_ms, key=_calc_time)
+    return sum(event.last_funding_rate for event in schedule[lo:hi])
 
 
 def cost_r(entry: float, stop: float, entry_ms: int, exit_ms: int, side: str,

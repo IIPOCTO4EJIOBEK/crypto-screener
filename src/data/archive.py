@@ -311,13 +311,19 @@ def parse_metrics(text: str) -> list[MetricsRow]:
 
 
 def parse_klines(text: str) -> list[Candle]:
-    out: list[Candle] = []
-    for row in csv.DictReader(io.StringIO(text)):
-        out.append(Candle(
-            int(row["open_time"]), float(row["open"]), float(row["high"]),
-            float(row["low"]), float(row["close"]), float(row["volume"]),
-            float(row["quote_volume"]), int(row["count"])))
-    return out
+    """Свечи из CSV. Ранние файлы Binance идут без строки заголовка.
+
+    Заголовок распознаётся по первому полю: время — целое число, а имя
+    колонки («open_time») — нет. Разбор через DictReader здесь не годится:
+    на файле без заголовка он принимает первую свечу за шапку и молча её
+    теряет.
+    """
+    rows = list(csv.reader(io.StringIO(text)))
+    if rows and not rows[0][0].strip().lstrip("-").isdigit():
+        rows = rows[1:]
+    return [Candle(int(r[0]), float(r[1]), float(r[2]), float(r[3]),
+                   float(r[4]), float(r[5]), float(r[7]), int(r[8]))
+            for r in rows if r and r[0].strip()]
 
 
 def parse_funding(text: str) -> list[FundingRate]:
@@ -381,13 +387,8 @@ def load_klines(symbol: str, tf: str, start, end, workers: int = 8) -> Series:
     return Series(rows, loaded, len(days) - loaded)
 
 
-def load_funding(symbol: str, start_month: str, end_month: str,
-                 workers: int = 4) -> Series:
-    """Ставки финансирования по месяцам ('YYYY-MM').
-
-    fundingRate публикуется только в monthly, причём текущий месяц ещё не
-    выложен — его надо исключать из диапазона.
-    """
+def _month_list(start_month: str, end_month: str) -> list[str]:
+    """Месяцы от start_month до end_month включительно, строки 'YYYY-MM'."""
     y0, m0 = map(int, start_month.split("-"))
     y1, m1 = map(int, end_month.split("-"))
     months: list[str] = []
@@ -397,6 +398,43 @@ def load_funding(symbol: str, start_month: str, end_month: str,
         m += 1
         if m == 13:
             y, m = y + 1, 1
+    return months
+
+
+def load_monthly_klines(symbol: str, tf: str, start_month: str, end_month: str,
+                        workers: int = 4) -> Series:
+    """Свечи по месячным файлам архива ('YYYY-MM').
+
+    Отличие от `load_klines` только в цене запроса: год дневных баров — это
+    12 файлов вместо 365, потому что в месячном файле лежат все свечи месяца.
+    Для дневного таймфрейма на длинной истории разница решающая.
+
+    Текущий месяц в monthly ещё не выложен — его надо исключать из диапазона
+    и добирать дневными файлами, если он нужен.
+    """
+    months = _month_list(start_month, end_month)
+    rows: list[Candle] = []
+    loaded = 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(monthly, symbol, tf, mm): mm for mm in months}
+        for fut in as_completed(futs):
+            try:
+                rows.extend(parse_klines(_read_zip_csv(fut.result())))
+                loaded += 1
+            except Exception:
+                pass
+    rows.sort(key=lambda c: c.ts)
+    return Series(rows, loaded, len(months) - loaded)
+
+
+def load_funding(symbol: str, start_month: str, end_month: str,
+                 workers: int = 4) -> Series:
+    """Ставки финансирования по месяцам ('YYYY-MM').
+
+    fundingRate публикуется только в monthly, причём текущий месяц ещё не
+    выложен — его надо исключать из диапазона.
+    """
+    months = _month_list(start_month, end_month)
     rows: list[FundingRate] = []
     loaded = 0
     with ThreadPoolExecutor(max_workers=workers) as ex:

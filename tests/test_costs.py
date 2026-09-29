@@ -50,6 +50,36 @@ def test_фандинг_входит_только_в_своё_окно():
     assert funding_between(s, 50, 99) == 0.0
 
 
+def test_бинарный_поиск_даёт_тот_же_ответ_что_и_перебор():
+    """Ускорение не имеет права сдвинуть числа.
+
+    Сверяется с наивным перебором на случайных окнах: границы окна берутся
+    равными временам начислений, чтобы проверка попала ровно в те случаи, где
+    легко ошибиться на единицу («строго после входа» против «не раньше»).
+    """
+    import random
+
+    rng = random.Random(4)
+    times = sorted(rng.sample(range(0, 100_000), 300))
+    s = [FundingRate(t, 8, rng.uniform(-0.001, 0.001)) for t in times]
+
+    def naive(a: int, b: int) -> float:
+        return sum(e.last_funding_rate for e in s if a < e.calc_time <= b)
+
+    probes = [0, times[0], times[0] + 1, times[150], times[-1] - 1, times[-1],
+              100_000]
+    for a in probes:
+        for b in probes:
+            assert funding_between(s, a, b) == pytest.approx(naive(a, b))
+
+
+def test_пустое_расписание_и_окно_без_начислений():
+    assert funding_between([], 0, 1000) == 0.0
+    s = [FundingRate(100, 8, 0.001)]
+    assert funding_between(s, 100, 100) == 0.0     # окно нулевой длины
+    assert funding_between(s, 500, 900) == 0.0
+
+
 def test_положительная_ставка_лонгу_в_минус_а_шорту_в_плюс():
     c = Costs(taker_fee=0.0, slippage=0.0, funding=True)
     s = [FundingRate(200, 8, 0.001)]
