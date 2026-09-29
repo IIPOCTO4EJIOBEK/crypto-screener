@@ -1,0 +1,658 @@
+{
+ "1000BTTC": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "YFII": {
+  "sym": "YFIIUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 2333.0,
+  "lag_h": 0.64,
+  "end_after_am_h": 95.6,
+  "pre-72": -0.06429489927132448,
+  "pre-24": -0.022288898414059122,
+  "pre-4": 0.015859408486926796,
+  "pre_min72": -0.06858122588941273,
+  "pre_max72": 0.02486069438491212,
+  "post1": 0.0021431633090440716,
+  "comp1": true,
+  "max1": 0.003857693956279551,
+  "min1": -0.008144020574367805,
+  "post4": -0.01714530647235324,
+  "comp4": true,
+  "max4": 0.003857693956279551,
+  "min4": -0.018002571795970868,
+  "post24": 0.014573510501500131,
+  "comp24": true,
+  "max24": 0.018431204457779682,
+  "min24": -0.06043720531504504,
+  "post72": -0.15987998285469351,
+  "comp72": true,
+  "max72": 0.02014573510501494,
+  "min72": -0.18474067723960563
+ },
+ "FTTBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LUNA": {
+  "sym": "LUNAUSDT",
+  "n": 1000,
+  "base": 979,
+  "pre": 0.292,
+  "lag_h": 0.16,
+  "end_after_am_h": 19.2,
+  "pre-72": 214.06849315068493,
+  "pre-24": 34.99315068493151,
+  "pre-4": 2.868835616438356,
+  "pre_min72": -0.05102739726027383,
+  "pre_max72": 218.07534246575344,
+  "post1": 0.0780821917808221,
+  "comp1": true,
+  "max1": 0.4537671232876712,
+  "min1": -0.2808219178082192,
+  "post4": -0.7404109589041096,
+  "comp4": true,
+  "max4": 0.4537671232876712,
+  "min4": -0.7431506849315068,
+  "post24": null,
+  "post72": null
+ },
+ "ANC": {
+  "sym": "ANCUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.03078,
+  "lag_h": 0.54,
+  "end_after_am_h": 95.5,
+  "pre-72": 26.42040285899935,
+  "pre-24": 5.238141650422352,
+  "pre-4": 2.050682261208577,
+  "pre_min72": -0.4236517218973359,
+  "pre_max72": 30.96881091617934,
+  "post1": 1.5175438596491229,
+  "comp1": true,
+  "max1": 2.085445094217024,
+  "min1": -0.4236517218973359,
+  "post4": 2.9983755685510074,
+  "comp4": true,
+  "max4": 4.523066926575699,
+  "min4": -0.4236517218973359,
+  "post24": 5.617283950617284,
+  "comp24": true,
+  "max24": 6.591617933723197,
+  "min24": -0.4236517218973359,
+  "post72": 5.129304743339831,
+  "comp72": true,
+  "max72": 11.507797270955166,
+  "min72": -0.4236517218973359
+ },
+ "AKRO": {
+  "sym": "AKROUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.00353,
+  "lag_h": 0.01,
+  "end_after_am_h": 95.0,
+  "pre-72": 0.1274787535410764,
+  "pre-24": -0.016997167138810276,
+  "pre-4": 0.016997167138810054,
+  "pre_min72": -0.07648725212464602,
+  "pre_max72": 0.1529745042492916,
+  "post1": 0.0,
+  "comp1": true,
+  "max1": 0.05949008498583552,
+  "min1": -0.031161473087818803,
+  "post4": -0.06798866855524088,
+  "comp4": true,
+  "max4": 0.05949008498583552,
+  "min4": -0.08781869688385269,
+  "post24": -0.07082152974504252,
+  "comp24": true,
+  "max24": 0.05949008498583552,
+  "min24": -0.15297450424929182,
+  "post72": -0.028328611898017053,
+  "comp72": true,
+  "max72": 0.07082152974504252,
+  "min72": -0.15297450424929182
+ },
+ "DODO": {
+  "sym": "DODOUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.158,
+  "lag_h": 0.01,
+  "end_after_am_h": 95.0,
+  "pre-72": 0.018987341772152,
+  "pre-24": 0.05063291139240511,
+  "pre-4": -0.012658227848101222,
+  "pre_min72": -0.05696202531645578,
+  "pre_max72": 0.12658227848101267,
+  "post1": -0.03797468354430378,
+  "comp1": true,
+  "max1": 0.012658227848101333,
+  "min1": -0.05696202531645578,
+  "post4": -0.05063291139240511,
+  "comp4": true,
+  "max4": 0.012658227848101333,
+  "min4": -0.07594936708860767,
+  "post24": -0.10759493670886089,
+  "comp24": true,
+  "max24": 0.012658227848101333,
+  "min24": -0.14556962025316456,
+  "post72": -0.1392405063291139,
+  "comp72": true,
+  "max72": 0.012658227848101333,
+  "min72": -0.16455696202531644
+ },
+ "TLM": {
+  "sym": "TLMUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.0339,
+  "lag_h": 0.7,
+  "end_after_am_h": 95.7,
+  "pre-72": 0.017699115044247815,
+  "pre-24": 0.08259587020648973,
+  "pre-4": -0.01179941002949847,
+  "pre_min72": -0.05014749262536877,
+  "pre_max72": 0.16224188790560468,
+  "post1": 0.008849557522123908,
+  "comp1": true,
+  "max1": 0.01179941002949847,
+  "min1": -0.02654867256637161,
+  "post4": -0.002949852507374673,
+  "comp4": true,
+  "max4": 0.014749262536873253,
+  "min4": -0.02654867256637161,
+  "post24": 0.041297935103244754,
+  "comp24": true,
+  "max24": 0.21238938053097334,
+  "min24": -0.02654867256637161,
+  "post72": 0.03539823008849563,
+  "comp72": true,
+  "max72": 0.21238938053097334,
+  "min72": -0.02654867256637161
+ },
+ "ICP": {
+  "sym": "ICPUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 7.85,
+  "lag_h": 0.7,
+  "end_after_am_h": 95.7,
+  "pre-72": -0.03312101910828025,
+  "pre-24": 0.031847133757961776,
+  "pre-4": -0.01146496815286624,
+  "pre_min72": -0.053503184713375784,
+  "pre_max72": 0.11210191082802567,
+  "post1": 0.03312101910828025,
+  "comp1": true,
+  "max1": 0.03821656050955413,
+  "min1": -0.020382165605095426,
+  "post4": 0.042038216560509545,
+  "comp4": true,
+  "max4": 0.05859872611464989,
+  "min4": -0.020382165605095426,
+  "post24": 0.05222929936305731,
+  "comp24": true,
+  "max24": 0.24840764331210208,
+  "min24": -0.020382165605095426,
+  "post72": -0.0662420382165605,
+  "comp72": true,
+  "max72": 0.24840764331210208,
+  "min72": -0.06751592356687885
+ },
+ "SC": {
+  "sym": "SCUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.00529,
+  "lag_h": 0.96,
+  "end_after_am_h": 96.0,
+  "pre-72": 0.04536862003780717,
+  "pre-24": 0.047258979206048934,
+  "pre-4": -0.003780718336483968,
+  "pre_min72": -0.022684310018903697,
+  "pre_max72": 0.09829867674858206,
+  "post1": -0.007561436672967936,
+  "comp1": true,
+  "max1": 0.020793950850661602,
+  "min1": -0.022684310018903697,
+  "post4": -0.03969754253308133,
+  "comp4": true,
+  "max4": 0.020793950850661602,
+  "min4": -0.08317580340264652,
+  "post24": -0.08317580340264652,
+  "comp24": true,
+  "max24": 0.020793950850661602,
+  "min24": -0.09073724007561446,
+  "post72": -0.32514177693761825,
+  "comp72": true,
+  "max72": 0.020793950850661602,
+  "min72": -0.3383742911153119
+ },
+ "CRV": {
+  "sym": "CRVUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.73,
+  "lag_h": 0.99,
+  "end_after_am_h": 96.0,
+  "pre-72": -0.14383561643835618,
+  "pre-24": -0.046575342465753455,
+  "pre-4": -0.042465753424657526,
+  "pre_min72": -0.16027397260273968,
+  "pre_max72": 0.09041095890410977,
+  "post1": 0.021917808219177992,
+  "comp1": true,
+  "max1": 0.03013698630136985,
+  "min1": -0.012328767123287676,
+  "post4": 0.027397260273972712,
+  "comp4": true,
+  "max4": 0.0657534246575342,
+  "min4": -0.012328767123287676,
+  "post24": 0.11917808219178072,
+  "comp24": true,
+  "max24": 0.1534246575342466,
+  "min24": -0.012328767123287676,
+  "post72": 0.11232876712328776,
+  "comp72": true,
+  "max72": 0.19452054794520546,
+  "min72": -0.012328767123287676
+ },
+ "BTS": {
+  "sym": "BTSUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.0133,
+  "lag_h": 0.01,
+  "end_after_am_h": 95.0,
+  "pre-72": -0.015789473684210575,
+  "pre-24": -0.025563909774436122,
+  "pre-4": -0.009022556390977376,
+  "pre_min72": -0.046616541353383334,
+  "pre_max72": 0.03082706766917309,
+  "post1": 0.03759398496240607,
+  "comp1": true,
+  "max1": 0.09022556390977465,
+  "min1": -0.006766917293233088,
+  "post4": 0.046616541353383445,
+  "comp4": true,
+  "max4": 0.09323308270676711,
+  "min4": -0.006766917293233088,
+  "post24": -0.003759398496240629,
+  "comp24": true,
+  "max24": 0.09323308270676711,
+  "min24": -0.018796992481202923,
+  "post72": 0.1127819548872182,
+  "comp72": true,
+  "max72": 0.3157894736842106,
+  "min72": -0.018796992481202923
+ },
+ "BLZ": {
+  "sym": "BLZUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.0963,
+  "lag_h": 0.08,
+  "end_after_am_h": 95.1,
+  "pre-72": 0.10176531671858768,
+  "pre-24": 0.0020768431983386737,
+  "pre-4": 0.007268951194184803,
+  "pre_min72": -0.03011422637590866,
+  "pre_max72": 0.10591900311526481,
+  "post1": -0.025960539979231645,
+  "comp1": true,
+  "max1": 0.00830737279335425,
+  "min1": -0.031152647975077885,
+  "post4": -0.06853582554517124,
+  "comp4": true,
+  "max4": 0.00830737279335425,
+  "min4": -0.09657320872274144,
+  "post24": -0.08930425752855653,
+  "comp24": true,
+  "max24": 0.00830737279335425,
+  "min24": -0.12149532710280375,
+  "post72": -0.16718587746625135,
+  "comp72": true,
+  "max72": 0.00830737279335425,
+  "min72": -0.25129802699896153
+ },
+ "FTT": {
+  "sym": "FTTUSDT",
+  "n": 1000,
+  "base": 956,
+  "pre": 1.7909,
+  "lag_h": 0.21,
+  "end_after_am_h": 42.2,
+  "pre-72": 0.5634038751465744,
+  "pre-24": 0.25685409570606965,
+  "pre-4": 0.05433022502652296,
+  "pre_min72": -0.022837679379083098,
+  "pre_max72": 1.4644592104528447,
+  "post1": 0.05382768440448937,
+  "comp1": true,
+  "max1": 0.13350829192026348,
+  "min1": -0.022837679379083098,
+  "post4": 0.017533083924283988,
+  "comp4": true,
+  "max4": 0.13350829192026348,
+  "min4": -0.022837679379083098,
+  "post24": -0.1375286168965325,
+  "comp24": true,
+  "max24": 0.13350829192026348,
+  "min24": -0.29085934446367745,
+  "post72": null
+ },
+ "RAYUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SRMUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "CVCUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GALAUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ZILUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "VETUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MINA": {
+  "sym": "MINAUSDT",
+  "n": 1000,
+  "base": 903,
+  "pre": 0.774,
+  "lag_h": 0.56,
+  "end_after_am_h": 95.6,
+  "pre-72": 0.08010335917312661,
+  "pre-24": 0.05813953488372081,
+  "pre-4": 0.028423772609819098,
+  "pre_min72": -0.018087855297157618,
+  "pre_max72": 0.18863049095607232,
+  "post1": -0.011627906976744207,
+  "comp1": true,
+  "max1": 0.056847545219638196,
+  "min1": -0.016795865633075002,
+  "post4": 0.0025839793281654533,
+  "comp4": true,
+  "max4": 0.056847545219638196,
+  "min4": -0.03229974160206717,
+  "post24": 0.036175710594315236,
+  "comp24": true,
+  "max24": 0.09173126614987082,
+  "min24": -0.03229974160206717,
+  "post72": -0.01033591731266148,
+  "comp72": true,
+  "max72": 0.1472868217054264,
+  "min72": -0.03229974160206717
+ },
+ "CVXBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GALBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "WAVESBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ICPBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LUNA2BUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AMBBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LEVERBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "TLMBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "PHBBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SANDBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "UNIBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GMTBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "NEARBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AVAXBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ETCBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "FILBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DOTBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "APEBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LINKBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "1000SHIBBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "1000LUNCBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AGIXBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LDOBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GALABUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "APTBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "FTMBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "TRXBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DODOBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ADABUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MATICBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LTCBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DOGEBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SOLBUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "FOOTBALLUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "BLUEBIRDUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ANTUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DGBUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "CTKUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "STPTUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SNTUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MBLUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "RADUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "CVXUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "IDEXUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SLPUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GLMRUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MDTUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AUDIOUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "KNCUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ICXUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "XTZUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ROSEUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "APEUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "XEMUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "ORBSUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LOOMUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MAVIAUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "OMGUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "BONDUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "REEFUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DEFIUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MEMEFI": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "LEVERUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "BSWUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "ALPHAUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "NEIROETHUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "UXLINKUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "HIFIUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "BAKEUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "SLERFUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "CHZUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "GMTUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "DOGSUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MANAUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "EGLDUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "MYROUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "1000XUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "RUNEUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: HTTPSConnecti"
+ },
+ "PORT3USDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AIAUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "RVVUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "YALAUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "APTUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "OPUSD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "USD": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "IPUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "IPUSDC": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ },
+ "AERGOUSDT": {
+  "err": "RuntimeError: https://data-api.binance.vision/api/v3/klines: 400 Client Er"
+ }
+}

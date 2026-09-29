@@ -1,0 +1,674 @@
+{
+ "BFUSD": {
+  "am": 1788170403200,
+  "title": "Notice of Removal of Margin Trading Pairs - 2026-09-03",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "AEUR": {
+  "am": 1785376806252,
+  "title": "Notice Regarding the Removal of AEUR and Conversion of AEUR to EUR",
+  "fam": "spot",
+  "n_pairs_in_record": 2
+ },
+ "USDP": {
+  "am": 1783936810276,
+  "title": "Notice of Removal of Margin Trading Pairs - 2026-07-17",
+  "fam": "margin",
+  "n_pairs_in_record": 6
+ },
+ "PLN": {
+  "am": 1782894611190,
+  "title": "Updated Notice of Removal of Spot Trading Pairs - 2026-07-01",
+  "fam": "spot",
+  "n_pairs_in_record": 8
+ },
+ "UTK": {
+  "am": 1774494003206,
+  "title": "Binance Margin Will Delist UTK on 2026-03-30",
+  "fam": "margin",
+  "n_pairs_in_record": 1
+ },
+ "WAN": {
+  "am": 1672290931854,
+  "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "ARDR": {
+  "am": 1695276603853,
+  "title": "Notice of Removal of Isolated Margin Trading Pairs - 2023-09-28",
+  "fam": "margin",
+  "n_pairs_in_record": 19
+ },
+ "ALCX": {
+  "am": 1771894800000,
+  "title": "Notice of Removal of Margin Token and Trading Pairs - 2026-02-26",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "AERGO": {
+  "am": 1742536220352,
+  "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "AST": {
+  "am": 1742536220352,
+  "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "BURGER": {
+  "am": 1742536220352,
+  "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "COMBO": {
+  "am": 1742536220352,
+  "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "LINA": {
+  "am": 1742536220352,
+  "title": "Binance Will Delist AERGO, AST, BURGER, COMBO, LINA on 2025-03-28",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "ALGO": {
+  "am": 1740027606855,
+  "title": "Binance Earn: Notice on Removal of Dual Investment Token Pairs - 2025-02-21",
+  "fam": "spot",
+  "n_pairs_in_record": 5
+ },
+ "ATOM": {
+  "am": 1740027606855,
+  "title": "Binance Earn: Notice on Removal of Dual Investment Token Pairs - 2025-02-21",
+  "fam": "spot",
+  "n_pairs_in_record": 5
+ },
+ "AMB": {
+  "am": 1739775624287,
+  "title": "Binance Will Delist AMB, CLV, STMX, VITE on 2025-02-24",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "CLV": {
+  "am": 1739775624287,
+  "title": "Binance Will Delist AMB, CLV, STMX, VITE on 2025-02-24",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "STMX": {
+  "am": 1739775624287,
+  "title": "Binance Will Delist AMB, CLV, STMX, VITE on 2025-02-24",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "VITE": {
+  "am": 1739775624287,
+  "title": "Binance Will Delist AMB, CLV, STMX, VITE on 2025-02-24",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "AKRO": {
+  "am": 1734508872939,
+  "title": "Binance Will Delist AKRO, BLZ, WRX on 2024-12-25",
+  "fam": "spot",
+  "n_pairs_in_record": 4
+ },
+ "BLZ": {
+  "am": 1734508872939,
+  "title": "Binance Will Delist AKRO, BLZ, WRX on 2024-12-25",
+  "fam": "spot",
+  "n_pairs_in_record": 4
+ },
+ "WRX": {
+  "am": 1734508872939,
+  "title": "Binance Will Delist AKRO, BLZ, WRX on 2024-12-25",
+  "fam": "spot",
+  "n_pairs_in_record": 4
+ },
+ "CVP": {
+  "am": 1671085221101,
+  "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "EPX": {
+  "am": 1723446011329,
+  "title": "Binance Will Delist CVP, EPX, FOR, LOOM, REEF, VGX on 2024-08-26",
+  "fam": "spot",
+  "n_pairs_in_record": 10
+ },
+ "FOR": {
+  "am": 1723446011329,
+  "title": "Binance Will Delist CVP, EPX, FOR, LOOM, REEF, VGX on 2024-08-26",
+  "fam": "spot",
+  "n_pairs_in_record": 10
+ },
+ "LOOM": {
+  "am": 1723446011329,
+  "title": "Binance Will Delist CVP, EPX, FOR, LOOM, REEF, VGX on 2024-08-26",
+  "fam": "spot",
+  "n_pairs_in_record": 10
+ },
+ "REEF": {
+  "am": 1723446011329,
+  "title": "Binance Will Delist CVP, EPX, FOR, LOOM, REEF, VGX on 2024-08-26",
+  "fam": "spot",
+  "n_pairs_in_record": 10
+ },
+ "VGX": {
+  "am": 1670325826754,
+  "title": "Binance Margin Will Delist ACA and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "TUSD": {
+  "am": 1720663202463,
+  "title": "Binance Margin Will Delist TUSD from Cross and Isolated Margin - 2024-07-24",
+  "fam": "margin",
+  "n_pairs_in_record": 2
+ },
+ "BOND": {
+  "am": 1720422069631,
+  "title": "Binance Will Delist BOND, DOCK, MDX, POLS on 2024-07-22",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "DOCK": {
+  "am": 1720422069631,
+  "title": "Binance Will Delist BOND, DOCK, MDX, POLS on 2024-07-22",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "MDX": {
+  "am": 1720422069631,
+  "title": "Binance Will Delist BOND, DOCK, MDX, POLS on 2024-07-22",
+  "fam": "spot",
+  "n_pairs_in_record": 6
+ },
+ "POLS": {
+  "am": 1674112226735,
+  "title": "Binance Margin Will Delist NEXO, POLS, QUICK as Borrowable Assets From Cross Margin and ALCX, NEXO, POLS, TOMO Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "OMG": {
+  "am": 1670325826754,
+  "title": "Binance Margin Will Delist ACA and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "WAVES": {
+  "am": 1717383620294,
+  "title": "Binance Will Delist OMG, WAVES, WNXM, XEM on 2024-06-17",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "WNXM": {
+  "am": 1717383620294,
+  "title": "Binance Will Delist OMG, WAVES, WNXM, XEM on 2024-06-17",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "XEM": {
+  "am": 1717383620294,
+  "title": "Binance Will Delist OMG, WAVES, WNXM, XEM on 2024-06-17",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "DREP": {
+  "am": 1670497371715,
+  "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "MOB": {
+  "am": 1670497371715,
+  "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "PNT": {
+  "am": 1710914407471,
+  "title": "Binance Will Delist DREP, MOB, PNT on 2024-04-03",
+  "fam": "spot",
+  "n_pairs_in_record": 5
+ },
+ "ANT": {
+  "am": 1707202812575,
+  "title": "Binance Will Delist ANT, MULTI, VAI, XMR on 2024-02-20",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "MULTI": {
+  "am": 1707202812575,
+  "title": "Binance Will Delist ANT, MULTI, VAI, XMR on 2024-02-20",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "XMR": {
+  "am": 1707202812575,
+  "title": "Binance Will Delist ANT, MULTI, VAI, XMR on 2024-02-20",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "GBP": {
+  "am": 1703237704546,
+  "title": "Notice of Removal of Spot Trading Pairs - 2023-12-29",
+  "fam": "spot",
+  "n_pairs_in_record": 1
+ },
+ "BTS": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "PERL": {
+  "am": 1669617922401,
+  "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 7
+ },
+ "WTC": {
+  "am": 1675749621021,
+  "title": "Binance Margin Will Delist FIO, GNO, IRIS, MLN, WTC Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "BUSD": {
+  "am": 1700814330006,
+  "title": "Binance Margin & Binance Futures Will Delist BUSD",
+  "fam": "futures",
+  "n_pairs_in_record": 2
+ },
+ "YFII": {
+  "am": 1670325826754,
+  "title": "Binance Margin Will Delist ACA and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "ADADOWN": {
+  "am": 1691556806728,
+  "title": "Binance to Cease ADAUP & ADADOWN Trading and Subscription Services (2023-08-09)",
+  "fam": "spot",
+  "n_pairs_in_record": 2
+ },
+ "ADAUP": {
+  "am": 1691556806728,
+  "title": "Binance to Cease ADAUP & ADADOWN Trading and Subscription Services (2023-08-09)",
+  "fam": "spot",
+  "n_pairs_in_record": 2
+ },
+ "AUD": {
+  "am": 1685088001922,
+  "title": "Notice of Removal of Trading Pairs - 2023-06-01",
+  "fam": "spot",
+  "n_pairs_in_record": 2
+ },
+ "AUTO": {
+  "am": 1681196422114,
+  "title": "Binance Will Delist QLC, NEBL and AUTO on 2023-04-18",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "NEBL": {
+  "am": 1681196422114,
+  "title": "Binance Will Delist QLC, NEBL and AUTO on 2023-04-18",
+  "fam": "spot",
+  "n_pairs_in_record": 7
+ },
+ "DCR": {
+  "am": 1679900403355,
+  "title": "Binance Margin Will Delist NEBL as a Borrowable Asset From Cross Margin and DCR, NEBL, XVG From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 4
+ },
+ "OG": {
+  "am": 1677063603612,
+  "title": "Binance Margin Will Delist LOOM, STRAX as Borrowable Assets From Cross Margin and OG From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 5
+ },
+ "STRAX": {
+  "am": 1677063603612,
+  "title": "Binance Margin Will Delist LOOM, STRAX as Borrowable Assets From Cross Margin and OG From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 5
+ },
+ "AION": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "KEY": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "FIO": {
+  "am": 1672907126372,
+  "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "GNO": {
+  "am": 1675749621021,
+  "title": "Binance Margin Will Delist FIO, GNO, IRIS, MLN, WTC Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "IRIS": {
+  "am": 1675749621021,
+  "title": "Binance Margin Will Delist FIO, GNO, IRIS, MLN, WTC Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "MLN": {
+  "am": 1675749621021,
+  "title": "Binance Margin Will Delist FIO, GNO, IRIS, MLN, WTC Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "JST": {
+  "am": 1674799803614,
+  "title": "Binance Margin Will Delist JST, SNM, SUN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 6
+ },
+ "SUN": {
+  "am": 1674799803614,
+  "title": "Binance Margin Will Delist JST, SNM, SUN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 6
+ },
+ "NEXO": {
+  "am": 1674112226735,
+  "title": "Binance Margin Will Delist NEXO, POLS, QUICK as Borrowable Assets From Cross Margin and ALCX, NEXO, POLS, TOMO Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "QUICK": {
+  "am": 1674112226735,
+  "title": "Binance Margin Will Delist NEXO, POLS, QUICK as Borrowable Assets From Cross Margin and ALCX, NEXO, POLS, TOMO Trading Pairs From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "BEAM": {
+  "am": 1669617922401,
+  "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 7
+ },
+ "COCOS": {
+  "am": 1673592309526,
+  "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 8
+ },
+ "CREAM": {
+  "am": 1673592309526,
+  "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 8
+ },
+ "FLM": {
+  "am": 1673592309526,
+  "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 8
+ },
+ "KMD": {
+  "am": 1673592309526,
+  "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 8
+ },
+ "SCRT": {
+  "am": 1673592309526,
+  "title": "Binance Margin Will Delist FLM, KMD as Borrowable Assets From Cross Margin and COCOS, CREAM, SCRT From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 8
+ },
+ "AGLD": {
+  "am": 1672907126372,
+  "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "DATA": {
+  "am": 1672907126372,
+  "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "ERN": {
+  "am": 1672907126372,
+  "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "TROY": {
+  "am": 1672907126372,
+  "title": "Binance Margin Will Delist AGLD, DATA, ERN, FIO & TROY as Borrowable Assets From Cross Margin and KEY From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "ATA": {
+  "am": 1672290931854,
+  "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "DEXE": {
+  "am": 1672290931854,
+  "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "HIGH": {
+  "am": 1672290931854,
+  "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "STPT": {
+  "am": 1672290931854,
+  "title": "Binance Margin Will Delist ATA, DEXE, HIGH, STPT & WAN as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "FET": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "FORTH": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "MBOX": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "WIN": {
+  "am": 1671710396824,
+  "title": "Binance Margin Will Delist FET, FORTH, KEY, MBOX, WIN as Borrowable Assets From Cross Margin and AION, BTS From Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 15
+ },
+ "ANC": {
+  "am": 1652424609208,
+  "title": "Binance Margin to Delist ANC and MIR on Cross Margin and Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 5
+ },
+ "MIR": {
+  "am": 1652424609208,
+  "title": "Binance Margin to Delist ANC and MIR on Cross Margin and Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 5
+ },
+ "TORN": {
+  "am": 1670497371715,
+  "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "CHESS": {
+  "am": 1671085221101,
+  "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "MDT": {
+  "am": 1671085221101,
+  "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "RARE": {
+  "am": 1671085221101,
+  "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "VOXEL": {
+  "am": 1671085221101,
+  "title": "Binance Margin Will Delist CHESS, CVP and More Tokens as Borrowable Assets From Cross Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "MITH": {
+  "am": 1669617922401,
+  "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 7
+ },
+ "REP": {
+  "am": 1669617922401,
+  "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 7
+ },
+ "BNX": {
+  "am": 1670497371715,
+  "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "LOKA": {
+  "am": 1670497371715,
+  "title": "Binance Margin Will Delist BNX, TORN and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 12
+ },
+ "CVC": {
+  "am": 1669617922401,
+  "title": "Binance Margin Will Delist CVC & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 7
+ },
+ "ACA": {
+  "am": 1670325826754,
+  "title": "Binance Margin Will Delist ACA and More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 10
+ },
+ "BTCST": {
+  "am": 1668765625978,
+  "title": "Binance Margin Will Delist GTO, TRIBE & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "GTO": {
+  "am": 1668765625978,
+  "title": "Binance Margin Will Delist GTO, TRIBE & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "SRM": {
+  "am": 1668650316774,
+  "title": "Binance Will Delist SRM and RAY Margin Pairs and Binance Earn Products",
+  "fam": "margin",
+  "n_pairs_in_record": 6
+ },
+ "TRIBE": {
+  "am": 1668765625978,
+  "title": "Binance Margin Will Delist GTO, TRIBE & More Margin Pairs on Cross Margin & Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 11
+ },
+ "RAY": {
+  "am": 1668650316774,
+  "title": "Binance Will Delist SRM and RAY Margin Pairs and Binance Earn Products",
+  "fam": "margin",
+  "n_pairs_in_record": 6
+ },
+ "FTT": {
+  "am": 1668332838510,
+  "title": "Binance Will Delist FTT Margin Pairs, USDⓈ-M Futures Contracts and Binance Flexible Products",
+  "fam": "futures",
+  "n_pairs_in_record": 4
+ },
+ "BTG": {
+  "am": 1665633628184,
+  "title": "Binance Will Delist DNT, NBS, BTG and TCT on 2022-10-24",
+  "fam": "spot",
+  "n_pairs_in_record": 9
+ },
+ "DNT": {
+  "am": 1665633628184,
+  "title": "Binance Will Delist DNT, NBS, BTG and TCT on 2022-10-24",
+  "fam": "spot",
+  "n_pairs_in_record": 9
+ },
+ "NBS": {
+  "am": 1665633628184,
+  "title": "Binance Will Delist DNT, NBS, BTG and TCT on 2022-10-24",
+  "fam": "spot",
+  "n_pairs_in_record": 9
+ },
+ "TCT": {
+  "am": 1663229120786,
+  "title": "Binance Margin Will Delist TCT on Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 2
+ },
+ "HNT": {
+  "am": 1665028826479,
+  "title": "Notice of Removal of Trading Pairs - 2022-10-14",
+  "fam": "spot",
+  "n_pairs_in_record": 4
+ },
+ "LUNA": {
+  "am": 1652353160901,
+  "title": "Binance Margin to Delist LUNA on Cross Margin and Isolated Margin",
+  "fam": "margin",
+  "n_pairs_in_record": 4
+ },
+ "UST": {
+  "am": 1652401725571,
+  "title": "Notice of Removal of Trading Pairs and Updates on Tick Size for Spot Trading Pair - 2022-05-13",
+  "fam": "spot",
+  "n_pairs_in_record": 10
+ },
+ "SUSD": {
+  "am": 1649066280853,
+  "title": "Binance Will Delist HEGIC, RENBTC and SUSD on 2022-04-11",
+  "fam": "spot",
+  "n_pairs_in_record": 3
+ }
+}
