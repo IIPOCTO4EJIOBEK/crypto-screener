@@ -8,8 +8,9 @@ data.binance.vision — публичный статический архив Bin
 Виды данных (kind):
 
   bookDepth     снимок глубины стакана каждые ~30 с. CSV с заголовком
-                timestamp,percentage,depth,notional. 12 полос от середины
-                (-5,-4,-3,-2,-1,-0.2,0.2,1,2,3,4,5 %). depth/notional —
+                timestamp,percentage,depth,notional. Полосы от середины:
+                12 штук (-5,-4,-3,-2,-1,-0.2,0.2,1,2,3,4,5 %) с 2026-01-15
+                и 10 штук (те же без ±0.2 %) до этой даты. depth/notional —
                 КУМУЛЯТИВНЫЙ объём от середины до этой полосы, а не объём
                 самой полосы (проверено: растёт монотонно от 0 к ±5 %).
   metrics       позиционирование каждые 5 минут: открытый интерес и
@@ -58,9 +59,15 @@ _EXPECTED_HEADERS = {
     "fundingRate": "calc_time,funding_interval_hours,last_funding_rate",
 }
 
-# Полосы 12-процентного формата bookDepth (с 2026-01-15). До 15 января
-# полос было 10 — без ±0.2 %; число полос берётся из файла в parse_book_depth.
+# Полосы формата bookDepth. До 2026-01-15 полос было 10 — целые ±1..±5 %,
+# без ±0.2 %. Переходные сутки — сама дата 15.01.2026: в том файле
+# соседствуют снимки обеих эпох (842 по 10 полос и 2009 по 12). Поэтому
+# снимок сверяется с ОДНИМ ИЗ наборов, а не с модой файла: мода на
+# переходном дне отбрасывает меньшинство (29.5 % суток), а обрыв файла
+# посередине снимка не совпадает ни с одним набором и отбрасывается сам.
 PERCENTAGES = (-5.0, -4.0, -3.0, -2.0, -1.0, -0.2, 0.2, 1.0, 2.0, 3.0, 4.0, 5.0)
+LEGACY_PERCENTAGES = (-5.0, -4.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 4.0, 5.0)
+_BAND_SHAPES = (frozenset(PERCENTAGES), frozenset(LEGACY_PERCENTAGES))
 
 
 @dataclass(frozen=True)
@@ -73,7 +80,7 @@ class BookDepthBand:
 
 @dataclass(frozen=True)
 class BookDepthSnapshot:
-    """Снимок стакана: 12 полос на один момент времени."""
+    """Снимок стакана: полосы одного момента времени (10 или 12 — по эпохе)."""
     ts: int                              # время снимка, миллисекунды UTC
     bands: tuple[BookDepthBand, ...]     # по возрастанию percentage
 
@@ -243,12 +250,15 @@ def _check_header(text: str, kind: str) -> bool:
 def parse_book_depth(text: str) -> list[BookDepthSnapshot]:
     """Разобрать bookDepth: сгруппировать полосы по timestamp.
 
-    Формат менялся: до 2026-01-15 включительно полос было 10 (целые
-    -5..-1, 1..5, без ±0.2 %), с 2026-01-15 — 12 (десятичные, с ±0.2 %).
-    Ожидаемое число полос берётся из самого файла (мода по снимкам), а не
-    фиксируется — иначе январь целиком теряется. Снимок считается целым,
-    только если в нём модальное число полос и все проценты различны;
-    неполные (обрыв файла) отбрасываются.
+    Формат менялся: до 2026-01-15 полос было 10 (целые -5..-1, 1..5, без
+    ±0.2 %), с 2026-01-15 — 12 (с ±0.2 %). Переходные сутки — сама дата
+    15.01.2026, в её файле лежат снимки обеих эпох.
+
+    Снимок целый, только если набор его процентов совпадает с одним из
+    известных форматов. Так отбрасываются обрывы файла, но не теряются
+    снимки меньшинства на переходном дне. Если не совпал НИ ОДИН снимок —
+    формат изменился снова; тогда берётся самый частый набор полос, чтобы
+    файл не пропал целиком молча.
     """
     if not _check_header(text, "bookDepth"):
         return []
@@ -260,15 +270,18 @@ def parse_book_depth(text: str) -> list[BookDepthSnapshot]:
         buckets.setdefault(ts, []).append(band)
     if not buckets:
         return []
-    expected = Counter(len(v) for v in buckets.values()).most_common(1)[0][0]
+
+    shapes = {ts: frozenset(round(b.percentage, 2) for b in bands)
+              for ts, bands in buckets.items()}
+    known = {ts for ts, shape in shapes.items() if shape in _BAND_SHAPES}
+    if not known:
+        common = Counter(shapes.values()).most_common(1)[0][0]
+        known = {ts for ts, shape in shapes.items() if shape == common}
+
     out: list[BookDepthSnapshot] = []
-    for ts in sorted(buckets):
-        bands = sorted(buckets[ts], key=lambda b: b.percentage)
-        if len(bands) != expected:
-            continue
-        if len({b.percentage for b in bands}) != len(bands):
-            continue
-        out.append(BookDepthSnapshot(ts, tuple(bands)))
+    for ts in sorted(known):
+        bands = tuple(sorted(buckets[ts], key=lambda b: b.percentage))
+        out.append(BookDepthSnapshot(ts, bands))
     return out
 
 

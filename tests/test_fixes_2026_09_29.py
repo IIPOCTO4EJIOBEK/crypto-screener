@@ -214,11 +214,11 @@ def _stamp(i: int) -> str:
     return (base + timedelta(seconds=30 * i)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _depth_csv(bands, snapshots: int = 2) -> str:
+def _depth_csv(bands, snapshots: int = 2, offset: int = 0) -> str:
     rows = [HEADER.rstrip("\n")]
     for i in range(snapshots):
         for k, b in enumerate(bands):
-            rows.append(f"{_stamp(i)},{b},{10.0 + k},{1000.0 + k}")
+            rows.append(f"{_stamp(offset + i)},{b},{10.0 + k},{1000.0 + k}")
     return "\n".join(rows) + "\n"
 
 
@@ -239,6 +239,20 @@ def test_book_depth_отбрасывает_обрезанный_снимок():
     text = _depth_csv(NEW_BANDS, snapshots=1)
     text += f"{_stamp(1)},-5.0,10.0,1000.0\n"   # одна полоса из 12
     assert len(parse_book_depth(text)) == 1, "обрезанный снимок должен быть отброшен"
+
+
+def test_book_depth_не_теряет_меньшинство_на_переходном_дне():
+    """15.01.2026 — сутки, где соседствуют обе эпохи формата.
+
+    Мода файла там 12 полос, и снимки по 10 отбрасывались как «неполные»:
+    на реальном файле это 842 снимка из 2851, 29.5 % суток. Формат снимка
+    надо сверять с известными наборами, а не с тем, чего в файле больше.
+    """
+    text = _depth_csv(OLD_BANDS, snapshots=1)
+    text += _depth_csv(NEW_BANDS, snapshots=2, offset=1)[len(HEADER):]
+    snaps = parse_book_depth(text)
+    assert len(snaps) == 3, f"все три снимка целые, разобрано {len(snaps)}"
+    assert sorted(len(s.bands) for s in snaps) == [10, 12, 12]
 
 
 def test_book_depth_без_заголовка_не_разбирается():
