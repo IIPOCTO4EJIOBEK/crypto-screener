@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import median
 
-from src.analysis.levels import find_pivots, level_tolerance_pct
+from src.analysis.levels import find_pivots
 from src.data.archive import BookDepthSnapshot
 from src.data.market import Candle
 
@@ -47,8 +47,11 @@ class Slice:
     notional — прирост объёма именно в этом коридоре, USDT.
     """
     side: str          # "bid" | "ask"
-    lo_pct: float      # ближняя к середине граница, %
-    hi_pct: float      # дальняя граница, %
+    # Границы в процентах от середины, по возрастанию числа (lo < hi). На
+    # bid-стороне ближе к середине именно hi, на ask — lo; стороны в коде
+    # не различаются, потому что приращение считается по знаку глубины.
+    lo_pct: float
+    hi_pct: float
     depth: float       # прирост объёма в базовой монете
     notional: float    # прирост объёма в USDT
 
