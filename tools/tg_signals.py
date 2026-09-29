@@ -63,10 +63,18 @@ POST = re.compile(
     re.S)
 COIN = re.compile(r"\$?\b([A-Z0-9]{2,12})\s*/\s*(USDT|USDC|USD)\b")
 DIRECTION = re.compile(r"(ЛОНГ|SHORT|ЛОНГ|ШОРТ|LONG)", re.I)
-NUM = r"(\d+(?:[.,]\d+)?)"
+# Запись чисел у канала двойная, и обе формы надо понимать.
+# Пробел разделяет тысячи: «ВХОД: 114 900 – 115 000». Без этого BTC читался как
+# 114, а ETH как 3, и такие сигналы молча уходили в отсев как «цена не дошла».
+# Запятая же здесь десятичная, а не разделитель тысяч: «ВХОД: 0,6688 – 0,647»,
+# «ВХОД: 2,440 – 2,450» — это ENA по 0.67 и ICP по 2.44. Разделитель тысяч
+# запятой встречается только в новостной прозе внутри постов («639,835 BTC»),
+# а не в полях сигнала, поэтому запятая трактуется как десятичная точка.
+_NUM_BODY = r"\d+(?:[    ]\d{3})*(?:[.,]\d+)?"
+NUM = "(" + _NUM_BODY + ")"
 ZONE = re.compile(r"(?:вход|entry)[^\d]{0,20}" + NUM + r"(?:\s*[-–—]\s*" + NUM + r")?", re.I)
 STOP = re.compile(r"(?:стоп|stop|sl)[^\d]{0,20}" + NUM, re.I)
-TARGETS = re.compile(r"(?:цел|тейк|target|take)[^\d]{0,20}((?:\d+(?:[.,]\d+)?[\s\-–—]*)+)", re.I)
+TARGETS = re.compile(r"(?:цел|тейк|target|take)[^\d]{0,20}((?:" + _NUM_BODY + r"[\s\-–—]*)+)", re.I)
 
 
 # ---------------------------------------------------------------- сбор
@@ -114,7 +122,11 @@ def collect(channel: str, pages: int) -> list[dict]:
 
 # ---------------------------------------------------------------- разбор
 def _num(text: str) -> float:
-    return float(text.replace(",", "").replace(" ", ""))
+    """Число из записи канала: пробел — тысячи, запятая — десятичный знак."""
+    clean = text
+    for gap in (" ", " ", " ", " "):
+        clean = clean.replace(gap, "")
+    return float(clean.replace(",", "."))
 
 
 def parse_signal(text: str) -> dict | None:
@@ -134,12 +146,10 @@ def parse_signal(text: str) -> dict | None:
     stop = _num(stop_m.group(1)) if stop_m else None
     targets: list[float] = []
     for tm in TARGETS.finditer(text):
-        for piece in re.findall(r"\d+(?:[.,]\d+)?", tm.group(1)):
+        for piece in re.findall(_NUM_BODY, tm.group(1)):
             value = _num(piece)
-            if value > 0 and (not targets or abs(value - targets[0]) > 1e-12):
+            if value > 0 and value not in targets:
                 targets.append(value)
-    if not targets:
-        targets = []
     return {"symbol": symbol, "side": side, "lo": lo, "hi": hi,
             "stop": stop, "targets": targets}
 
@@ -202,8 +212,9 @@ def _setup_key(sig: dict) -> tuple:
     """Отпечаток сетапа: монета, сторона, вход, стоп, цели.
 
     Канал перепубликует один и тот же сетап слово в слово через дни и недели:
-    у POLUSDT вход 0.0745 с теми же целями вышел трижды, у HYPEUSDT вход
-    54.8–55.0 — трижды. Первая публикация идёт по цене у зоны, повторы —
+    у POLUSDT вход 0.07450–0.07500 с теми же целями вышел трижды (14, 22 и
+    25 августа), у HYPEUSDT вход 54.800–55.000 — трижды (30 июля, 19 августа,
+    18 сентября). Первая публикация идёт по цене у зоны, повторы —
     когда цена уже ушла. Считать повторы независимыми сигналами нельзя:
     они раздувают выборку и, поскольку до входа в них цена не доходит,
     ещё и искажают долю сработавших.
