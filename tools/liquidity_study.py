@@ -507,14 +507,11 @@ def thesis4(symbols=SYMBOLS) -> None:
 def cluster_levels(cs: list[Candle], tf: str) -> list[dict]:
     """Уровни из пивотов с честным счётчиком касаний.
 
-    Воспроизводит замысел horizontal_levels, но без его бага: там условие
-    объединения `lv.kind == kind` сравнивает kind уровня ("support"/
-    "resistance") с kind пивота ("low"/"high") — оно никогда не истинно,
-    поэтому счётчик касаний вечно равен 1. Здесь пивоты одного типа
-    (high/high, low/low) в допуске уровня объединяются по-настоящему.
+    Кластеринг по цене с фиксированным допуском ~0.5 % (как у круглых чисел),
+    а не по таймфрейму — пивоты редкие, таймфреймный допуск слишком узок.
     """
     pivots = find_pivots(cs)
-    tol = level_tolerance_pct(tf) / 100
+    tol = 0.005
     levels: list[dict] = []
     for idx, price, kind in pivots:
         if price <= 0:
