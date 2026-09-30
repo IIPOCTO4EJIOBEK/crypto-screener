@@ -1,0 +1,27 @@
+BTCUSDT 1h: по ts 232 сделок, по (формация, ts) 304
+ETHUSDT 1h: по ts 188 сделок, по (формация, ts) 231
+SOLUSDT 1h: по ts 233 сделок, по (формация, ts) 292
+
+всего времени 103 с
+
+формация               ТФ    n по ts    R net  n по ключу    R net  прибавка
+retest                 1h        307   -0.319         383   -0.344       +76
+breakout               1h        144   -0.381         171   -0.328       +27
+volume_splash          1h         50   +0.006          92   -0.251       +42
+bounce                 1h         74   +0.376          76   +0.338        +2
+liquidity_sweep        1h         37   -0.213          54   -0.062       +17
+structure_break        1h         33   -0.168          40   -0.186        +7
+absorption             1h          7   -0.743           9   -0.825        +2
+trendline_bounce       1h          1   +1.666           2   +1.666        +1
+
+итого: по ts 653 сделок, средний R net -0.217; по ключу 827 сделок, средний R net -0.242
+
+потеряно детекций при дедупликации по ts:
+  retest                 1h       76
+  volume_splash          1h       42
+  breakout               1h       27
+  liquidity_sweep        1h       17
+  structure_break        1h        7
+  absorption             1h        2
+  bounce                 1h        2
+  trendline_bounce       1h        1
