@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Крипто-скринер</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1b2230; --line:#2a3140;
+  --fg:#e6edf3; --muted:#8f9bab; --accent:#4c9aff;
+  --long:#3fb950; --short:#f85149; --warn:#d29922; --chip:#1f2733;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f8fa; --panel:#ffffff; --panel2:#eef1f5; --line:#d6dde5;
+    --fg:#1b2430; --muted:#5b6673; --accent:#0a66c2;
+    --long:#1a7f37; --short:#c62828; --warn:#9a6700; --chip:#eaeef3;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}
+body{
+  background:var(--bg); color:var(--fg);
+  font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  padding:12px 12px 40px;
+}
+.wrap{max-width:1180px;margin:0 auto}
+h1,h2,h3{margin:0}
+a{color:var(--accent)}
+header{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-start;
+  justify-content:space-between}
+.h1{font-size:21px;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:12.5px;margin:5px 0 0}
+.sub b{color:var(--fg);font-weight:600}
+section{margin:16px 0 0}
+h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+  font-weight:600;margin:0 0 7px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 11px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{background:var(--chip);border:1px solid var(--line);border-radius:20px;
+  padding:3px 9px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.chip b{color:var(--fg);margin-left:4px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.pos{color:var(--long)}
+.neg{color:var(--short)}
+.nowrap{white-space:nowrap}
+/* --- первый экран: числа измерения --- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));
+  gap:8px;margin:0}
+.tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:9px 10px;min-width:0}
+.tile .k{font-size:11px;color:var(--muted);line-height:1.25;overflow-wrap:anywhere}
+.tile .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:27px;
+  font-weight:650;line-height:1.15;margin-top:3px}
+.tile .s{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.3;
+  overflow-wrap:anywhere}
+.honesty{border-left:3px solid var(--warn);background:var(--panel2);border-radius:8px;
+  padding:9px 11px;margin:0 0 9px}
+.honesty .t{font-weight:650;font-size:13.5px;color:var(--warn);margin-bottom:4px}
+.honesty p{margin:0;font-size:12.5px;color:var(--muted)}
+.honesty p b{color:var(--fg);font-weight:600;font-family:var(--mono)}
+.survivor{border:1px solid var(--line);border-left:3px solid var(--long);
+  background:var(--panel2);border-radius:10px;padding:10px 12px}
+.sv-head{display:flex;flex-wrap:wrap;gap:6px 9px;align-items:baseline}
+.sv-kind{font-size:15px;font-weight:650}
+.sv-tf{font-family:var(--mono);color:var(--muted);font-weight:500}
+.kvs{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
+.kv{background:var(--chip);border:1px solid var(--line);border-radius:6px;
+  padding:2px 7px;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.kv b{color:var(--fg);font-family:var(--mono);font-weight:600;margin-left:4px}
+.noform{border:1px dashed var(--line);border-radius:9px;padding:10px 11px;
+  font-size:12.5px;color:var(--fg);background:var(--panel2)}
+.tag{display:inline-block;border-radius:5px;padding:0 5px;font-size:10.5px;
+  border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.yes{color:var(--long);border-color:var(--long)}
+.tag.no{color:var(--muted)}
+.tag.skip{color:var(--warn);border-color:var(--warn)}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600;
+  text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
+  cursor:pointer;user-select:none;-webkit-user-select:none}
+th.l{text-align:left}
+th.sorted{color:var(--accent)}
+th.sorted.asc::after{content:' ▲';font-size:9px}
+th.sorted.desc::after{content:' ▼';font-size:9px}
+td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
+  text-align:right;vertical-align:middle;font-variant-numeric:tabular-nums}
+td.l{text-align:left}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--panel2)}
+tr.nosup td{color:var(--muted)}
+.cards{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:820px){.cards{grid-template-columns:1fr 1fr}}
+a.card{display:block;text-decoration:none;color:inherit;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-width:0}
+a.card:hover{border-color:var(--accent)}
+.card h3{font-size:15px;font-weight:650;margin:0 0 5px}
+.card p.what{margin:0;font-size:12.5px;color:var(--muted)}
+.figs{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
+.fig{background:var(--chip);border:1px solid var(--line);border-radius:6px;
+  padding:2px 7px;font-size:11.5px;color:var(--fg);overflow-wrap:anywhere}
+.card p.cnote{margin:7px 0 0;font-size:11px;color:var(--muted)}
+.card .go{margin:8px 0 0;font-size:11.5px;color:var(--accent)}
+.note{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+ol.cl{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line);
+  border-radius:10px;margin:0;padding:9px 11px 9px 30px;font-size:12.5px;color:var(--muted)}
+ol.cl li{margin:4px 0}
+ol.gaps{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:0;
+  padding:9px 11px 9px 30px;font-size:12.5px;color:var(--muted)}
+ol.gaps li{margin:3px 0}
+ul.docs{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 14px;
+  font-size:12.5px}
+footer{margin:20px 0 0;padding-top:10px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--muted);line-height:1.65}
+footer b{color:var(--fg);font-weight:600}
+footer .fk{color:var(--fg)}
+@media (max-width:700px){
+  body{padding:10px 10px 32px}
+  .h1{font-size:18px}
+  .tile .v{font-size:23px}
+  table{font-size:12px}
+  th,td{padding:6px 6px}
+  th{white-space:normal;line-height:1.2}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1 class="h1" id="hTitle"></h1>
+    <p class="sub" id="hSub"></p>
+  </div>
+  <div class="chips" id="hChips"></div>
+</header>
+
+<section>
+  <h2 class="sec">Первым делом: что здесь измерено</h2>
+  <div class="honesty" id="honesty"></div>
+  <div class="tiles" id="tiles"></div>
+  <p class="note" id="heroCaption"></p>
+</section>
+
+<section>
+  <h2 class="sec">Единственная выжившая строка</h2>
+  <div id="survivor"></div>
+</section>
+
+<section>
+  <h2 class="sec">Крупные выборки в минусе</h2>
+  <div class="tbl-wrap">
+    <table id="losTbl">
+      <thead><tr>
+        <th class="l">Формация</th>
+        <th class="l">ТФ</th>
+        <th>Сделок</th>
+        <th>R после издержек</th>
+      </tr></thead>
+      <tbody id="losBody"></tbody>
+    </table>
+  </div>
+  <p class="note" id="losNote"></p>
+</section>
+
+<section>
+  <h2 class="sec">Куда смотреть дальше</h2>
+  <div class="cards" id="cards"></div>
+  <p class="note" id="cardsNote"></p>
+</section>
+
+<section>
+  <h2 class="sec">Полная таблица измерения</h2>
+  <div class="tbl-wrap">
+    <table id="tbl"><thead><tr id="thr"></tr></thead><tbody id="tbody"></tbody></table>
+  </div>
+  <p class="note" id="tblNote"></p>
+  <p class="note" id="tblParams"></p>
+</section>
+
+<section>
+  <h2 class="sec">Оговорки</h2>
+  <ol class="cl" id="caveats"></ol>
+</section>
+
+<div id="gapsWrap"></div>
+
+<section>
+  <h2 class="sec">Документы</h2>
+  <ul class="docs" id="docs"></ul>
+</section>
+
+<footer id="foot"></footer>
+<p class="sub" id="boot"></p>
+
+</div>
+
+<script id="data" type="application/json">{"meta":{"title":"Крипто-скринер","subtitle":"Формации на живом рынке и честный замер того, что они приносят после издержек","built_at":"2026-09-30 13:12 МСК","market":"Binance USDT-M перпетуал (fapi.binance.com)","no_signals":true,"links":{"structures":"structures.html","densities":"densities.html","screener":"screener.html","trend":"../trend.html","trend_hist":"../trend-hist.html","docs":{"run":"../03-результаты-прогона.md","trend":"../research/16-тренд-фильтр-измерение.md","earn":"../research/12-заработок-свод.md","method":"../research/17-измерение-формаций-проверка-методики.md"}},"window":{"start":"2026-08-16","end":"2026-09-29","days":45,"symbols_n":8,"tfs_n":3,"log":"formation-refresh-2026-09-30.log"},"live":{"structures":{"collected_at":"2026-09-30 12:54:07 МСК","caveats_n":6,"market":"Binance USDT-M перпетуал (fapi.binance.com)","pairs":24,"tfs_n":3,"formations":53,"candles":200,"positive_hit_now":2},"densities":{"collected_at":"2026-09-30 13:05 МСК","caveats_n":7,"market":"Binance USDT-M перпетуал (fapi.binance.com)","coins":8,"densities_total":1530,"shown":96,"depth":1000}},"trend":{"hist":{"symbols_n":24,"sharpe":0.64,"market_sharpe":0.51,"cagr_pct":19.5,"market_cagr_pct":9.2,"verdict":{"sharpe_trend":0.6353999076388114,"sharpe_market":0.5071404398025481,"z":4.837350922739171,"p":1.7755487240006386e-06,"значимо":true},"lag":{"правило":"L28 H5","строки":[{"lag":1,"n":481,"exposure":0.46829397718227644,"in_market":0.9293139293139293,"turnover":49.45519549558389,"total":2.2809656400251432,"cagr":0.19503067322040057,"sharpe":0.6353999076388114,"dd":-0.7912825550742888,"market_sharpe":0.5071404398025481,"market_total":0.8002634329156557,"z":4.837350922739171,"p":1.7755487240006386e-06,"значимо":true},{"lag":2,"n":480,"exposure":0.46765331442750796,"in_market":0.9291666666666667,"turnover":49.538909151026445,"total":1.5101479522270975,"cagr":0.14825181535393073,"sharpe":0.5874507081588889,"dd":-0.8159013087208631,"market_sharpe":0.49726932797362483,"market_total":0.708071948869563,"z":3.597932365657694,"p":0.00035411338875618667,"значимо":true},{"lag":3,"n":480,"exposure":0.46641261963842606,"in_market":0.9291666666666667,"turnover":49.6555893159325,"total":0.46973849905262033,"cagr":0.059522268039613024,"sharpe":0.4600537021064251,"dd":-0.8143387985915603,"market_sharpe":0.48078841226285196,"market_total":0.8147127430451617,"z":-0.7523699943719357,"p":0.45219814529216074,"значимо":false},{"lag":5,"n":480,"exposure":0.467210209145693,"in_market":0.9291666666666667,"turnover":49.890510537417036,"total":0.46119819656816885,"cagr":0.058546045414092696,"sharpe":0.45917648347450113,"dd":-0.8022042690531325,"market_sharpe":0.511011935173486,"market_total":0.8850914040073585,"z":-2.206920520378186,"p":0.027793167087205098,"значимо":true},{"lag":10,"n":479,"exposure":0.4667436284521801,"in_market":0.9269311064718163,"turnover":49.5924285382084,"total":-0.12384653641661059,"cagr":-0.01963940370759487,"sharpe":0.3580926915240724,"dd":-0.9150248295522548,"market_sharpe":0.49477584195785335,"market_total":0.7442326290094075,"z":-5.868215139899683,"p":8.24053994510508e-09,"значимо":true}],"описание":"сигнал считается по закрытию дня i, вход — по открытию дня i+лаг; лаг 1 — вход на следующее утро, лаг 2 и больше — если решение принимается с промедлением"},"p":1.7755487240006386e-06,"z":4.84,"significant":true},"all":{"symbols_n":8,"sharpe":1.24,"market_sharpe":0.97,"cagr_pct":94.1,"market_cagr_pct":56.8,"verdict":{"sharpe_trend":1.2421343151786515,"sharpe_market":0.9688473623689353,"z":7.9295249596785835,"p":1.5561490426357337e-14,"значимо":true},"lag":{"правило":"L28 H5","строки":[{"lag":1,"n":481,"exposure":0.4856368563685637,"in_market":0.7546777546777547,"turnover":36.13323903151852,"total":82.28073298484168,"cagr":0.9408982835766866,"sharpe":1.2421343151786515,"dd":-0.7628593961451342,"market_sharpe":0.9688473623689353,"market_total":19.10930706519257,"z":7.9295249596785835,"p":1.5561490426357337e-14,"значимо":true},{"lag":2,"n":480,"exposure":0.4847908745247148,"in_market":0.7541666666666667,"turnover":36.193993316328395,"total":47.25150410321579,"cagr":0.7900824294917421,"sharpe":1.1187950476330901,"dd":-0.8117756759794132,"market_sharpe":0.9620347729203443,"market_total":19.748018585990646,"z":5.184599980274451,"p":3.1988444047619196e-07,"значимо":true},{"lag":3,"n":480,"exposure":0.4837045084193373,"in_market":0.7541666666666667,"turnover":36.21648200004061,"total":20.38308035351901,"cagr":0.5838061874709362,"sharpe":0.9874041935878048,"dd":-0.825787249717592,"market_sharpe":0.9433200408805448,"market_total":16.61406489195684,"z":1.4618548125539468,"p":0.14443672329819313,"значимо":false},{"lag":5,"n":480,"exposure":0.48424769147202607,"in_market":0.7541666666666667,"turnover":36.55761524217824,"total":14.542293178824297,"cagr":0.5092172174675456,"sharpe":0.9012042792835583,"dd":-0.8386296220034579,"market_sharpe":0.9715109812653678,"market_total":21.285293520964277,"z":-2.1513047624132415,"p":0.03195153822029798,"значимо":true},{"lag":10,"n":479,"exposure":0.48312465977136637,"in_market":0.7515657620041754,"turnover":36.141713209484315,"total":9.471920361691803,"cagr":0.42241037686572236,"sharpe":0.8292679589205291,"dd":-0.8690241590276795,"market_sharpe":0.954330396947065,"market_total":19.161711394677162,"z":-3.69396943632216,"p":0.00024628422130008117,"значимо":true}],"описание":"сигнал считается по закрытию дня i, вход — по открытию дня i+лаг; лаг 1 — вход на следующее утро, лаг 2 и больше — если решение принимается с промедлением"}}},"gaps":[],"caveats":["Ни одна страница здесь не даёт сигналов и не обещает доходности. Измерение показывает, что после издержек большинство формаций в минусе, и это написано на первом экране.","Измерение формаций — 24 строк по 8 монетам и 3 таймфреймам, дата 2026-09-30. Опорой считается выборка от 30 сделок: у меньших оценка разброса не определена.","Поправка на множественные сравнения (Бенджамини-Хохберг) применена: без неё «полторы хорошие строки из двух десятков» — ожидаемый результат шума. Считаются только строки-опоры.","Walk-forward с разрывом на утечку для формаций не делался — числа описывают одно окно, а не устойчивость во времени. Для тренд-фильтра он есть.","Плотность на странице плотностей — снимок стакана, а не наблюдение за заявкой: сырых уровней база не хранит, поэтому ни времени жизни, ни признаков спуфинга там быть не может.","Касание считается по сегодняшней цене уровня, а не по той, что стояла в момент касания: это «сколько раз цена была на этой цене», а не «сколько раз отскочила от этой заявки».","Преимущество тренд-фильтра живёт один-два дня: при задержке входа в три дня различия с рынком нет, в пять и десять — правило значимо хуже рынка. Исполнение обязано быть автоматическим."]},"measurement":{"measured_on":"2026-09-30","scope":"BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,LINKUSDT,AVAXUSDT","symbols_n":8,"min_trades":30,"fdr_alpha":0.05,"rows_total":24,"rows_support":22,"rows_positive":4,"rows_significant":12,"rows_significant_positive":1,"survivor":{"kind":"trendline_bounce","kind_ru":"отскок от трендовой","tf":"15m","n":36,"win_pct":72.2,"r_gross":1.167,"cost_r":0.461,"r_net":0.705,"support":true,"significant":true},"losers":[{"kind":"retest","kind_ru":"ретест уровня","tf":"5m","n":2183,"win_pct":57.6,"r_gross":-0.077,"cost_r":0.167,"r_net":-0.244,"support":true,"significant":true},{"kind":"retest","kind_ru":"ретест уровня","tf":"15m","n":1484,"win_pct":53.0,"r_gross":-0.053,"cost_r":0.114,"r_net":-0.168,"support":true,"significant":true},{"kind":"retest","kind_ru":"ретест уровня","tf":"1h","n":898,"win_pct":42.6,"r_gross":-0.239,"cost_r":0.08,"r_net":-0.319,"support":true,"significant":true},{"kind":"breakout","kind_ru":"пробой уровня","tf":"5m","n":760,"win_pct":50.7,"r_gross":-0.074,"cost_r":0.218,"r_net":-0.293,"support":true,"significant":true},{"kind":"breakout","kind_ru":"пробой уровня","tf":"15m","n":683,"win_pct":46.1,"r_gross":0.038,"cost_r":0.146,"r_net":-0.107,"support":true,"significant":true},{"kind":"breakout","kind_ru":"пробой уровня","tf":"1h","n":501,"win_pct":39.7,"r_gross":-0.061,"cost_r":0.1,"r_net":-0.162,"support":true,"significant":true}],"table":[{"kind":"trendline_bounce","kind_ru":"отскок от трендовой","tf":"1h","n":19,"win_pct":84.2,"r_gross":1.526,"cost_r":0.269,"r_net":1.257,"support":false,"significant":null},{"kind":"trendline_bounce","kind_ru":"отскок от трендовой","tf":"15m","n":36,"win_pct":72.2,"r_gross":1.167,"cost_r":0.461,"r_net":0.705,"support":true,"significant":true},{"kind":"absorption","kind_ru":"поглощение","tf":"15m","n":56,"win_pct":46.4,"r_gross":0.562,"cost_r":0.388,"r_net":0.174,"support":true,"significant":false},{"kind":"structure_break","kind_ru":"слом структуры","tf":"15m","n":51,"win_pct":52.9,"r_gross":0.159,"cost_r":0.053,"r_net":0.106,"support":true,"significant":false},{"kind":"trendline_bounce","kind_ru":"отскок от трендовой","tf":"5m","n":76,"win_pct":54.0,"r_gross":0.708,"cost_r":0.694,"r_net":0.014,"support":true,"significant":false},{"kind":"structure_break","kind_ru":"слом структуры","tf":"5m","n":33,"win_pct":39.4,"r_gross":0.024,"cost_r":0.078,"r_net":-0.053,"support":true,"significant":false},{"kind":"liquidity_sweep","kind_ru":"съём ликвидности","tf":"1h","n":151,"win_pct":31.1,"r_gross":0.062,"cost_r":0.125,"r_net":-0.063,"support":true,"significant":false},{"kind":"volume_splash","kind_ru":"всплеск объёма","tf":"1h","n":201,"win_pct":15.4,"r_gross":0.017,"cost_r":0.084,"r_net":-0.067,"support":true,"significant":false},{"kind":"bounce","kind_ru":"отскок от уровня","tf":"5m","n":154,"win_pct":14.9,"r_gross":0.143,"cost_r":0.21,"r_net":-0.067,"support":true,"significant":false},{"kind":"breakout","kind_ru":"пробой уровня","tf":"15m","n":683,"win_pct":46.1,"r_gross":0.038,"cost_r":0.146,"r_net":-0.107,"support":true,"significant":true},{"kind":"bounce","kind_ru":"отскок от уровня","tf":"1h","n":154,"win_pct":13.0,"r_gross":-0.034,"cost_r":0.089,"r_net":-0.123,"support":true,"significant":false},{"kind":"breakout","kind_ru":"пробой уровня","tf":"1h","n":501,"win_pct":39.7,"r_gross":-0.061,"cost_r":0.1,"r_net":-0.162,"support":true,"significant":true},{"kind":"retest","kind_ru":"ретест уровня","tf":"15m","n":1484,"win_pct":53.0,"r_gross":-0.053,"cost_r":0.114,"r_net":-0.168,"support":true,"significant":true},{"kind":"liquidity_sweep","kind_ru":"съём ликвидности","tf":"15m","n":246,"win_pct":35.0,"r_gross":0.118,"cost_r":0.286,"r_net":-0.168,"support":true,"significant":false},{"kind":"bounce","kind_ru":"отскок от уровня","tf":"15m","n":131,"win_pct":10.7,"r_gross":-0.054,"cost_r":0.136,"r_net":-0.19,"support":true,"significant":false},{"kind":"volume_splash","kind_ru":"всплеск объёма","tf":"15m","n":270,"win_pct":15.6,"r_gross":-0.085,"cost_r":0.149,"r_net":-0.234,"support":true,"significant":true},{"kind":"retest","kind_ru":"ретест уровня","tf":"5m","n":2183,"win_pct":57.6,"r_gross":-0.077,"cost_r":0.167,"r_net":-0.244,"support":true,"significant":true},{"kind":"breakout","kind_ru":"пробой уровня","tf":"5m","n":760,"win_pct":50.7,"r_gross":-0.074,"cost_r":0.218,"r_net":-0.293,"support":true,"significant":true},{"kind":"retest","kind_ru":"ретест уровня","tf":"1h","n":898,"win_pct":42.6,"r_gross":-0.239,"cost_r":0.08,"r_net":-0.319,"support":true,"significant":true},{"kind":"structure_break","kind_ru":"слом структуры","tf":"1h","n":120,"win_pct":29.2,"r_gross":-0.289,"cost_r":0.034,"r_net":-0.323,"support":true,"significant":true},{"kind":"absorption","kind_ru":"поглощение","tf":"1h","n":12,"win_pct":25.0,"r_gross":-0.25,"cost_r":0.136,"r_net":-0.386,"support":false,"significant":null},{"kind":"volume_splash","kind_ru":"всплеск объёма","tf":"5m","n":132,"win_pct":12.1,"r_gross":-0.176,"cost_r":0.213,"r_net":-0.389,"support":true,"significant":true},{"kind":"liquidity_sweep","kind_ru":"съём ликвидности","tf":"5m","n":211,"win_pct":30.8,"r_gross":-0.054,"cost_r":0.513,"r_net":-0.567,"support":true,"significant":true},{"kind":"absorption","kind_ru":"поглощение","tf":"5m","n":101,"win_pct":29.7,"r_gross":-0.052,"cost_r":0.55,"r_net":-0.603,"support":true,"significant":true}]},"cards":[{"href":"structures.html","title":"Структуры","what":"Графики с разметкой: свечи, горизонтальные уровни, трендовые линии, режим рынка, объём и метки формаций. На каждой метке — измеренный R после издержек.","figures":["24 пар","3 таймфрейма","53 формаций сейчас"],"note":"снимок 2026-09-30 12:54:07 МСК, плюсовых формаций сработало 2"},{"href":"densities.html","title":"Плотности и касания","what":"Крупные уровни стакана: номинал, расстояние до середины, кратность к медиане стакана, время поедания и число касаний цены за 5m и 1h.","figures":["8 монет","1530 плотностей","96 строк на странице"],"note":"стакан глубиной 1000 уровней, снимок 2026-09-30 13:05 МСК"},{"href":"screener.html","title":"Снимок скринера","what":"Последний прогон по всем парам: какие формации найдены сейчас, что о них говорит измерение и какой вердикт выходит после поправки на перебор.","figures":["вердикт по каждой формации","строка FDR в отчёте"],"note":"обновляется прогоном tools/live/screen.py"},{"href":"../trend-hist.html","title":"Тренд-фильтр","what":"Единственная стратегия с подтверждённым плюсом после издержек: long-only выход в кэш, когда рынок падает. Состав монет — на 2020-01, отбора выживших нет.","figures":["Sharpe 0.64 против 0.51 у рынка","на 24 монетах состава по дате","p = 1.8·10⁻⁶, значимо"],"note":"здесь число ближе к тому, что можно было получить в 2020-м, не зная будущего"},{"href":"../trend.html","title":"Тренд на восьмёрке лидеров","what":"Тот же тренд-фильтр на восьми крупнейших перпетуалах 2026 года, применённых к истории с 2020-го. Здесь же проверка вне выбора параметров: walk-forward с разрывом на утечку.","figures":["Sharpe 1.24 против 0.97 у рынка","8 монет"],"note":"состав выбран задним числом — это верхняя оценка, а не то, что можно было знать в 2020-м"}],"docs":[{"href":"../03-результаты-прогона.md","title":"Результаты прогона"},{"href":"../research/16-тренд-фильтр-измерение.md","title":"Тренд-фильтр: измерение"},{"href":"../research/12-заработок-свод.md","title":"На чём в нише зарабатывают"},{"href":"../research/17-измерение-формаций-проверка-методики.md","title":"Проверка методики измерения"}]}</script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- данные, вшитые в файл сборщиком ---------- */
+var DATA = null;
+try { DATA = JSON.parse(document.getElementById('data').textContent); }
+catch(e){ DATA = null; }
+if(!DATA || typeof DATA !== 'object'){
+  document.getElementById('boot').textContent =
+    'Данные в файл не вшиты или не разобрались: страница собрана без JSON.';
+  return;
+}
+
+var M = DATA.meta || {};
+var MS = DATA.measurement || {};
+var CARDS = DATA.cards || [];
+var DOCS = DATA.docs || [];
+var CAVEATS = M.caveats || [];
+var GAPS = M.gaps || [];
+
+/* ---------- помощники: текст и числа ---------- */
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function fin(v){ return typeof v === 'number' && isFinite(v); }
+/* строка как есть; отсутствующее — прочерк, а не пустота и не выдумка */
+function tx(v){ return (v == null || v === '') ? '—' : String(v); }
+function n0(v){
+  if(!fin(v)) return '—';
+  var neg = v < 0, s = String(Math.round(Math.abs(v))), out = '';
+  while(s.length > 3){ out = ' ' + s.slice(-3) + out; s = s.slice(0, -3); }
+  return (neg ? '-' : '') + s + out;
+}
+function fixed(v, d){
+  if(!fin(v)) return '—';
+  return Number(v).toFixed(d == null ? 2 : d);
+}
+function sgn(v, d){
+  if(!fin(v)) return '—';
+  return (v > 0 ? '+' : '') + Number(v).toFixed(d == null ? 2 : d);
+}
+function pct(v, d){ return fin(v) ? Number(v).toFixed(d == null ? 1 : d) + ' %' : '—'; }
+/* знак значения — только цвет, само число не меняется */
+function signCls(v){ return !fin(v) ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : '')); }
+function plural(n, one, few, many){
+  var a = Math.abs(Math.round(n)) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b > 1 && b < 5) return few;
+  if(b === 1) return one;
+  return many;
+}
+function el(id){ return document.getElementById(id); }
+function setHTML(id, html){ el(id).innerHTML = html; }
+
+/* ---------- шапка ---------- */
+(function(){
+  el('hTitle').textContent = tx(M.title);
+  var s = [];
+  if(M.subtitle) s.push(tx(M.subtitle));
+  if(M.built_at) s.push('сборка ' + tx(M.built_at));
+  if(M.market) s.push(tx(M.market));
+  el('hSub').textContent = s.join(' · ');
+
+  var ch = [];
+  if(M.no_signals === true) ch.push('сигналов не даёт и доходности не обещает');
+  if(M.window && fin(M.window.days)){
+    ch.push('окно ' + n0(M.window.days) + ' ' +
+            plural(M.window.days, 'сутки', 'суток', 'суток'));
+  }
+  setHTML('hChips', ch.map(function(c){
+    return '<span class="chip">' + esc(c) + '</span>';
+  }).join(''));
+})();
+
+/* ---------- первый экран: числа измерения ---------- */
+(function(){
+  /* главное сообщение — то самое неудобное; формулировка из оговорок */
+  var h = '<div class="t">После издержек большинство формаций в минусе</div>';
+  var p = [];
+  if(fin(MS.rows_positive) && fin(MS.rows_total)){
+    p.push('В плюсе после издержек — <b>' + n0(MS.rows_positive) + '</b> строки из <b>' +
+           n0(MS.rows_support) + '</b> строк-опор (в таблице ' + n0(MS.rows_total) + ').');
+  }
+  if(fin(MS.rows_significant) && fin(MS.rows_significant_positive)){
+    p.push('Значимых после поправки на перебор — <b>' + n0(MS.rows_significant) +
+           '</b>, из них с плюсом — <b>' + n0(MS.rows_significant_positive) + '</b>.');
+  }
+  if(!p.length) p.push('Числа измерения в данных отсутствуют.');
+  h += '<p>' + p.join(' ') + '</p>';
+  setHTML('honesty', h);
+
+  var T = [
+    {k:'Строк измерения', v:MS.rows_total, s:'строк в таблице измерения'},
+    {k:'Из них опора', v:MS.rows_support,
+     s: fin(MS.min_trades) ? 'выборка от ' + n0(MS.min_trades) + ' сделок'
+                           : 'строки-опоры'},
+    {k:'В плюсе после издержек', v:MS.rows_positive,
+     s:'среди строк-опор R больше нуля',
+     c:true},
+    {k:'Значимо после поправки', v:MS.rows_significant,
+     s:'поправка на множественные сравнения'},
+    {k:'Значимо и в плюсе', v:MS.rows_significant_positive,
+     s:'пережила и издержки, и поправку', c:true}
+  ];
+  setHTML('tiles', T.map(function(t){
+    var cls = 'tile' + (t.c ? ' ' + signCls(t.v) : '');
+    return '<div class="' + cls + '">' +
+      '<div class="k">' + esc(t.k) + '</div>' +
+      '<div class="v">' + n0(t.v) + '</div>' +
+      '<div class="s">' + esc(t.s) + '</div>' +
+    '</div>';
+  }).join(''));
+
+  /* подпись к числам: что именно посчитано */
+  var cp = [];
+  if(fin(MS.rows_total) && fin(MS.symbols_n) && fin(MS.tfs_n)){
+    cp.push('Измерение формаций — ' + n0(MS.rows_total) + ' строк по ' +
+            n0(MS.symbols_n) + ' монетам и ' + n0(MS.tfs_n) + ' таймфреймам' +
+            (MS.measured_on ? ', дата ' + tx(MS.measured_on) : '') + '.');
+  }
+  if(fin(MS.min_trades)){
+    cp.push('Опорой считается выборка от ' + n0(MS.min_trades) +
+            ' сделок: у меньших оценка разброса не определена.');
+  }
+  cp.push('Поправка на множественные сравнения (Бенджамини-Хохберг) применена; ' +
+          'считаются только строки-опоры.');
+  cp.push('Строка «в счёт не вошла» — это не то же самое, что «не значимо»: ' +
+          'поправка на неё не смотрела.');
+  el('heroCaption').innerHTML = cp.map(esc).join(' ');
+})();
+
+/* ---------- единственная выжившая строка ---------- */
+(function(){
+  var s = MS.survivor;
+  if(s == null || typeof s !== 'object'){
+    setHTML('survivor', '<div class="noform">Выживших нет: ни одной строки, ' +
+      'которая осталась бы в плюсе после издержек и пережила поправку на ' +
+      'перебор, в этом измерении не нашлось.</div>');
+    return;
+  }
+  var badges = [];
+  if(s.support === true) badges.push('<span class="tag yes">опора</span>');
+  if(s.support === false) badges.push('<span class="tag no">не опора</span>');
+  if(s.significant === true) badges.push('<span class="tag yes">значимо после поправки</span>');
+  if(s.significant === false) badges.push('<span class="tag no">не значимо</span>');
+  if(s.significant == null) badges.push('<span class="tag skip">в счёт не вошла</span>');
+
+  var kv = [];
+  kv.push('<span class="kv">сделок<b>' + n0(s.n) + '</b></span>');
+  kv.push('<span class="kv">прибыльных<b>' + pct(s.win_pct, 1) + '</b></span>');
+  kv.push('<span class="kv">R до издержек<b>' + sgn(s.r_gross, 3) + '</b></span>');
+  kv.push('<span class="kv">издержки, R<b>' + fixed(s.cost_r, 3) + '</b></span>');
+  kv.push('<span class="kv">R после издержек<b class="' + signCls(s.r_net) + '">' +
+          sgn(s.r_net, 3) + '</b></span>');
+
+  setHTML('survivor', '<div class="survivor">' +
+    '<div class="sv-head">' +
+      '<span class="sv-kind">' + esc(tx(s.kind_ru)) + '</span>' +
+      '<span class="sv-tf">' + esc(tx(s.tf)) + '</span>' +
+      badges.join('') +
+    '</div>' +
+    '<div class="kvs">' + kv.join('') + '</div>' +
+    '<p class="note">Это единственная плюсовая строка, пережившая поправку на ' +
+    'перебор. Ограничения измерения — в оговорках ниже.</p>' +
+  '</div>');
+})();
+
+/* ---------- крупные выборки в минусе ---------- */
+(function(){
+  var L = MS.losers || [];
+  if(!L.length){
+    setHTML('losBody', '<tr><td class="l muted" colspan="4">' +
+      'Строк с крупной выборкой в данных нет.</td></tr>');
+    el('losNote').textContent = '';
+    return;
+  }
+  setHTML('losBody', L.map(function(r){
+    return '<tr>' +
+      '<td class="l">' + esc(tx(r.kind_ru)) + '</td>' +
+      '<td class="l mono">' + esc(tx(r.tf)) + '</td>' +
+      '<td>' + n0(r.n) + '</td>' +
+      '<td class="' + signCls(r.r_net) + '">' + sgn(r.r_net, 3) + '</td>' +
+    '</tr>';
+  }).join(''));
+  el('losNote').textContent = 'Строки с наибольшей выборкой. Смысл блока: где ' +
+    'данных больше всего, там как раз минус после издержек.';
+})();
+
+/* ---------- плитки-переходы ---------- */
+(function(){
+  if(!CARDS.length){
+    setHTML('cards', '<div class="noform">Переходов в данных нет.</div>');
+    el('cardsNote').textContent = '';
+    return;
+  }
+  setHTML('cards', CARDS.map(function(c){
+    var figs = (c.figures || []).map(function(f){
+      return '<span class="fig">' + esc(tx(f)) + '</span>';
+    }).join('');
+    var head = '<h3>' + esc(tx(c.title)) + '</h3>';
+    var what = c.what ? '<p class="what">' + esc(tx(c.what)) + '</p>' : '';
+    var note = c.note ? '<p class="cnote">' + esc(tx(c.note)) + '</p>' : '';
+    var inner = head + what +
+      (figs ? '<div class="figs">' + figs + '</div>' : '') + note;
+    var href = (c.href == null || c.href === '') ? '' : String(c.href);
+    if(!href){
+      return '<div class="card">' + inner + '</div>';
+    }
+    return '<a class="card" href="' + esc(href) + '">' + inner +
+           '<p class="go">перейти →</p></a>';
+  }).join(''));
+  var withHref = 0;
+  CARDS.forEach(function(c){ if(c.href) withHref++; });
+  if(withHref !== CARDS.length){
+    el('cardsNote').textContent = 'У части плиток адреса в данных нет — они ' +
+      'показаны без ссылки.';
+  } else {
+    el('cardsNote').textContent = '';
+  }
+})();
+
+/* ---------- полная таблица измерения ---------- */
+(function(){
+  var COLS = [
+    {k:'kind', t:'Формация', l:true,
+     sv:function(r){ return r.kind_ru == null ? null : String(r.kind_ru); },
+     cell:function(r){ return '<td class="l">' + esc(tx(r.kind_ru)) + '</td>'; }},
+    {k:'tf', t:'ТФ', l:true,
+     sv:function(r){ return r.tf == null ? null : String(r.tf); },
+     cell:function(r){ return '<td class="l mono">' + esc(tx(r.tf)) + '</td>'; }},
+    {k:'n', t:'Сделок',
+     sv:function(r){ return fin(r.n) ? r.n : null; },
+     cell:function(r){ return '<td>' + n0(r.n) + '</td>'; }},
+    {k:'win', t:'Прибыльных',
+     sv:function(r){ return fin(r.win_pct) ? r.win_pct : null; },
+     cell:function(r){ return '<td>' + pct(r.win_pct, 1) + '</td>'; }},
+    {k:'rg', t:'R до издержек',
+     sv:function(r){ return fin(r.r_gross) ? r.r_gross : null; },
+     cell:function(r){
+       return '<td class="' + signCls(r.r_gross) + '">' + sgn(r.r_gross, 3) + '</td>';
+     }},
+    {k:'cost', t:'Издержки, R',
+     sv:function(r){ return fin(r.cost_r) ? r.cost_r : null; },
+     cell:function(r){ return '<td>' + fixed(r.cost_r, 3) + '</td>'; }},
+    {k:'rn', t:'R после издержек',
+     sv:function(r){ return fin(r.r_net) ? r.r_net : null; },
+     cell:function(r){
+       return '<td class="' + signCls(r.r_net) + '">' + sgn(r.r_net, 3) + '</td>';
+     }},
+    {k:'sup', t:'Опора', l:true,
+     sv:function(r){ return r.support === true ? 1 : (r.support === false ? 0 : null); },
+     cell:function(r){
+       if(r.support === true) return '<td class="l"><span class="tag yes">опора</span></td>';
+       if(r.support === false) return '<td class="l"><span class="tag no">не опора</span></td>';
+       return '<td class="l"><span class="tag no">—</span></td>';
+     }},
+    {k:'sig', t:'Значимость', l:true,
+     sv:function(r){
+       return r.significant === true ? 1 : (r.significant === false ? 0 : null);
+     },
+     cell:function(r){
+       if(r.significant === true) return '<td class="l"><span class="tag yes">значимо</span></td>';
+       if(r.significant === false) return '<td class="l"><span class="tag no">не значимо</span></td>';
+       if(r.significant == null) return '<td class="l"><span class="tag skip">в счёт не вошла</span></td>';
+       return '<td class="l"><span class="tag no">—</span></td>';
+     }}
+  ];
+
+  var ROWS = MS.table || [];
+  var state = {key:'n', dir:-1};
+
+  function colByKey(k){
+    for(var i = 0; i < COLS.length; i++){ if(COLS[i].k === k) return COLS[i]; }
+    return null;
+  }
+  function rowsSorted(){
+    var rows = ROWS.slice();
+    var col = colByKey(state.key);
+    if(!col) return rows;
+    rows.sort(function(a, b){
+      var av = col.sv(a), bv = col.sv(b);
+      var am = (av == null || (typeof av === 'number' && !isFinite(av)));
+      var bm = (bv == null || (typeof bv === 'number' && !isFinite(bv)));
+      if(am && bm) return 0;
+      if(am) return 1;                 /* отсутствующее — всегда в конец */
+      if(bm) return -1;
+      if(av < bv) return -state.dir;
+      if(av > bv) return state.dir;
+      return 0;
+    });
+    return rows;
+  }
+  function render(){
+    if(!ROWS.length){
+      setHTML('tbody', '<tr><td class="l muted" colspan="' + COLS.length + '">' +
+        'Строк измерения в данных нет.</td></tr>');
+    } else {
+      setHTML('tbody', rowsSorted().map(function(r){
+        var cls = r.support === true ? '' : ' class="nosup"';
+        return '<tr' + cls + '>' +
+          COLS.map(function(c){ return c.cell(r); }).join('') + '</tr>';
+      }).join(''));
+    }
+    var ths = el('thr').querySelectorAll('th');
+    for(var i = 0; i < ths.length; i++){
+      var th = ths[i];
+      th.classList.remove('sorted');
+      th.classList.remove('asc');
+      th.classList.remove('desc');
+      if(th.getAttribute('data-k') === state.key){
+        th.classList.add('sorted');
+        th.classList.add(state.dir > 0 ? 'asc' : 'desc');
+      }
+    }
+  }
+
+  setHTML('thr', COLS.map(function(c){
+    return '<th class="' + (c.l ? 'l ' : '') + '" data-k="' + esc(c.k) + '">' +
+      esc(c.t) + '</th>';
+  }).join(''));
+
+  var ths = el('thr').querySelectorAll('th');
+  for(var i = 0; i < ths.length; i++){
+    (function(th){
+      th.addEventListener('click', function(){
+        var k = th.getAttribute('data-k');
+        if(state.key === k){
+          state.dir = -state.dir;
+        } else {
+          state.key = k;
+          state.dir = -1;
+        }
+        render();
+      });
+    })(ths[i]);
+  }
+  render();
+
+  var p = ['Строк: ' + n0(ROWS.length) + ' из ' + n0(MS.rows_total) + '.'];
+  p.push('Клик по заголовку — сортировка; повторный клик меняет сторону. ' +
+         'Пустое значение («—») и «в счёт не вошла» при сортировке уходят в конец.');
+  p.push('Приглушённая строка — не опора.');
+  el('tblNote').textContent = p.join(' ');
+
+  var q = [];
+  if(MS.measured_on) q.push('измерено ' + tx(MS.measured_on));
+  if(fin(MS.min_trades)) q.push('опора от ' + n0(MS.min_trades) + ' сделок');
+  if(fin(MS.fdr_alpha)) q.push('alpha = ' + fixed(MS.fdr_alpha, 2));
+  if(MS.scope) q.push('монеты: ' + tx(MS.scope));
+  el('tblParams').textContent = q.length ? q.join(' · ') : '';
+})();
+
+/* ---------- оговорки ---------- */
+(function(){
+  if(!CAVEATS.length){
+    setHTML('caveats', '<li>оговорок в данных нет</li>');
+    return;
+  }
+  setHTML('caveats', CAVEATS.map(function(c){
+    return '<li>' + esc(tx(c)) + '</li>';
+  }).join(''));
+})();
+
+/* ---------- пропуски: блок появляется, только если они есть ---------- */
+(function(){
+  if(!GAPS.length) return;   /* пусто — блока нет в разметке вовсе */
+  setHTML('gapsWrap', '<section><h2 class="sec">Чего не хватает</h2>' +
+    '<ol class="gaps">' + GAPS.map(function(g){
+      return '<li>' + esc(tx(g)) + '</li>';
+    }).join('') + '</ol>' +
+    '<p class="note">Это честный признак того, что часть данных не собралась.</p>' +
+    '</section>');
+})();
+
+/* ---------- документы ---------- */
+(function(){
+  if(!DOCS.length){
+    setHTML('docs', '<li class="muted">документов в данных нет</li>');
+    return;
+  }
+  setHTML('docs', DOCS.map(function(d){
+    var href = (d.href == null || d.href === '') ? '' : String(d.href);
+    var title = esc(tx(d.title));
+    if(!href) return '<li>' + title + '</li>';
+    return '<li><a href="' + esc(href) + '">' + title + '</a></li>';
+  }).join(''));
+})();
+
+/* ---------- подвал: окно измерения и на чём это собрано ---------- */
+(function(){
+  var W = M.window || {};
+  var f = [];
+
+  var w = [];
+  if(W.start || W.end){
+    w.push(tx(W.start) + ' … ' + tx(W.end));
+  }
+  if(fin(W.days)){
+    w.push(n0(W.days) + ' ' + plural(W.days, 'сутки', 'суток', 'суток'));
+  }
+  if(fin(W.symbols_n)) w.push('монет ' + n0(W.symbols_n));
+  if(fin(W.tfs_n)) w.push('таймфреймов ' + n0(W.tfs_n));
+  if(w.length) f.push('<b>Окно измерения:</b> ' + esc(w.join(', ')) + '.');
+  if(W.log) f.push('<b>Журнал сбора:</b> ' + esc(tx(W.log)) + '.');
+
+  var live = M.live || {};
+  function srcLine(name, obj, fields){
+    if(!obj || typeof obj !== 'object') return null;
+    var segs = [];
+    fields.forEach(function(fl){
+      var v = obj[fl[0]];
+      if(fin(v)) segs.push(n0(v) + ' ' + fl[1]);
+    });
+    if(obj.collected_at) segs.push('снимок ' + tx(obj.collected_at));
+    if(!segs.length) return null;
+    return name + ' — ' + segs.join(', ');
+  }
+  var src = [];
+  var a = srcLine('структуры', live.structures,
+    [['pairs','пар'], ['tfs_n','таймфрейма'], ['formations','формаций'],
+     ['candles','свечей']]);
+  var b = srcLine('плотности', live.densities,
+    [['coins','монет'], ['densities_total','плотностей'], ['shown','показано'],
+     ['depth','глубина стакана']]);
+  if(a) src.push(a);
+  if(b) src.push(b);
+  if(src.length) f.push('<b>На чём это собрано:</b> ' + esc(src.join('; ')) + '.');
+
+  f.push('Числа вшиты в файл на момент сборки и не пересчитываются: страница ' +
+         'в сеть не ходит и ничего не досчитывает.');
+  setHTML('foot', f.join('<br>'));
+})();
+
+})();
+</script>
+</body>
+</html>
