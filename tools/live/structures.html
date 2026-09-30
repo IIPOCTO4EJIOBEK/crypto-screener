@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Скринер структур</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1b2230; --line:#2a3140;
+  --fg:#e6edf3; --muted:#8f9bab; --accent:#4c9aff;
+  --long:#3fb950; --short:#f85149; --warn:#d29922; --chip:#1f2733;
+  --level:#c792ea; --entry:#4c9aff; --stop:#f85149; --target:#3fb950;
+  --up:#4c9aff; --down:#d29922;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f8fa; --panel:#ffffff; --panel2:#eef1f5; --line:#d6dde5;
+    --fg:#1b2430; --muted:#5b6673; --accent:#0a66c2;
+    --long:#1a7f37; --short:#c62828; --warn:#9a6700; --chip:#eaeef3;
+    --level:#7a3fa8; --entry:#0a66c2; --stop:#c62828; --target:#1a7f37;
+    --up:#0a66c2; --down:#9a6700;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}
+body{
+  background:var(--bg); color:var(--fg);
+  font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  padding:12px 12px 40px;
+}
+h1,h2,h3{margin:0}
+.wrap{max-width:1600px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;
+  justify-content:space-between}
+.h1{font-size:20px;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:12.5px;margin:4px 0 0}
+.sub b{color:var(--fg);font-weight:600}
+section{margin:16px 0 0}
+h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+  font-weight:600;margin:0 0 7px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 11px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{background:var(--chip);border:1px solid var(--line);border-radius:20px;
+  padding:3px 9px;font-size:12px;color:var(--muted);white-space:nowrap}
+.chip b{color:var(--fg);margin-left:4px}
+.chip.long{border-color:color-mix(in srgb,var(--long) 45%,var(--line))}
+.chip.short{border-color:color-mix(in srgb,var(--short) 45%,var(--line))}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.pos{color:var(--long)}
+.neg{color:var(--short)}
+.nowrap{white-space:nowrap}
+details.howto{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:9px 11px}
+details.howto>summary{cursor:pointer;font-size:12px;text-transform:uppercase;
+  letter-spacing:.8px;color:var(--muted);font-weight:600;list-style:none}
+details.howto>summary::-webkit-details-marker{display:none}
+details.howto>summary::before{content:'▸ ';color:var(--accent)}
+details.howto[open]>summary::before{content:'▾ '}
+details.howto h3{font-size:12.5px;margin:12px 0 4px;color:var(--fg)}
+details.howto p{margin:5px 0;font-size:12.5px;color:var(--muted)}
+details.howto p b{color:var(--fg);font-weight:600}
+details.howto ul{margin:5px 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+details.howto li{margin:3px 0}
+details.howto li b{color:var(--fg);font-weight:600}
+.honesty{border-left:3px solid var(--warn);background:var(--panel2);
+  border-radius:8px;padding:8px 10px;margin:6px 0 0}
+.honesty .t{font-weight:650;font-size:12.5px;color:var(--warn);margin-bottom:3px}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600;
+  text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
+  cursor:pointer;user-select:none}
+th:first-child,th:nth-child(2),th:nth-child(5){text-align:left}
+th.sorted{color:var(--accent)}
+th.sorted.asc::after{content:' ▲';font-size:9px}
+th.sorted.desc::after{content:' ▼';font-size:9px}
+td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
+  text-align:right;vertical-align:top}
+td:first-child,td:nth-child(2),td:nth-child(5){text-align:left}
+tr.row{cursor:pointer}
+tr.row:hover td,tr.row:focus td{background:var(--panel2)}
+tr.row:last-child td{border-bottom:none}
+.sym{font-weight:600}
+.tag{display:inline-block;border-radius:5px;padding:0 5px;font-size:10.5px;
+  border:1px solid var(--line);color:var(--muted)}
+.tag.sig-y{color:var(--long);border-color:color-mix(in srgb,var(--long) 50%,var(--line))}
+.tag.sig-n{color:var(--muted)}
+.tag.sig-x{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+.tag.dir-long{color:var(--long);border-color:color-mix(in srgb,var(--long) 50%,var(--line))}
+.tag.dir-short{color:var(--short);border-color:color-mix(in srgb,var(--short) 50%,var(--line))}
+.badge{display:inline-block;border-radius:20px;padding:1px 8px;font-size:11px;
+  border:1px solid var(--line);background:var(--chip);color:var(--muted);
+  vertical-align:middle}
+.badge.b-narrow{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+.badge.b-trend{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+.note{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+.cards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:8px}
+@media (min-width:1400px){.cards{grid-template-columns:1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:10px 11px 12px;scroll-margin-top:10px;min-width:0}
+.card.flash{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card-title{font-size:15px;font-weight:650}
+.card-title .tf{color:var(--muted);font-weight:500;margin-left:5px}
+.card-title .badge{margin-left:6px}
+.to-top{font-size:11px;color:var(--muted);text-decoration:none;white-space:nowrap}
+.to-top:hover{color:var(--accent)}
+.card-price{font-family:var(--mono);font-size:18px;font-weight:650;margin:2px 0 0}
+.card-metrics{font-size:11.5px;color:var(--muted);margin:3px 0 0}
+.card-metrics b{color:var(--fg);font-weight:600;font-family:var(--mono)}
+svg.chart{width:100%;max-width:760px;height:auto;display:block;background:var(--panel2);
+  border:1px solid var(--line);border-radius:8px;margin:6px auto 0}
+/* Подписи графика живут в единицах viewBox (640×268), поэтому при узкой
+   карточке они мельчают вместе с рисунком: на телефоне поднимаем кегль.
+   Правому полю расти некуда — ширина поля 96 единиц, длинная подпись
+   («наклон. вверх · 3 кас.») и при 9.5px занимает около сотни. */
+svg.chart text{font-size:9.5px}
+svg.chart text.sm{font-size:9px}
+svg.chart text.rm{font-size:9.5px}
+@media (max-width:700px){
+  svg.chart text{font-size:11px}
+  svg.chart text.sm{font-size:9.5px}
+  svg.chart text.rm{font-size:10px}
+}
+.src{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+.block{margin:10px 0 0}
+.block>.bt{font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--muted);font-weight:600;margin-bottom:5px}
+.book{margin-top:6px}
+.book-head{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.band{display:grid;grid-template-columns:58px minmax(0,1fr) minmax(0,1fr);
+  gap:8px;align-items:center;font-size:11px;margin:3px 0}
+.band .bk{color:var(--muted);font-family:var(--mono);text-align:right}
+.bc{display:flex;align-items:center;gap:5px;min-width:0}
+.bc.bid{flex-direction:row-reverse}
+.bc.ask{flex-direction:row}
+.bc b{font-family:var(--mono);font-weight:500;color:var(--muted);
+  white-space:nowrap;font-size:11px}
+.bc.bid b{color:color-mix(in srgb,var(--long) 80%,var(--fg))}
+.bc.ask b{color:color-mix(in srgb,var(--short) 80%,var(--fg))}
+.track{flex:1 1 auto;height:9px;background:var(--chip);border-radius:3px;
+  overflow:hidden;display:block;min-width:12px}
+.track>span{display:block;height:100%}
+.track>span.b{background:var(--long)}
+.track>span.a{background:var(--short)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;color:var(--muted);
+  margin-top:6px}
+.legend span{white-space:nowrap}
+.legend i{display:inline-block;width:14px;height:0;border-top:2px solid;
+  margin-right:4px;vertical-align:middle}
+.legend i.solid{border-top-style:solid}
+.legend i.dash{border-top-style:dashed}
+.legend i.dot{border-top-style:dotted}
+.form{border:1px solid var(--line);border-radius:9px;padding:8px 9px;margin:0 0 8px;
+  background:var(--panel2)}
+.form:last-child{margin-bottom:0}
+.form-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px}
+.form-title{font-weight:650;font-size:13px}
+.form-kv{display:flex;flex-wrap:wrap;gap:4px 6px;margin:5px 0}
+.kv{background:var(--chip);border:1px solid var(--line);border-radius:6px;
+  padding:1px 6px;font-size:11px;color:var(--muted);white-space:nowrap}
+.kv b{color:var(--fg);font-family:var(--mono);font-weight:600}
+ul.reasons{margin:4px 0;padding-left:17px;font-size:12px;color:var(--muted)}
+ul.reasons li{margin:2px 0}
+.invalid{font-size:12px;border-left:2px solid var(--short);padding:2px 0 2px 8px;
+  margin:6px 0;color:var(--muted)}
+.invalid b{color:var(--fg)}
+.meas{margin-top:6px;font-size:12px}
+.meas .mv{font-family:var(--mono);font-weight:600}
+.noform{border:1px dashed var(--line);border-radius:9px;padding:8px 9px;
+  font-size:12.5px;color:var(--fg);background:var(--panel2)}
+.noform .exp{color:var(--muted);font-size:12px;margin-top:3px}
+.reasons-pair{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
+.clean{font-size:12.5px;color:var(--muted);background:var(--panel2);
+  border:1px solid var(--line);border-radius:9px;padding:8px 9px}
+ol.gaps{margin:0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+ol.gaps li{margin:2px 0}
+footer{margin:18px 0 0;font-size:11.5px;color:var(--muted);line-height:1.6}
+footer b{color:var(--fg)}
+@media (max-width:700px){
+  body{padding:10px 10px 32px}
+  .h1{font-size:17px}
+  .band{grid-template-columns:50px minmax(0,1fr) minmax(0,1fr);gap:6px}
+  .card-price{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1 class="h1">Скринер структур</h1>
+    <p class="sub" id="hdrSub"></p>
+  </div>
+</header>
+
+<section>
+  <h2 class="sec">Измерение</h2>
+  <div class="panel">
+    <p class="sub" id="statLine" style="margin:0"></p>
+    <p class="sub" id="todayLine" style="margin:5px 0 0"></p>
+  </div>
+</section>
+
+<section>
+  <details class="howto" open>
+    <summary>Как читать</summary>
+    <div id="howtoBody"></div>
+    <h3>Легенда графика</h3>
+    <div class="legend" id="legend"></div>
+  </details>
+</section>
+
+<section>
+  <h2 class="sec">Скринер</h2>
+  <div class="tbl-wrap">
+    <table id="tbl"><thead><tr id="thr"></tr></thead><tbody id="tbody"></tbody></table>
+  </div>
+  <p class="note" id="tblNote"></p>
+</section>
+
+<section>
+  <h2 class="sec">Карточки пар</h2>
+  <div class="cards" id="cards"></div>
+</section>
+
+<section>
+  <h2 class="sec">Пробелы сбора</h2>
+  <div class="panel"><ol class="gaps" id="gaps"></ol></div>
+</section>
+
+<footer id="foot"></footer>
+
+</div>
+
+<script id="payload" type="application/json">__DATA_JSON__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('payload').textContent);
+(function(){
+"use strict";
+var M = DATA.meta || {};
+var PAIRS = DATA.pairs || [];
+var BOOKS = DATA.books || {};
+
+/* ---------- помощники: текст и числа ---------- */
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function fin(v){ return typeof v==='number' && isFinite(v); }
+function n0(v){ return fin(v)?String(v):'—'; }
+/* строковые поля (дата измерения, список монет) — как есть, без числовых правил */
+function tx(v){ return (v==null||v==='')?'—':String(v); }
+function trimZeros(s){ return s.indexOf('.')>=0 ? s.replace(/0+$/,'').replace(/\.$/,'') : s; }
+/* Цена: ≥1000 — 1 знак, ≥1 — 2, ≥0.01 — 4, иначе 6. */
+function px(v){
+  if(!fin(v)) return '—';
+  var a=Math.abs(v), d = a>=1000?1 : a>=1?2 : a>=0.01?4 : 6;
+  return trimZeros(Number(v).toFixed(d));
+}
+function nm(v,d){
+  if(!fin(v)) return '—';
+  return Number(v).toFixed(d==null?2:d);
+}
+function sgn(v,d){
+  if(!fin(v)) return '—';
+  return (v>0?'+':'')+Number(v).toFixed(d==null?2:d);
+}
+/* Целое с пробелом как разделителем тысяч. */
+function group(v){
+  if(!fin(v)) return '—';
+  var neg=v<0, s=String(Math.round(Math.abs(v))), out='';
+  while(s.length>3){ out=' '+s.slice(-3)+out; s=s.slice(0,-3); }
+  return (neg?'-':'')+s+out;
+}
+/* Крупные суммы — сокращённо; точное число показывается рядом. */
+function shortSum(v){
+  if(!fin(v)) return '—';
+  var a=Math.abs(v), sg=v<0?'-':'';
+  if(a>=1e9) return sg+nm(a/1e9,2)+' млрд';
+  if(a>=1e6) return sg+nm(a/1e6,2)+' млн';
+  if(a>=1e3) return sg+nm(a/1e3,1)+' тыс.';
+  return group(v);
+}
+/* Время — московское. Готовые строки (last_msk и т. п.) берутся как есть;
+   здесь только формат метки времени свечи для оси. */
+function timeOf(ms,withDate){
+  if(!fin(ms)) return '—';
+  var opts = withDate
+    ? {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}
+    : {hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'};
+  try{ return new Date(ms).toLocaleString('ru-RU',opts).replace(',',' '); }
+  catch(e){ return '—'; }
+}
+function agoTxt(c){
+  if(!fin(c)) return '—';
+  if(c===0) return 'на последней закрытой свече';
+  if(c===1) return '1 свечу назад';
+  if(c>=2&&c<=4) return c+' свечи назад';
+  return c+' свечей назад';
+}
+function sigTag(sig){
+  if(sig===true)  return {cls:'sig-y', t:'значимо'};
+  if(sig===false) return {cls:'sig-n', t:'не значимо'};
+  return {cls:'sig-x', t:'в счёт не вошла'};
+}
+function regimeCls(label){
+  var s=String(label==null?'':label);
+  if(s.indexOf('сжатие')>=0) return 'b-narrow';
+  if(s.indexOf('тренд')>=0) return 'b-trend';
+  return '';
+}
+function el(id){ return document.getElementById(id); }
+function setText(id,s){ el(id).textContent = s; }
+
+/* ---------- карта «код формации → название» ---------- */
+var KIND_TITLE={};
+PAIRS.forEach(function(p){
+  (p.formations||[]).forEach(function(f){
+    if(f&&f.kind&&!KIND_TITLE[f.kind]) KIND_TITLE[f.kind]=f.title;
+  });
+});
+function kindName(k){ return KIND_TITLE[k]||String(k==null?'—':k); }
+
+/* ---------- шапка ---------- */
+(function(){
+  var parts=[];
+  if(M.market) parts.push(M.market);
+  if(M.exchange) parts.push('биржа '+M.exchange);
+  if(M.collected_at) parts.push('сбор '+M.collected_at);
+  setText('hdrSub', parts.join(' · '));
+  var line1='Измерение снято '+tx(M.measured_on)+' на монетах: '+tx(M.scope)+'.';
+  var line2='В таблице измерений '+n0(M.stats_n)+
+    ', опора (n ≥ '+n0(M.min_trades)+') у '+n0(M.stats_anchors)+
+    ', в плюсе '+n0(M.stats_positive)+
+    ', значимых после поправки на перебор (FDR α = '+n0(M.fdr_alpha)+') '+n0(M.stats_significant)+
+    ', из них с плюсом '+n0(M.stats_significant_positive)+'.';
+  setText('statLine', line1+' '+line2);
+  var hit=(M.positive_hit_now||[]);
+  var line3;
+  if(!hit.length){
+    line3='Сегодня ни одна плюсовая строка измерения не сработала.';
+  } else {
+    var names=hit.map(function(x){
+      return kindName(x&&x[0])+' ('+(x&&x[1]||'—')+')';
+    });
+    line3='Сегодня сработали плюсовые строки измерения: '+names.join(', ')+'.';
+  }
+  setText('todayLine', line3);
+})();
+
+/* ---------- «как читать» ---------- */
+(function(){
+  var h=[];
+  h.push('<h3>Правило режима</h3><p>'+esc(M.regime_rule||'—')+'</p>');
+  h.push('<h3>Окно и пороги</h3>');
+  h.push('<div class="chips">'+
+    '<span class="chip">свечей в окне<b>'+n0(M.candles_in_chart)+'</b></span>'+
+    '<span class="chip">окно RVOL<b>'+n0(M.rvol_window)+'</b></span>'+
+    '<span class="chip">порог всплеска<b>'+nm(M.splash_min,1)+'×</b></span>'+
+    '<span class="chip">сжатие, отношение диапазонов<b>'+nm(M.squeeze_ratio,2)+'</b></span>'+
+    '<span class="chip">сжатие, коэффициент эффективности<b>'+nm(M.squeeze_er,2)+'</b></span>'+
+    '</div>');
+  h.push('<p>RVOL — объём свечи к среднему объёму за предыдущие <b>'+n0(M.rvol_window)+
+    '</b> свечей: 1× — обычный объём, от <b>'+nm(M.splash_min,1)+
+    '×</b> свеча считается всплеском и на графике выделяется.</p>');
+  h.push('<h3>Что означают числа измерения</h3>');
+  h.push('<p><b>Опора (n ≥ '+n0(M.min_trades)+')</b> — сколько раз срабатывание этой формации '+
+    'встретилось в истории: строки с меньшим числом случаев в счёт не берутся, на них '+
+    'нельзя судить о результате.</p>');
+  h.push('<p><b>FDR α = '+n0(M.fdr_alpha)+'</b> — поправка на перебор: формаций и таймфреймов '+
+    'много, и часть плюсовых результатов случайна. «Значимо» означает, что результат '+
+    'пережил эту поправку, а не просто оказался положительным.</p>');
+  h.push('<p><b>R net</b> — результат в единицах риска на сделку: −0.2 значит «минус '+
+    'две десятых риска», +0.7 значит «плюс семь десятых риска». Издержки (комиссии, '+
+    'фандинг, проскальзывание) в этих числах не учтены.</p>');
+  h.push('<h3>Рамка графика</h3>');
+  h.push('<p>Рамка строится по крайним точкам свечей окна. Уровни, наклонки и цели, '+
+    'которые выходят за эту рамку, на графике не рисуются — их цены приведены в тексте '+
+    'карточки. График показывает закрытые свечи окна; текущая цена — отдельная линия.</p>');
+  h.push('<h3>Полосы стакана</h3><p>'+esc(M.bands_note||'—')+'</p>');
+  var cv=(M.caveats||[]);
+  h.push('<h3>Оговорки</h3><div class="honesty"><div class="t">Что здесь не измерено '+
+    'и чего в данных нет</div><ul>'+
+    (cv.length? cv.map(function(c){return '<li>'+esc(c)+'</li>';}).join('')
+             : '<li class="muted">оговорок в данных нет</li>')+
+    '</ul></div>');
+  el('howtoBody').innerHTML=h.join('');
+
+  var LEG=[
+    ['var(--long)','solid','свеча вверх (close ≥ open)'],
+    ['var(--short)','solid','свеча вниз (close &lt; open)'],
+    ['var(--long)','dash','поддержка: цена (касаний)'],
+    ['var(--short)','dash','сопротивление: цена (касаний)'],
+    ['var(--up)','solid','наклонка вверх (касаний)'],
+    ['var(--down)','solid','наклонка вниз (касаний)'],
+    ['var(--warn)','solid','всплеск объёма ≥ '+nm(M.splash_min,1)+'×'],
+    ['var(--fg)','dash','линия текущей цены'],
+    ['var(--entry)','solid','формация: вход (треугольник по направлению)'],
+    ['var(--stop)','solid','формация: стоп'],
+    ['var(--target)','solid','формация: цель']
+  ];
+  el('legend').innerHTML=LEG.map(function(x){
+    return '<span><i class="'+x[1]+'" style="border-color:'+x[0]+'"></i>'+x[2]+'</span>';
+  }).join('');
+})();
+
+/* ---------- скринер-таблица ---------- */
+var COLS=[
+  {k:'symbol', t:'Монета',
+   sv:function(p){return p.symbol;},
+   cell:function(p){
+     return '<td class="sym">'+esc(p.symbol)+'</td>';
+   }},
+  {k:'tf', t:'ТФ',
+   sv:function(p){ var i=(M.tfs||[]).indexOf(p.tf); return i<0?null:i; },
+   cell:function(p){
+     return '<td class="muted">'+esc(p.tf)+'</td>';
+   }},
+  {k:'price', t:'Цена',
+   sv:function(p){return p.price;},
+   cell:function(p){
+     return '<td class="mono">'+px(p.price)+'</td>';
+   }},
+  {k:'change20', t:'20 свечей, %',
+   sv:function(p){return p.change20_pct;},
+   cell:function(p){
+     var v=p.change20_pct, cls=!fin(v)?'':(v>0?'pos':v<0?'neg':'');
+     return '<td class="mono '+cls+'">'+(fin(v)?sgn(v,2)+'%':'—')+'</td>';
+   }},
+  {k:'regime', t:'Режим',
+   sv:function(p){return (p.regime||{}).label;},
+   cell:function(p){
+     var r=p.regime||{};
+     return '<td><span class="badge '+regimeCls(r.label)+'">'+esc(r.label||'—')+'</span></td>';
+   }},
+  {k:'er', t:'ER',
+   sv:function(p){return (p.regime||{}).er;},
+   cell:function(p){
+     return '<td class="mono">'+nm((p.regime||{}).er,3)+'</td>';
+   }},
+  {k:'natr', t:'NATR',
+   sv:function(p){return (p.regime||{}).natr;},
+   cell:function(p){
+     return '<td class="mono">'+nm((p.regime||{}).natr,3)+'</td>';
+   }},
+  {k:'rvol', t:'RVOL',
+   sv:function(p){return p.vol_splash;},
+   cell:function(p){
+     return '<td class="mono">'+(fin(p.vol_splash)?nm(p.vol_splash,2)+'×':'—')+'</td>';
+   }},
+  {k:'corr', t:'Корр. BTC',
+   sv:function(p){return p.corr_btc;},
+   cell:function(p){
+     return '<td class="mono">'+(fin(p.corr_btc)?nm(p.corr_btc,1)+'%':'—')+'</td>';
+   }},
+  {k:'lvl', t:'До уровня, %',
+   sv:function(p){return (p.summary||{}).nearest_level_pct;},
+   cell:function(p){
+     var v=(p.summary||{}).nearest_level_pct;
+     return '<td class="mono">'+(fin(v)?sgn(v,2)+'%':'—')+'</td>';
+   }},
+  {k:'forms', t:'Формаций',
+   sv:function(p){return (p.summary||{}).n_formations;},
+   cell:function(p){
+     var s=p.summary||{};
+     return '<td class="mono">'+n0(s.n_formations)+
+       ' <span class="muted">с измерением '+n0(s.n_measured)+'</span></td>';
+   }},
+  {k:'best', t:'Лучший R net',
+   sv:function(p){ var b=(p.summary||{}).best; return b?b.exp_net:null; },
+   cell:function(p){
+     var b=(p.summary||{}).best;
+     if(!b) return '<td class="muted">—</td>';
+     var cls=!fin(b.exp_net)?'':(b.exp_net>0?'pos':'neg');
+     var tg=sigTag(b.significant);
+     return '<td class="mono nowrap"><span class="'+cls+'">'+sgn(b.exp_net,3)+'</span>'+
+       ' <span class="muted">'+esc(kindName(b.kind))+' · n='+n0(b.n)+'</span>'+
+       ' <span class="tag '+tg.cls+'">'+esc(tg.t)+'</span></td>';
+   }},
+  {k:'data', t:'Данные на',
+   sv:function(p){return p.last_ts;},
+   cell:function(p){
+     return '<td class="muted mono nowrap">'+esc(p.last_msk||'—')+'</td>';
+   }}
+];
+
+(function(){
+  el('thr').innerHTML=COLS.map(function(c){
+    return '<th data-k="'+esc(c.k)+'">'+esc(c.t)+'</th>';
+  }).join('');
+  el('tblNote').textContent='Клик по заголовку — сортировка по столбцу. '+
+    'Клик по строке — переход к карточке пары. Пустое значение («—») при сортировке '+
+    'всегда оказывается в конце, в какую бы сторону столбец ни сортировался.';
+  var sortKey=null, sortDir=1;
+
+  function rowsSorted(){
+    var rows=PAIRS.slice();
+    if(!sortKey) return rows;
+    var col=null, i;
+    for(i=0;i<COLS.length;i++){ if(COLS[i].k===sortKey){ col=COLS[i]; break; } }
+    if(!col) return rows;
+    rows.sort(function(a,b){
+      var av=col.sv(a), bv=col.sv(b);
+      var am=(av==null||(typeof av==='number'&&!isFinite(av))||av==='');
+      var bm=(bv==null||(typeof bv==='number'&&!isFinite(bv))||bv==='');
+      if(am&&bm) return 0;
+      if(am) return 1;
+      if(bm) return -1;
+      if(av<bv) return -sortDir;
+      if(av>bv) return sortDir;
+      return 0;
+    });
+    return rows;
+  }
+
+  function render(){
+    el('tbody').innerHTML=rowsSorted().map(function(p){
+      var id=p.symbol+'_'+p.tf;
+      return '<tr class="row" data-go="'+esc(id)+'" tabindex="0">'+
+        COLS.map(function(c){ return c.cell(p); }).join('')+'</tr>';
+    }).join('');
+    Array.prototype.forEach.call(el('tbody').querySelectorAll('tr.row'),function(tr){
+      function go(){
+        var t=el(tr.getAttribute('data-go'));
+        if(!t) return;
+        t.scrollIntoView({behavior:'smooth',block:'start'});
+        t.classList.add('flash');
+        window.setTimeout(function(){ t.classList.remove('flash'); },1600);
+      }
+      tr.addEventListener('click',go);
+      tr.addEventListener('keydown',function(e){
+        if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); }
+      });
+    });
+    Array.prototype.forEach.call(el('thr').querySelectorAll('th'),function(th){
+      th.classList.remove('sorted','asc','desc');
+      if(th.getAttribute('data-k')===sortKey){
+        th.classList.add('sorted');
+        th.classList.add(sortDir>0?'asc':'desc');
+      }
+    });
+  }
+
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'),function(th){
+    th.addEventListener('click',function(){
+      var k=th.getAttribute('data-k');
+      if(sortKey===k){ sortDir=-sortDir; } else { sortKey=k; sortDir=1; }
+      render();
+    });
+  });
+  render();
+})();
+
+/* ---------- график ---------- */
+function chartSVG(p){
+  var cs=p.candles||[];
+  var n=cs.length;
+  if(!n) return '<p class="note">свечей для этого среза нет — график не построен</p>';
+
+  var W=640, H=268, ML=54, MR=96, MT=8, MB=18, VGAP=10;
+  var innerH=H-MT-MB;
+  var PH=Math.round((innerH-VGAP)*0.75), VH=innerH-VGAP-PH;
+  var pw=W-ML-MR;
+  var lo=Infinity, hi=-Infinity, i;
+  for(i=0;i<n;i++){ if(cs[i][3]<lo)lo=cs[i][3]; if(cs[i][2]>hi)hi=cs[i][2]; }
+  if(fin(p.price)){ if(p.price<lo)lo=p.price; if(p.price>hi)hi=p.price; }
+  if(!isFinite(lo)||!isFinite(hi)) return '<p class="note">в свечах нет цен — график не построен</p>';
+  var pad=(hi-lo)*0.06; if(!(pad>0)) pad=Math.abs(hi)*0.001||1;
+  lo-=pad; hi+=pad;
+
+  function X(idx){ return ML + pw*(idx+0.5)/n; }
+  function Y(v){ return MT + PH*(1-(v-lo)/(hi-lo)); }
+  var key=(p.symbol+'_'+p.tf).replace(/[^A-Za-z0-9_]/g,'');
+  var vy0=MT+PH+VGAP+VH;
+  var bw=Math.max(1.2,(pw/n)*0.62);
+  var out=[];
+  out.push('<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" '+
+    'aria-label="'+esc('график '+p.symbol+' '+p.tf)+'">');
+  out.push('<defs><clipPath id="cl_'+key+'"><rect x="'+ML+'" y="'+MT+
+    '" width="'+pw+'" height="'+PH+'"/></clipPath></defs>');
+
+  /* горизонтали панели */
+  out.push('<line x1="'+ML+'" y1="'+(MT+PH)+'" x2="'+(ML+pw)+'" y2="'+(MT+PH)+
+    '" stroke="var(--line)" stroke-width="1"/>');
+  out.push('<line x1="'+ML+'" y1="'+vy0+'" x2="'+(ML+pw)+'" y2="'+vy0+
+    '" stroke="var(--line)" stroke-width="1"/>');
+
+  /* подписи цены по вертикали: 5 штук */
+  for(i=1;i<=5;i++){
+    var v=lo+(hi-lo)*i/6, yt=Y(v);
+    out.push('<text x="'+(ML-5)+'" y="'+(yt+3.2).toFixed(1)+
+      '" text-anchor="end" fill="var(--muted)" font-size="9.5">'+esc(px(v))+'</text>');
+  }
+
+  /* подписи времени по горизонтали: 5 штук; дата всегда — окно 15m и 1h
+     длиннее суток, и одни часы без даты читались бы как повторы */
+  for(i=0;i<5;i++){
+    var idx=Math.round((n-1)*i/4);
+    var xa=X(idx);
+    var anch = i===0?'start' : (i===4?'end':'middle');
+    out.push('<text x="'+xa.toFixed(1)+'" y="'+(vy0+13)+'" text-anchor="'+anch+
+      '" fill="var(--muted)" font-size="9.5">'+esc(timeOf(cs[idx][0],true))+'</text>');
+  }
+
+  /* панель объёма */
+  var vols=p.volumes||[];
+  var vmax=0;
+  for(i=0;i<n;i++){ if(fin(vols[i])&&vols[i]>vmax) vmax=vols[i]; }
+  out.push('<text x="'+(ML-5)+'" y="'+(vy0-1)+'" text-anchor="end" fill="var(--muted)" '+
+    'class="sm" font-size="9">RVOL</text>');
+  if(vmax>0){
+    var splashSet={};
+    (p.splashes||[]).forEach(function(k){ if(fin(k)) splashSet[k]=1; });
+    var smin=fin(M.splash_min)?M.splash_min:Infinity;
+    for(i=0;i<n;i++){
+      var vv=vols[i];
+      if(!fin(vv)||vv<=0) continue;
+      var h=Math.max(0.8,(vv/vmax)*(VH-2));
+      var isSplash=(vv>=smin)&&splashSet[i]===1;
+      out.push('<rect x="'+(X(i)-bw/2).toFixed(1)+'" y="'+(vy0-h).toFixed(1)+
+        '" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" '+
+        (isSplash? 'fill="var(--warn)"' : 'fill="var(--muted)" fill-opacity="0.45"')+'/>');
+    }
+    out.push('<text x="'+(ML-5)+'" y="'+(MT+PH+VGAP+9)+'" text-anchor="end" '+
+      'fill="var(--muted)" class="sm" font-size="8.5">'+esc(nm(vmax,1)+'×')+'</text>');
+    if(isFinite(smin)&&smin>0&&smin<=vmax){
+      var ys=vy0-(smin/vmax)*(VH-2);
+      out.push('<line x1="'+ML+'" y1="'+ys.toFixed(1)+'" x2="'+(ML+pw)+'" y2="'+ys.toFixed(1)+
+        '" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.7"/>');
+      out.push('<text x="'+(ML+pw+4)+'" y="'+(ys+3).toFixed(1)+'" fill="var(--warn)" '+
+        'class="sm" font-size="8.5">'+esc('всплеск ≥ '+nm(M.splash_min,1)+'×')+'</text>');
+    }
+  } else {
+    out.push('<text x="'+(ML+pw/2)+'" y="'+(vy0-VH/2)+'" text-anchor="middle" '+
+      'fill="var(--muted)" font-size="9.5">RVOL не собран</text>');
+  }
+
+  out.push('<g clip-path="url(#cl_'+key+')">');
+
+  /* уровни */
+  var rmarks=[];
+  (p.levels||[]).forEach(function(l){
+    if(!fin(l.price)||l.price<lo||l.price>hi) return;
+    var col=(l.kind==='support')?'var(--long)':'var(--short)';
+    var y=Y(l.price);
+    out.push('<line x1="'+ML+'" y1="'+y.toFixed(1)+'" x2="'+(ML+pw)+'" y2="'+y.toFixed(1)+
+      '" stroke="'+col+'" stroke-width="1.1" stroke-dasharray="6 4"/>');
+    var lab=px(l.price)+(fin(l.touches)?' ('+l.touches+' кас.)':'');
+    rmarks.push({y:y, text:lab, color:col});
+  });
+
+  /* наклонки */
+  (p.trendlines||[]).forEach(function(t){
+    if(!fin(t.from_value)||!fin(t.to_value)) return;
+    var y1=Y(t.from_value), y2=Y(t.to_value);
+    if((y1<MT&&y2<MT)||(y1>MT+PH&&y2>MT+PH)) return;
+    var col=(t.kind==='up')?'var(--up)':'var(--down)';
+    var i1=Math.max(0,Math.min(n-1,fin(t.from_idx)?t.from_idx:0));
+    var i2=Math.max(0,Math.min(n-1,fin(t.to_idx)?t.to_idx:n-1));
+    out.push('<line x1="'+X(i1).toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+X(i2).toFixed(1)+
+      '" y2="'+y2.toFixed(1)+'" stroke="'+col+'" stroke-width="1.5"/>');
+    var lab2=(t.kind==='up'?'вверх':'вниз')+(fin(t.touches)?' · '+t.touches+' кас.':'');
+    rmarks.push({y:(y1+y2)/2, text:'наклон. '+lab2, color:col});
+  });
+
+  /* линия текущей цены */
+  if(fin(p.price)){
+    var yp=Y(p.price);
+    out.push('<line x1="'+ML+'" y1="'+yp.toFixed(1)+'" x2="'+(ML+pw)+'" y2="'+yp.toFixed(1)+
+      '" stroke="var(--fg)" stroke-width="1.2" stroke-dasharray="2 4" stroke-opacity="0.85"/>');
+    rmarks.push({y:yp, text:px(p.price)+' текущая', color:'var(--fg)'});
+  }
+
+  /* отметки формаций */
+  var flabels=[];
+  (p.formations||[]).forEach(function(f){
+    if(!fin(f.idx)||f.idx<0||f.idx>=n) return;
+    var x=X(f.idx);
+    var short=(f.direction==='short');
+    if(fin(f.entry)){
+      var y=Y(f.entry), s=5.5;
+      if(!short){
+        out.push('<polygon points="'+(x)+','+(y-s)+' '+(x-s)+','+(y+s)+' '+(x+s)+','+(y+s)+
+          '" fill="var(--entry)"/>');
+      } else {
+        out.push('<polygon points="'+(x)+','+(y+s)+' '+(x-s)+','+(y-s)+' '+(x+s)+','+(y-s)+
+          '" fill="var(--entry)"/>');
+      }
+      flabels.push({x:x, y:y, up:!short, text:f.title||f.kind||'формация'});
+    }
+    [[f.entry,'var(--entry)'],[f.stop,'var(--stop)'],[f.target,'var(--target)']]
+    .forEach(function(pair){
+      if(!fin(pair[0])) return;
+      var yy=Y(pair[0]);
+      if(yy<MT-2||yy>MT+PH+2) return;
+      out.push('<line x1="'+(x-13).toFixed(1)+'" y1="'+yy.toFixed(1)+'" x2="'+(x+13).toFixed(1)+
+        '" y2="'+yy.toFixed(1)+'" stroke="'+pair[1]+'" stroke-width="1.8"/>');
+    });
+  });
+  out.push('</g>');
+
+  /* свечи */
+  for(i=0;i<n;i++){
+    var c=cs[i];
+    if(!fin(c[1])||!fin(c[2])||!fin(c[3])||!fin(c[4])) continue;
+    var up=c[4]>=c[1], col=(up?'var(--long)':'var(--short)');
+    var xc=X(i), yh=Y(c[2]), yl=Y(c[3]);
+    out.push('<line x1="'+xc.toFixed(1)+'" y1="'+yh.toFixed(1)+'" x2="'+xc.toFixed(1)+
+      '" y2="'+yl.toFixed(1)+'" stroke="'+col+'" stroke-width="1"/>');
+    var yo=Y(c[1]), ycl=Y(c[4]), top=Math.min(yo,ycl), hh=Math.max(1,Math.abs(ycl-yo));
+    out.push('<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+bw.toFixed(1)+
+      '" height="'+hh.toFixed(1)+'" fill="'+col+'"/>');
+  }
+
+  /* подписи справа: разводятся по вертикали, линия остаётся на своей цене */
+  rmarks.sort(function(a,b){return a.y-b.y;});
+  var GAP=13, k, t0=MT+9, t1=MT+PH-2;
+  for(k=1;k<rmarks.length;k++){
+    if(rmarks[k].y-rmarks[k-1].y<GAP) rmarks[k].y=rmarks[k-1].y+GAP;
+  }
+  if(rmarks.length){
+    var over=rmarks[rmarks.length-1].y-t1;
+    if(over>0){ for(k=0;k<rmarks.length;k++) rmarks[k].y-=over; }
+    var under=t0-rmarks[0].y;
+    if(under>0){ for(k=0;k<rmarks.length;k++) rmarks[k].y+=under; }
+  }
+  /* Якорь справа: длинная подпись иначе уходит за правый край viewBox и
+     обрезается. Кегль задаётся классом .rm, а не атрибутом, иначе правило
+     svg.chart text перебивает его и на телефоне подписи раздуваются. */
+  var rmBoxes=[];
+  rmarks.forEach(function(m){
+    /* ширина по числу символов: кегль этого поля на телефоне 10px,
+       кириллица даёт до 6 единиц на символ (замерено по факту) */
+    var rw=m.text.length*6+6;
+    rmBoxes.push({x:(W-4)-rw/2, y:m.y, w:rw});
+    out.push('<text class="rm" x="'+(W-4)+'" y="'+(m.y+3).toFixed(1)+'" text-anchor="end" '+
+      'fill="'+m.color+'">'+esc(m.text)+'</text>');
+  });
+
+  /* подписи формаций — у самой отметки; места под них разводятся разбором
+     коллизий: две формации на соседних свечах иначе пишутся друг по другу */
+  /* Высота строки и ширина символа — по замеру на телефонном кегле (11px):
+     строка занимает 13.1 единицы, кириллица до 7.1 на символ. Прежние 10 и
+     5.9 пропускали касания: подписи соседних формаций налезали друг на друга. */
+  var LH=15, KPX=7.2;
+  var placed=rmBoxes.map(function(b){ return {x:b.x, y:b.y, w:b.w}; });
+  flabels.forEach(function(l){
+    var w=l.text.length*KPX+6;
+    var tx=Math.max(ML+w/2+2, Math.min(ML+pw-w/2-2, l.x));
+    var step=l.up?-LH:LH;
+    var base=l.up?(l.y-8):(l.y+15);
+    var cands=[], t;
+    for(t=0;t<9;t++){ cands.push(base+step*t); cands.push(base-step*t); }
+    var ty=base, chosen=false, c, q;
+    for(c=0;c<cands.length;c++){
+      var yc=cands[c];
+      if(yc<MT+9||yc>MT+PH-2) continue;
+      var clash=false;
+      for(q=0;q<placed.length;q++){
+        var b=placed[q];
+        if(Math.abs(b.y-yc)<LH && Math.abs(b.x-tx)<(b.w+w)/2){ clash=true; break; }
+      }
+      if(!clash){ ty=yc; chosen=true; break; }
+    }
+    if(!chosen) ty=Math.max(MT+9,Math.min(MT+PH-2,base));
+    placed.push({x:tx,y:ty,w:w});
+    out.push('<text x="'+tx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" '+
+      'fill="var(--entry)" font-size="9">'+esc(l.text)+'</text>');
+  });
+
+  out.push('</svg>');
+  return out.join('');
+}
+
+/* ---------- стакан ---------- */
+function bookBlock(p){
+  var b=BOOKS[p.symbol];
+  if(!b){
+    return '<div class="clean">снимка стакана в базе нет — по этой монете полосы '+
+      'плотности не собраны</div>';
+  }
+  var h=[];
+  var head=[];
+  head.push('<span class="chip">снимок<b>'+esc(b.msk||'—')+'</b></span>');
+  head.push('<span class="chip">середина<b>'+px(b.mid)+'</b></span>');
+  head.push('<span class="chip">спред<b>'+(fin(b.spread_bps)?nm(b.spread_bps,3)+' б.п.':'—')+'</b></span>');
+  head.push('<span class="chip">дисбаланс<b>'+(fin(b.imbalance)?sgn(b.imbalance,3):'—')+'</b></span>');
+  head.push('<span class="chip">уровней bid/ask<b>'+esc(b.levels||'—')+'</b></span>');
+  h.push('<div class="book-head">'+head.join('')+'</div>');
+
+  var bands=b.bands||[];
+  var maxv=0;
+  bands.forEach(function(x){
+    if(fin(x.bid)&&x.bid>maxv) maxv=x.bid;
+    if(fin(x.ask)&&x.ask>maxv) maxv=x.ask;
+  });
+  if(!bands.length){
+    h.push('<div class="clean">полос стакана в снимке нет</div>');
+    return h.join('');
+  }
+  bands.forEach(function(x){
+    var wb = (maxv>0&&fin(x.bid)) ? Math.max(1,Math.round(x.bid/maxv*100)) : 0;
+    var wa = (maxv>0&&fin(x.ask)) ? Math.max(1,Math.round(x.ask/maxv*100)) : 0;
+    h.push('<div class="band">'+
+      '<span class="bk">'+esc(nm(x.bps/100,2)+' %')+'</span>'+
+      '<span class="bc bid"><b>'+esc(shortSum(x.bid))+'</b>'+
+        '<span class="track"><span class="b" style="width:'+wb+'%"></span></span></span>'+
+      '<span class="bc ask">'+
+        '<span class="track"><span class="a" style="width:'+wa+'%"></span></span>'+
+        '<b>'+esc(shortSum(x.ask))+'</b></span>'+
+      '</div>');
+  });
+  var widest=null;
+  bands.forEach(function(x){ if(!widest||x.bps>widest.bps) widest=x; });
+  if(widest){
+    h.push('<p class="note">Точные суммы на самой широкой полосе ('+
+      nm(widest.bps/100,2)+' %): bid '+group(widest.bid)+' USDT · ask '+
+      group(widest.ask)+' USDT. Полосы кумулятивные от середины, поэтому объём '+
+      'широкой полосы включает объём узких.</p>');
+  }
+  return h.join('');
+}
+
+/* ---------- формации ---------- */
+function formationHTML(f){
+  var h=[];
+  var dir=(f.direction==='short')?'short':'long';
+  h.push('<div class="form">');
+  h.push('<div class="form-top">'+
+    '<span class="form-title">'+esc(f.title||f.kind||'формация')+'</span>'+
+    '<span class="tag dir-'+dir+'">'+esc(dir==='short'?'short (вниз)':'long (вверх)')+'</span>'+
+    (f.triggered===true?'<span class="tag sig-y">сработала</span>'
+      : f.triggered===false?'<span class="tag">ждёт входа</span>':'')+
+    (f.style?'<span class="tag">'+esc(f.style)+'</span>':'')+
+    '</div>');
+  var kv=[];
+  kv.push(['вход',px(f.entry)]);
+  kv.push(['стоп',px(f.stop)]);
+  kv.push(['цель',px(f.target)]);
+  kv.push(['R:R',nm(f.rr,2)]);
+  kv.push(['риск',fin(f.risk_pct)?nm(f.risk_pct,2)+'%':'—']);
+  kv.push(['возраст',agoTxt(f.age_candles)]);
+  kv.push(['уверенность',nm(f.confidence,2)]);
+  kv.push(['событие',timeOf(f.ts,true)]);
+  h.push('<div class="form-kv">'+kv.map(function(x){
+    return '<span class="kv">'+esc(x[0])+'<b>'+esc(x[1])+'</b></span>';
+  }).join('')+'</div>');
+  var rs=f.reasons||[];
+  if(rs.length){
+    h.push('<ul class="reasons">'+rs.map(function(r){
+      return '<li>'+esc(r)+'</li>';}).join('')+'</ul>');
+  }
+  if(f.invalid){
+    h.push('<div class="invalid"><b>Формация отменяется, если:</b> '+esc(f.invalid)+'</div>');
+  }
+  var m=f.measured;
+  if(m){
+    var cls=!fin(m.exp_net)?'':(m.exp_net>0?'pos':'neg');
+    var tg=sigTag(m.significant);
+    h.push('<div class="meas">Измерение: n = '+n0(m.n)+', R net '+
+      '<span class="mv '+cls+'">'+sgn(m.exp_net,3)+'</span>'+
+      ' <span class="tag '+tg.cls+'">'+esc(tg.t)+'</span>'+
+      (m.measured_on?' <span class="muted">· снято '+esc(m.measured_on)+'</span>':'')+
+      '</div>');
+  } else {
+    h.push('<div class="meas muted">Измерение: измерения нет — эта формация в таблицу '+
+      'измерений не вошла, судить о её результате не по чему.</div>');
+  }
+  h.push('</div>');
+  return h.join('');
+}
+
+/* ---------- карточка ---------- */
+function cardHTML(p){
+  var id=p.symbol+'_'+p.tf;
+  var r=p.regime||{}, s=p.summary||{};
+  var h=[];
+  h.push('<article class="card" id="'+esc(id)+'">');
+  h.push('<div class="card-top"><div>'+
+    '<div class="card-title">'+esc(p.symbol)+'<span class="tf">'+esc(p.tf)+'</span>'+
+    '<span class="badge '+regimeCls(r.label)+'">'+esc(r.label||'—')+'</span></div>'+
+    '<div class="card-price">'+px(p.price)+'</div>'+
+    '<div class="card-metrics">'+
+      'ER <b>'+nm(r.er,3)+'</b> · NATR <b>'+nm(r.natr,3)+'</b> · RVOL <b>'+
+      (fin(p.vol_splash)?nm(p.vol_splash,2)+'×':'—')+'</b> · 20 свечей <b>'+
+      (fin(p.change20_pct)?sgn(p.change20_pct,2)+'%':'—')+'</b> · корреляция BTC <b>'+
+      (fin(p.corr_btc)?nm(p.corr_btc,1)+'%':'—')+'</b>'+
+    '</div>'+
+    '</div>'+
+    '<a class="to-top" href="#tbl">↑ к таблице</a>'+
+    '</div>');
+  h.push(chartSVG(p));
+  var book=BOOKS[p.symbol];
+  h.push('<p class="src">Свечи до '+esc(p.closed_msk||'—')+' (закрытие '+
+    px(p.price_closed)+'), не закрыта свеча на '+esc(p.last_msk||'—')+
+    '. Стакан: '+(book?('снимок '+esc(book.msk||'—')):'снимка в базе нет')+'.</p>');
+  h.push('<div class="book">'+bookBlock(p)+'</div>');
+  h.push('<div class="block"><div class="bt">Формации</div>');
+  var fs=p.formations||[];
+  if(fs.length){
+    h.push(fs.map(formationHTML).join(''));
+  } else {
+    h.push('<div class="noform">формаций не найдено'+
+      '<div class="exp">Это ответ «здесь ничего не происходит», а не «данных нет»: '+
+      'свечей в окне '+(p.candles||[]).length+', сбор прошёл, но ни одна из формаций '+
+      'детектора на этих свечах не сложилась.</div></div>');
+  }
+  h.push('</div>');
+  var notes=p.notes||[];
+  if(notes.length){
+    h.push('<div class="block"><div class="bt">Заметки по паре</div><ul class="reasons">'+
+      notes.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>');
+  }
+  h.push('</article>');
+  return h.join('');
+}
+
+(function(){
+  el('cards').innerHTML=PAIRS.map(cardHTML).join('');
+})();
+
+/* ---------- пробелы и подвал ---------- */
+(function(){
+  var g=DATA.gaps||[];
+  if(g.length){
+    el('gaps').innerHTML=g.map(function(x){return '<li>'+esc(x)+'</li>';}).join('');
+  } else {
+    el('gaps').innerHTML='<li class="muted">Пробелов сбора не было — все запрошенные '+
+      'срезы собраны.</li>';
+  }
+  var f=[];
+  f.push('<b>Источник.</b> Страница собрана из базы проекта, а не с биржи напрямую: '+
+    'свечи, уровни, наклонки и формации посчитаны кодом проекта и вшиты в файл. '+
+    'Сама страница в сеть не ходит.');
+  f.push('<b>Измерение формаций.</b> Числа R net — из таблицы измерений, снятой '+
+    tx(M.measured_on)+' на монетах: '+tx(M.scope)+'. Порог опоры n ≥ '+n0(M.min_trades)+
+    ', поправка на перебор (FDR α) '+n0(M.fdr_alpha)+
+    '. Издержки не учтены.');
+  f.push('<b>Границы.</b> Ни одна из формаций здесь не является рекомендацией: '+
+    'это описание формы движения и того, что случалось раньше в тех же условиях.');
+  el('foot').innerHTML=f.join('<br>');
+})();
+})();
+</script>
+</body>
+</html>
