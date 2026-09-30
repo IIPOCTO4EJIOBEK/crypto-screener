@@ -74,15 +74,19 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}
 th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600;
   text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
   cursor:pointer;user-select:none}
-th:first-child,th:nth-child(2),th:nth-child(5){text-align:left}
+/* выравнивание по номеру столбца: 1 — монета, 2 — цена, 3 — 20 свечей,
+   4 — режим (бейдж), дальше числа вправо; столбца ТФ в таблице больше нет
+   (он один на всю таблицу), поэтому левыми остаются 1-й и 4-й */
+th:first-child,th:nth-child(4){text-align:left}
 th.sorted{color:var(--accent)}
 th.sorted.asc::after{content:' ▲';font-size:9px}
 th.sorted.desc::after{content:' ▼';font-size:9px}
 td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;
   text-align:right;vertical-align:top}
-td:first-child,td:nth-child(2),td:nth-child(5){text-align:left}
+td:first-child,td:nth-child(4){text-align:left}
 tr.row{cursor:pointer}
 tr.row:hover td,tr.row:focus td{background:var(--panel2)}
+tr.row.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 tr.row:last-child td{border-bottom:none}
 .sym{font-weight:600}
 .tag{display:inline-block;border-radius:5px;padding:0 5px;font-size:10.5px;
@@ -98,8 +102,7 @@ tr.row:last-child td{border-bottom:none}
 .badge.b-narrow{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 .badge.b-trend{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
 .note{font-size:11.5px;color:var(--muted);margin:6px 0 0}
-.cards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:8px}
-@media (min-width:1400px){.cards{grid-template-columns:1fr 1fr}}
+.cards{display:block;margin-top:8px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
   padding:10px 11px 12px;scroll-margin-top:10px;min-width:0}
 .card.flash{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
@@ -107,12 +110,30 @@ tr.row:last-child td{border-bottom:none}
 .card-title{font-size:15px;font-weight:650}
 .card-title .tf{color:var(--muted);font-weight:500;margin-left:5px}
 .card-title .badge{margin-left:6px}
+/* Переключатель таймфрейма: кнопок столько, сколько ТФ в данных. */
+.tfbar{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:6px 0 0}
+.tfbar .lb{font-size:11px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.6px;font-weight:600;margin-right:1px}
+.tfbar button{font:inherit;font-size:12px;font-weight:600;color:var(--muted);
+  background:var(--chip);border:1px solid var(--line);border-radius:20px;
+  padding:2px 11px;cursor:pointer}
+.tfbar button:hover{border-color:var(--accent);color:var(--fg)}
+.tfbar button.on{color:var(--fg);border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 22%,var(--chip))}
+/* Флажки наложения старших таймфреймов — над графиком. */
+.ovbar{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;
+  font-size:11.5px;color:var(--muted);margin:7px 0 0}
+.ovbar .lb{font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+  font-weight:600;color:var(--muted)}
+.ovbar label{display:inline-flex;gap:5px;align-items:center;cursor:pointer;
+  white-space:nowrap;font-family:var(--mono);font-weight:600;color:var(--fg)}
+.ovbar input{margin:0;accent-color:var(--accent)}
 .to-top{font-size:11px;color:var(--muted);text-decoration:none;white-space:nowrap}
 .to-top:hover{color:var(--accent)}
 .card-price{font-family:var(--mono);font-size:18px;font-weight:650;margin:2px 0 0}
 .card-metrics{font-size:11.5px;color:var(--muted);margin:3px 0 0}
 .card-metrics b{color:var(--fg);font-weight:600;font-family:var(--mono)}
-svg.chart{width:100%;max-width:760px;height:auto;display:block;background:var(--panel2);
+svg.chart{width:100%;max-width:1040px;height:auto;display:block;background:var(--panel2);
   border:1px solid var(--line);border-radius:8px;margin:6px auto 0}
 /* Подписи графика живут в единицах viewBox (640×268), поэтому при узкой
    карточке они мельчают вместе с рисунком: на телефоне поднимаем кегль.
@@ -121,6 +142,20 @@ svg.chart{width:100%;max-width:760px;height:auto;display:block;background:var(--
 svg.chart text{font-size:9.5px}
 svg.chart text.sm{font-size:9px}
 svg.chart text.rm{font-size:9.5px}
+/* Разметка старших таймфреймов: пунктир и приглушённый цвет, чтобы не
+   путалась со сплошной разметкой активного ТФ. Цвет задаётся классами, а не
+   атрибутом fill/stroke: так его не перебивают правила svg.chart text. */
+svg.chart line.ovlvl{stroke:var(--level);stroke-width:1;stroke-dasharray:3 3;
+  stroke-opacity:.85}
+svg.chart line.ovform{stroke-width:1;stroke-dasharray:2 3;stroke-opacity:.65}
+svg.chart line.ovform.ov-entry{stroke:var(--entry)}
+svg.chart line.ovform.ov-stop{stroke:var(--stop)}
+svg.chart line.ovform.ov-target{stroke:var(--target)}
+svg.chart text.ovlab{opacity:.8}
+svg.chart text.ovlab-lvl{fill:var(--level)}
+svg.chart text.ovlab-entry{fill:var(--entry)}
+svg.chart text.ovlab-stop{fill:var(--stop)}
+svg.chart text.ovlab-target{fill:var(--target)}
 @media (max-width:700px){
   svg.chart text{font-size:11px}
   svg.chart text.sm{font-size:9.5px}
@@ -196,6 +231,7 @@ footer b{color:var(--fg)}
   <div>
     <h1 class="h1">Скринер структур</h1>
     <p class="sub" id="hdrSub"></p>
+    <p class="sub" id="uniNote"></p>
   </div>
 </header>
 
@@ -217,7 +253,7 @@ footer b{color:var(--fg)}
 </section>
 
 <section>
-  <h2 class="sec">Скринер</h2>
+  <h2 class="sec" id="tblSec">Скринер</h2>
   <div class="tbl-wrap">
     <table id="tbl"><thead><tr id="thr"></tr></thead><tbody id="tbody"></tbody></table>
   </div>
@@ -225,8 +261,8 @@ footer b{color:var(--fg)}
 </section>
 
 <section>
-  <h2 class="sec">Карточки пар</h2>
-  <div class="cards" id="cards"></div>
+  <h2 class="sec">Деталь пары</h2>
+  <div class="cards" id="detail"></div>
 </section>
 
 <section>
@@ -246,6 +282,104 @@ const DATA = JSON.parse(document.getElementById('payload').textContent);
 var M = DATA.meta || {};
 var PAIRS = DATA.pairs || [];
 var BOOKS = DATA.books || {};
+
+/* ---------- индекс пар и порядок таймфреймов ---------- */
+
+/* Пары лежат плоским списком (symbol, tf). Для одного графика нужен быстрый
+   доступ по монете и ТФ, поэтому раскладываем их в BY_SYM: монета → ТФ → пара.
+   SYMBOLS — монеты в порядке первого появления в данных: этот порядок
+   и есть «первая монета списка» при пустом хеше. */
+var BY_SYM={}, SYMBOLS=[];
+PAIRS.forEach(function(p){
+  if(!p||!p.symbol||!p.tf) return;
+  if(!BY_SYM[p.symbol]){ BY_SYM[p.symbol]={}; SYMBOLS.push(p.symbol); }
+  BY_SYM[p.symbol][p.tf]=p;
+});
+
+/* Порядок ТФ задан явно и не зависит от состава выборки: старший ТФ — тот,
+   чей порядок больше. Список общий, в данных сейчас могут быть не все. */
+var TF_ORDER=['1m','5m','15m','1h','4h','1d'];
+function tfRank(tf){
+  var i=TF_ORDER.indexOf(tf);
+  return i<0?TF_ORDER.length:i;
+}
+/* Кнопки переключателя строятся по самим данным, а не по хардкоду. */
+var TFS=[];
+PAIRS.forEach(function(p){ if(p.tf&&TFS.indexOf(p.tf)<0) TFS.push(p.tf); });
+TFS.sort(function(a,b){
+  var d=tfRank(a)-tfRank(b);
+  return d!==0?d:String(a).localeCompare(String(b));
+});
+
+function symbolsForTf(tf){
+  return SYMBOLS.filter(function(s){ return BY_SYM[s][tf]; });
+}
+function firstSymForTf(tf){
+  var list=symbolsForTf(tf);
+  return list.length?list[0]:null;
+}
+/* Старшие ТФ этой монеты, что есть в данных, — по возрастанию порядка. */
+function seniorTFs(sym){
+  var m=BY_SYM[sym]||{}, out=[];
+  TFS.forEach(function(tf){ if(m[tf]&&tfRank(tf)>tfRank(state.tf)) out.push(tf); });
+  return out;
+}
+
+/* ---------- состояние страницы ---------- */
+/* tf и sym живут в адресе (#tf=…&sym=…), сортировка и снятые флажки — только
+   в памяти. Смена ТФ не трогает сортировку и монету, смена сортировки — ТФ. */
+var state={tf:null, sym:null, sortKey:null, sortDir:1, overlayOff:{}};
+
+function readHash(){
+  var out={}, h=String(location.hash||'').replace(/^#/,'');
+  if(!h) return out;
+  h.split('&').forEach(function(kv){
+    if(!kv) return;
+    var i=kv.indexOf('=');
+    if(i<0) return;
+    try{
+      out[decodeURIComponent(kv.slice(0,i))]=decodeURIComponent(kv.slice(i+1));
+    }catch(e){ /* битый процент в хеше — ключ просто не читается */ }
+  });
+  return out;
+}
+/* Хеш пуст или битый — первый ТФ по порядку и первая монета, у которой этот
+   ТФ есть. Битым считается и ТФ, которого нет в данных, и монета без этого ТФ. */
+function applyHash(){
+  var h=readHash();
+  state.tf = (h.tf && TFS.indexOf(h.tf)>=0) ? h.tf : TFS[0];
+  state.sym = (h.sym && BY_SYM[h.sym] && BY_SYM[h.sym][state.tf])
+    ? h.sym : firstSymForTf(state.tf);
+}
+var suppressHash=false;
+function writeHash(){
+  if(!state.tf||!state.sym) return;
+  var h='#tf='+encodeURIComponent(state.tf)+'&sym='+encodeURIComponent(state.sym);
+  if(location.hash===h) return;
+  try{
+    history.replaceState(null,'',h);
+  }catch(e){
+    /* file:// и старые движки могут запретить replaceState — тогда тем же
+       адресом, но без перезагрузки: hashchange ниже погасим сами */
+    suppressHash=true;
+    location.hash=h;
+  }
+}
+function setTf(tf){
+  if(TFS.indexOf(tf)<0) return;
+  state.tf=tf;
+  if(!(BY_SYM[state.sym]&&BY_SYM[state.sym][tf])) state.sym=firstSymForTf(tf);
+  renderDetail();
+  renderTable();
+  writeHash();
+}
+function setSym(sym){
+  if(!BY_SYM[sym]||!BY_SYM[sym][state.tf]) return;
+  state.sym=sym;
+  renderDetail();
+  renderTable();
+  writeHash();
+}
 
 /* ---------- помощники: текст и числа ---------- */
 function esc(s){
@@ -335,6 +469,9 @@ function kindName(k){ return KIND_TITLE[k]||String(k==null?'—':k); }
   if(M.exchange) parts.push('биржа '+M.exchange);
   if(M.collected_at) parts.push('сбор '+M.collected_at);
   setText('hdrSub', parts.join(' · '));
+  /* Состав монет — не наша выдумка, а срез: показываем его происхождение. */
+  setText('uniNote', M.universe_note ? 'Состав монет: '+M.universe_note : '');
+  el('uniNote').style.display = M.universe_note ? '' : 'none';
   var line1='Измерение снято '+tx(M.measured_on)+' на монетах: '+tx(M.scope)+'.';
   var line2='В таблице измерений '+n0(M.stats_n)+
     ', опора (n ≥ '+n0(M.min_trades)+') у '+n0(M.stats_anchors)+
@@ -381,9 +518,20 @@ function kindName(k){ return KIND_TITLE[k]||String(k==null?'—':k); }
     'две десятых риска», +0.7 значит «плюс семь десятых риска». Издержки (комиссии, '+
     'фандинг, проскальзывание) в этих числах не учтены.</p>');
   h.push('<h3>Рамка графика</h3>');
-  h.push('<p>Рамка строится по крайним точкам свечей окна. Уровни, наклонки и цели, '+
-    'которые выходят за эту рамку, на графике не рисуются — их цены приведены в тексте '+
-    'карточки. График показывает закрытые свечи окна; текущая цена — отдельная линия.</p>');
+  h.push('<p>Рамка строится по крайним точкам свечей окна и по ценам наложенной '+
+    'разметки старших таймфреймов. Уровни и наклонки активного таймфрейма, которые '+
+    'выходят за эту рамку, на графике не рисуются — их цены приведены в тексте '+
+    'детали. График показывает закрытые свечи окна; текущая цена — отдельная линия.</p>');
+  h.push('<h3>Разметка старших таймфреймов</h3>');
+  h.push('<p>Формация и точка входа ищутся на старшем таймфрейме, а входа дожидаются '+
+    'на младшем: на нижний ТФ переходят, когда торгуют, найденную точку входа '+
+    'дожидаются на маленьком, опираясь на большой. Поэтому на графике активного ТФ '+
+    'пунктиром и приглушённо показана разметка <b>всех старших ТФ этой же монеты</b> — '+
+    'их уровни подписаны <b>ТФ · цена</b> (например, <b>1h · 123.45</b>), а вход, стоп '+
+    'и цель формации — <b>ТФ вход</b>, <b>ТФ стоп</b>, <b>ТФ цель</b>. Флажками над '+
+    'графиком наложение снимается по одному ТФ. Спуск на младший ТФ разметку старших '+
+    'не убирает — в этом и смысл. Если разметки набирается много, поле графика '+
+    'вытягивается вниз: подписи правого поля не должны уезжать за край.</p>');
   h.push('<h3>Полосы стакана</h3><p>'+esc(M.bands_note||'—')+'</p>');
   var cv=(M.caveats||[]);
   h.push('<h3>Оговорки</h3><div class="honesty"><div class="t">Что здесь не измерено '+
@@ -404,7 +552,9 @@ function kindName(k){ return KIND_TITLE[k]||String(k==null?'—':k); }
     ['var(--fg)','dash','линия текущей цены'],
     ['var(--entry)','solid','формация: вход (треугольник по направлению)'],
     ['var(--stop)','solid','формация: стоп'],
-    ['var(--target)','solid','формация: цель']
+    ['var(--target)','solid','формация: цель'],
+    ['var(--level)','dash','старший ТФ: уровень (подпись «ТФ · цена»)'],
+    ['var(--entry)','dot','старший ТФ: вход / стоп / цель формации']
   ];
   el('legend').innerHTML=LEG.map(function(x){
     return '<span><i class="'+x[1]+'" style="border-color:'+x[0]+'"></i>'+x[2]+'</span>';
@@ -412,16 +562,13 @@ function kindName(k){ return KIND_TITLE[k]||String(k==null?'—':k); }
 })();
 
 /* ---------- скринер-таблица ---------- */
+/* Столбцы работают с парой активного ТФ: строка таблицы — монета, а не пара
+   монета×ТФ, поэтому столбца «ТФ» здесь нет — он один на всю таблицу. */
 var COLS=[
   {k:'symbol', t:'Монета',
    sv:function(p){return p.symbol;},
    cell:function(p){
      return '<td class="sym">'+esc(p.symbol)+'</td>';
-   }},
-  {k:'tf', t:'ТФ',
-   sv:function(p){ var i=(M.tfs||[]).indexOf(p.tf); return i<0?null:i; },
-   cell:function(p){
-     return '<td class="muted">'+esc(p.tf)+'</td>';
    }},
   {k:'price', t:'Цена',
    sv:function(p){return p.price;},
@@ -491,86 +638,116 @@ var COLS=[
    }}
 ];
 
+function renderTable(){
+  var tf=state.tf;
+  var rows=symbolsForTf(tf).map(function(s){ return BY_SYM[s][tf]; });
+  setText('tblSec', 'Скринер · '+tf);
+  if(state.sortKey){
+    var col=null, i;
+    for(i=0;i<COLS.length;i++){ if(COLS[i].k===state.sortKey){ col=COLS[i]; break; } }
+    if(col){
+      var dir=state.sortDir;
+      rows.sort(function(a,b){
+        var av=col.sv(a), bv=col.sv(b);
+        var am=(av==null||(typeof av==='number'&&!isFinite(av))||av==='');
+        var bm=(bv==null||(typeof bv==='number'&&!isFinite(bv))||bv==='');
+        if(am&&bm) return 0;
+        if(am) return 1;
+        if(bm) return -1;
+        if(av<bv) return -dir;
+        if(av>bv) return dir;
+        return 0;
+      });
+    }
+  }
+  el('tbody').innerHTML=rows.map(function(p){
+    var sel=(p.symbol===state.sym)?' sel':'';
+    return '<tr class="row'+sel+'" data-sym="'+esc(p.symbol)+'" tabindex="0">'+
+      COLS.map(function(c){ return c.cell(p); }).join('')+'</tr>';
+  }).join('');
+  Array.prototype.forEach.call(el('tbody').querySelectorAll('tr.row'),function(tr){
+    function go(){
+      setSym(tr.getAttribute('data-sym'));
+      /* выбор монеты — действие, после которого деталь должна быть видна */
+      var d=el('detail');
+      if(!d) return;
+      d.scrollIntoView({behavior:'smooth',block:'start'});
+      d.classList.add('flash');
+      window.setTimeout(function(){ d.classList.remove('flash'); },1600);
+    }
+    tr.addEventListener('click',go);
+    tr.addEventListener('keydown',function(e){
+      if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); }
+    });
+  });
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'),function(th){
+    th.classList.remove('sorted','asc','desc');
+    if(th.getAttribute('data-k')===state.sortKey){
+      th.classList.add('sorted');
+      th.classList.add(state.sortDir>0?'asc':'desc');
+    }
+  });
+}
+
 (function(){
   el('thr').innerHTML=COLS.map(function(c){
     return '<th data-k="'+esc(c.k)+'">'+esc(c.t)+'</th>';
   }).join('');
-  el('tblNote').textContent='Клик по заголовку — сортировка по столбцу. '+
-    'Клик по строке — переход к карточке пары. Пустое значение («—») при сортировке '+
-    'всегда оказывается в конце, в какую бы сторону столбец ни сортировался.';
-  var sortKey=null, sortDir=1;
-
-  function rowsSorted(){
-    var rows=PAIRS.slice();
-    if(!sortKey) return rows;
-    var col=null, i;
-    for(i=0;i<COLS.length;i++){ if(COLS[i].k===sortKey){ col=COLS[i]; break; } }
-    if(!col) return rows;
-    rows.sort(function(a,b){
-      var av=col.sv(a), bv=col.sv(b);
-      var am=(av==null||(typeof av==='number'&&!isFinite(av))||av==='');
-      var bm=(bv==null||(typeof bv==='number'&&!isFinite(bv))||bv==='');
-      if(am&&bm) return 0;
-      if(am) return 1;
-      if(bm) return -1;
-      if(av<bv) return -sortDir;
-      if(av>bv) return sortDir;
-      return 0;
-    });
-    return rows;
-  }
-
-  function render(){
-    el('tbody').innerHTML=rowsSorted().map(function(p){
-      var id=p.symbol+'_'+p.tf;
-      return '<tr class="row" data-go="'+esc(id)+'" tabindex="0">'+
-        COLS.map(function(c){ return c.cell(p); }).join('')+'</tr>';
-    }).join('');
-    Array.prototype.forEach.call(el('tbody').querySelectorAll('tr.row'),function(tr){
-      function go(){
-        var t=el(tr.getAttribute('data-go'));
-        if(!t) return;
-        t.scrollIntoView({behavior:'smooth',block:'start'});
-        t.classList.add('flash');
-        window.setTimeout(function(){ t.classList.remove('flash'); },1600);
-      }
-      tr.addEventListener('click',go);
-      tr.addEventListener('keydown',function(e){
-        if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); }
-      });
-    });
-    Array.prototype.forEach.call(el('thr').querySelectorAll('th'),function(th){
-      th.classList.remove('sorted','asc','desc');
-      if(th.getAttribute('data-k')===sortKey){
-        th.classList.add('sorted');
-        th.classList.add(sortDir>0?'asc':'desc');
-      }
-    });
-  }
-
+  setText('tblNote', 'Одна строка — одна монета: данные строки берутся из '+
+    'пары с активным таймфреймом. Клик по заголовку — сортировка по столбцу, клик '+
+    'по строке — выбор монеты в детали. Пустое значение («—») при сортировке всегда '+
+    'оказывается в конце, в какую бы сторону столбец ни сортировался.');
   Array.prototype.forEach.call(el('thr').querySelectorAll('th'),function(th){
     th.addEventListener('click',function(){
       var k=th.getAttribute('data-k');
-      if(sortKey===k){ sortDir=-sortDir; } else { sortKey=k; sortDir=1; }
-      render();
+      if(state.sortKey===k){ state.sortDir=-state.sortDir; }
+      else { state.sortKey=k; state.sortDir=1; }
+      renderTable();
     });
   });
-  render();
 })();
 
 /* ---------- график ---------- */
-function chartSVG(p){
+/* Один график на всю страницу: активная монета и активный ТФ. overlays —
+   разметка старших ТФ этой же монеты, уже отобранная по флажкам. */
+function chartSVG(p, overlays){
+  overlays = overlays || [];
   var cs=p.candles||[];
   var n=cs.length;
   if(!n) return '<p class="note">свечей для этого среза нет — график не построен</p>';
 
-  var W=640, H=268, ML=54, MR=96, MT=8, MB=18, VGAP=10;
-  var innerH=H-MT-MB;
-  var PH=Math.round((innerH-VGAP)*0.75), VH=innerH-VGAP-PH;
+  var W=640, ML=54, MR=96, MT=8, MB=18, VGAP=10, GAPLBL=13;
+  /* Высоту поля графика задаёт не только пропорция: подписи правого поля
+     разводятся по вертикали шагом GAPLBL, и с наложением старших ТФ их
+     становится втрое больше, чем влезает в прежние 174 единицы, — подписи
+     уезжали за нижний край SVG. Число подписей оцениваем сверху по данным,
+     без координат (уровни + три линии на каждую формацию наложения + уровни и
+     наклонки активного ТФ + линия цены), и при нехватке места вытягиваем поле
+     вниз. Без наложения оценка меньше прежней высоты, и геометрия не меняется. */
+  var PHbase=Math.round(((268-MT-MB)-VGAP)*0.75);
+  var VHbase=(268-MT-MB)-VGAP-PHbase;
+  var budget=(p.levels||[]).length+(p.trendlines||[]).length+1;
+  overlays.forEach(function(o){
+    var op=o.p||{};
+    budget += (op.levels||[]).length + (op.formations||[]).length*3;
+  });
+  var PH=Math.max(PHbase, Math.round((budget-1)*GAPLBL+2*9));
+  var VH=VHbase, H=MT+PH+VGAP+VH+MB;
   var pw=W-ML-MR;
   var lo=Infinity, hi=-Infinity, i;
   for(i=0;i<n;i++){ if(cs[i][3]<lo)lo=cs[i][3]; if(cs[i][2]>hi)hi=cs[i][2]; }
   if(fin(p.price)){ if(p.price<lo)lo=p.price; if(p.price>hi)hi=p.price; }
+  /* Рамка — по свечам И по ценам наложенной разметки старших ТФ. Иначе линия
+     старшего ТФ, стоящая выше диапазона младшего, ушла бы за край, и
+     «дожидаться входа» было бы не по чему. */
+  function fit(v){ if(fin(v)){ if(v<lo)lo=v; if(v>hi)hi=v; } }
+  overlays.forEach(function(o){
+    var op=o.p||{};
+    (op.levels||[]).forEach(function(l){ fit(l.price); });
+    (op.formations||[]).forEach(function(f){
+      fit(f.entry); fit(f.stop); fit(f.target);
+    });
+  });
   if(!isFinite(lo)||!isFinite(hi)) return '<p class="note">в свечах нет цен — график не построен</p>';
   var pad=(hi-lo)*0.06; if(!(pad>0)) pad=Math.abs(hi)*0.001||1;
   lo-=pad; hi+=pad;
@@ -644,8 +821,35 @@ function chartSVG(p){
 
   out.push('<g clip-path="url(#cl_'+key+')">');
 
-  /* уровни */
+  /* подписи правого поля собираются по ходу рисования и разводятся ниже */
   var rmarks=[];
+
+  /* разметка старших ТФ — пунктиром и приглушённо, под разметкой активного:
+     уровни подписаны «ТФ · цена», вход/стоп/цель формации — «ТФ вход» и т. д.
+     Цены наложения уже вошли в рамку выше, поэтому здесь они все в диапазоне. */
+  overlays.forEach(function(o){
+    var op=o.p||{}, tag=o.tf;
+    (op.levels||[]).forEach(function(l){
+      if(!fin(l.price)) return;
+      var y=Y(l.price);
+      out.push('<line class="ovlvl" x1="'+ML+'" y1="'+y.toFixed(1)+'" x2="'+(ML+pw)+
+        '" y2="'+y.toFixed(1)+'"/>');
+      rmarks.push({y:y, text:tag+' · '+px(l.price), cls:'ovlab ovlab-lvl'});
+    });
+    (op.formations||[]).forEach(function(f){
+      [['вход',f.entry,'ov-entry','ovlab-entry'],
+       ['стоп',f.stop,'ov-stop','ovlab-stop'],
+       ['цель',f.target,'ov-target','ovlab-target']].forEach(function(x){
+        if(!fin(x[1])) return;
+        var y=Y(x[1]);
+        out.push('<line class="ovform '+x[2]+'" x1="'+ML+'" y1="'+y.toFixed(1)+
+          '" x2="'+(ML+pw)+'" y2="'+y.toFixed(1)+'"/>');
+        rmarks.push({y:y, text:tag+' '+x[0], cls:'ovlab '+x[3]});
+      });
+    });
+  });
+
+  /* уровни активного ТФ */
   (p.levels||[]).forEach(function(l){
     if(!fin(l.price)||l.price<lo||l.price>hi) return;
     var col=(l.kind==='support')?'var(--long)':'var(--short)';
@@ -721,7 +925,7 @@ function chartSVG(p){
 
   /* подписи справа: разводятся по вертикали, линия остаётся на своей цене */
   rmarks.sort(function(a,b){return a.y-b.y;});
-  var GAP=13, k, t0=MT+9, t1=MT+PH-2;
+  var GAP=GAPLBL, k, t0=MT+9, t1=MT+PH-2;
   for(k=1;k<rmarks.length;k++){
     if(rmarks[k].y-rmarks[k-1].y<GAP) rmarks[k].y=rmarks[k-1].y+GAP;
   }
@@ -730,6 +934,17 @@ function chartSVG(p){
     if(over>0){ for(k=0;k<rmarks.length;k++) rmarks[k].y-=over; }
     var under=t0-rmarks[0].y;
     if(under>0){ for(k=0;k<rmarks.length;k++) rmarks[k].y+=under; }
+    /* Подписей может быть столько, что и разведённые шагом GAP они не влезают
+       в поле: их исходные y разнесены по цене шире, чем высота поля (бывает с
+       наложением старших ТФ). Тогда раскладываем ровно по полю — порядок по
+       цене сохраняется, а отступление подписи от своей линии здесь меньшая
+       беда, чем подпись, уехавшая за нижний край SVG. */
+    var avail=t1-t0, span=rmarks[rmarks.length-1].y-rmarks[0].y;
+    if(rmarks.length>1 && span>avail){
+      for(k=0;k<rmarks.length;k++){
+        rmarks[k].y=t0+avail*k/(rmarks.length-1);
+      }
+    }
   }
   /* Якорь справа: длинная подпись иначе уходит за правый край viewBox и
      обрезается. Кегль задаётся классом .rm, а не атрибутом, иначе правило
@@ -740,8 +955,13 @@ function chartSVG(p){
        кириллица даёт до 6 единиц на символ (замерено по факту) */
     var rw=m.text.length*6+6;
     rmBoxes.push({x:(W-4)-rw/2, y:m.y, w:rw});
-    out.push('<text class="rm" x="'+(W-4)+'" y="'+(m.y+3).toFixed(1)+'" text-anchor="end" '+
-      'fill="'+m.color+'">'+esc(m.text)+'</text>');
+    /* Класс — у подписей наложения (там цвет из таблицы стилей), атрибут
+       fill — у разметки активного ТФ. Вместе они не задаются: класс всегда
+       перебил бы атрибут. */
+    var cls='rm'+(m.cls?' '+m.cls:'');
+    var paint=m.cls ? '' : ' fill="'+m.color+'"';
+    out.push('<text class="'+cls+'" x="'+(W-4)+'" y="'+(m.y+3).toFixed(1)+
+      '" text-anchor="end"'+paint+'>'+esc(m.text)+'</text>');
   });
 
   /* подписи формаций — у самой отметки; места под них разводятся разбором
@@ -877,15 +1097,26 @@ function formationHTML(f){
   return h.join('');
 }
 
-/* ---------- карточка ---------- */
-function cardHTML(p){
-  var id=p.symbol+'_'+p.tf;
+/* ---------- деталь пары ---------- */
+/* Одна пара: активная монета и активный ТФ. Отсюда и «ровно один график»:
+   страница рисует единственный <svg>, а не по одному на каждую пару.
+   seniors — старшие ТФ этой монеты, что есть в данных; overlays — те из них,
+   чей флажок не снят. */
+function cardHTML(p, seniors, overlays){
   var r=p.regime||{}, s=p.summary||{};
   var h=[];
-  h.push('<article class="card" id="'+esc(id)+'">');
+  h.push('<article class="card" id="detail">');
   h.push('<div class="card-top"><div>'+
-    '<div class="card-title">'+esc(p.symbol)+'<span class="tf">'+esc(p.tf)+'</span>'+
+    '<div class="card-title">'+esc(p.symbol)+
     '<span class="badge '+regimeCls(r.label)+'">'+esc(r.label||'—')+'</span></div>'+
+    '<div class="tfbar"><span class="lb">таймфрейм</span>'+
+      TFS.map(function(tf){
+        var on=(tf===state.tf);
+        return '<button type="button" data-tf="'+esc(tf)+'"'+
+          (on?' class="on" aria-pressed="true"':' aria-pressed="false"')+
+          '>'+esc(tf)+'</button>';
+      }).join('')+
+    '</div>'+
     '<div class="card-price">'+px(p.price)+'</div>'+
     '<div class="card-metrics">'+
       'ER <b>'+nm(r.er,3)+'</b> · NATR <b>'+nm(r.natr,3)+'</b> · RVOL <b>'+
@@ -896,7 +1127,18 @@ function cardHTML(p){
     '</div>'+
     '<a class="to-top" href="#tbl">↑ к таблице</a>'+
     '</div>');
-  h.push(chartSVG(p));
+  /* Флажки наложения — по одному на каждый присутствующий старший ТФ. */
+  h.push('<div class="ovbar"><span class="lb">старшие ТФ</span>');
+  if(seniors.length){
+    h.push(seniors.map(function(tf){
+      return '<label><input type="checkbox" data-ov="'+esc(tf)+'"'+
+        (state.overlayOff[tf]?'':' checked')+'>'+esc(tf)+'</label>';
+    }).join(''));
+  } else {
+    h.push('<span>в данных нет — этот таймфрейм старший</span>');
+  }
+  h.push('</div>');
+  h.push(chartSVG(p, overlays));
   var book=BOOKS[p.symbol];
   h.push('<p class="src">Свечи до '+esc(p.closed_msk||'—')+' (закрытие '+
     px(p.price_closed)+'), не закрыта свеча на '+esc(p.last_msk||'—')+
@@ -922,8 +1164,50 @@ function cardHTML(p){
   return h.join('');
 }
 
+/* ---------- сборка детали и первый рендер ---------- */
+function renderDetail(){
+  var sym=state.sym, m=BY_SYM[sym]||{}, p=m[state.tf];
+  var host=el('detail');
+  if(!p){
+    host.innerHTML='<div class="clean">У этой монеты нет среза с активным '+
+      'таймфреймом — выберите монету из таблицы.</div>';
+    return;
+  }
+  var seniors=seniorTFs(sym);
+  var overlays=seniors.filter(function(tf){ return !state.overlayOff[tf]; })
+    .map(function(tf){ return {tf:tf, p:m[tf]}; });
+  host.innerHTML=cardHTML(p, seniors, overlays);
+  /* Слушатели вешаются после вставки разметки: кнопки и флажки пересоздаются
+     на каждый рендер, поэтому обработчики на них не сохраняются. */
+  Array.prototype.forEach.call(host.querySelectorAll('.tfbar button'),function(b){
+    b.addEventListener('click',function(){ setTf(b.getAttribute('data-tf')); });
+  });
+  Array.prototype.forEach.call(
+    host.querySelectorAll('.ovbar input[data-ov]'),function(cb){
+      cb.addEventListener('change',function(){
+        var tf=cb.getAttribute('data-ov');
+        if(cb.checked){ delete state.overlayOff[tf]; }
+        else { state.overlayOff[tf]=1; }
+        renderDetail();
+      });
+    });
+}
+
 (function(){
-  el('cards').innerHTML=PAIRS.map(cardHTML).join('');
+  applyHash();
+  renderDetail();
+  renderTable();
+  writeHash();
+  /* Правка хеша руками или кнопкой «назад» — тоже смена состояния, но без
+     перезагрузки. Свой replaceState события hashchange не поднимает. */
+  window.addEventListener('hashchange',function(){
+    if(suppressHash){ suppressHash=false; return; }
+    var before=state.tf+'|'+state.sym;
+    applyHash();
+    if(state.tf+'|'+state.sym===before) return;
+    renderDetail();
+    renderTable();
+  });
 })();
 
 /* ---------- пробелы и подвал ---------- */

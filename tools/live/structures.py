@@ -60,6 +60,7 @@ from src.analysis.metrics import (correlation, efficiency_ratio, natr,
 from src.backtest import significance
 from src.backtest.expectancy import MIN_TRADES
 from src.storage import db
+from tools.live import universe
 from tools.live.screen import MSK, _candles, _market_label
 
 TFS = ("5m", "15m", "1h")
@@ -357,12 +358,14 @@ def collect_books(conn, symbols: list[str], exchange: str) -> tuple[dict, list[s
 
 
 def build(db_path: str | None, tfs: tuple[str, ...], exchange: str,
-          window: int) -> dict:
+          window: int, symbols: list[str] | None = None,
+          universe_note: str = "") -> dict:
     conn = db.connect(db_path)
     try:
         stats = db.load_formation_stats(conn)
         verdict, flags = _stats_join(stats)
-        symbols = db.symbols_present(conn, exchange)
+        if symbols is None:
+            symbols = db.symbols_present(conn, exchange)
         gaps: list[str] = []
         pairs: list[dict] = []
         btc_by_tf: dict[str, list] = {}
@@ -391,6 +394,7 @@ def build(db_path: str | None, tfs: tuple[str, ...], exchange: str,
             "collected_at": now_msk(),
             "market": _market_label(exchange),
             "exchange": exchange,
+            "universe_note": universe_note,
             "tfs": list(tfs),
             "candles_in_chart": CHART,
             "measured_on": measured_on,
@@ -459,7 +463,10 @@ def num(value, width: int, digits: int, sign: bool = False) -> str:
 def render_text(data: dict) -> str:
     meta, pairs = data["meta"], data["pairs"]
     out = [f"рынок: {meta['market']}",
-           f"собрано: {meta['collected_at']}",
+           f"собрано: {meta['collected_at']}"]
+    if meta.get("universe_note"):
+        out.append(meta["universe_note"])
+    out += [
            f"пар: {len(pairs)}, измерение формаций: {meta['stats_n']} строк "
            f"(опора n ≥ {meta['min_trades']} у {meta['stats_anchors']}, "
            f"в плюсе {meta['stats_positive']}, значимых после FDR "
@@ -505,6 +512,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default=None, help="путь к базе (по умолчанию из db)")
     ap.add_argument("--tfs", default=",".join(TFS))
     ap.add_argument("--exchange", default="binance_futures")
+    ap.add_argument("--universe", default=None,
+                    help="срез вселенной (tools/live/universe.py): состав монет "
+                         "и его происхождение")
     ap.add_argument("--window", type=int, default=WINDOW,
                     help=f"сколько свечей брать из базы (по умолчанию {WINDOW})")
     ap.add_argument("--json", dest="json_path", default=None)
@@ -513,7 +523,9 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     tfs = tuple(t.strip() for t in a.tfs.split(",") if t.strip())
-    data = build(a.db, tfs, a.exchange, a.window)
+    symbols, uni = universe.from_arg(a.universe)
+    data = build(a.db, tfs, a.exchange, a.window, symbols=symbols,
+                 universe_note=universe.note_of(uni))
     print(render_text(data))
     if a.json_path:
         Path(a.json_path).write_text(

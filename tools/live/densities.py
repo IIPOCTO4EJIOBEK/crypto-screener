@@ -73,6 +73,7 @@ PLACEHOLDER = "__DATA_JSON__"
 
 # Время и название рынка берутся из screen: формат вывода должен быть один
 # на проект, а не свой в каждой странице.
+from tools.live import universe  # noqa: E402
 from tools.live.screen import MSK, _market_label  # noqa: E402
 
 
@@ -228,7 +229,8 @@ def collect_coin(symbol: str, exchange: str, tf_candles: dict[str, list[Candle]]
     }
 
 
-def build(db_path: str, exchange: str, symbols: list[str] | None) -> dict:
+def build(db_path: str, exchange: str, symbols: list[str] | None,
+          universe_note: str = "") -> dict:
     from src.storage import db as dbm
 
     conn = dbm.connect(db_path)
@@ -261,6 +263,7 @@ def build(db_path: str, exchange: str, symbols: list[str] | None) -> dict:
         "collected_at": datetime.now(MSK).strftime("%Y-%m-%d %H:%M МСК"),
         "market": _market_label(exchange),
         "exchange": exchange,
+        "universe_note": universe_note,
         "symbols": len(coins),
         "seconds": round(time.time() - t0, 1),
         "depth": DEPTH,
@@ -354,8 +357,10 @@ def render_text(data: dict) -> str:
     m = data["meta"]
     lines = [f"Плотности стакана — {m['market']}",
              f"собрано {m['collected_at']}, монет {m['symbols']}, "
-             f"плотностей {m['densities_total']} у {m['coins_with_densities']}",
-             ""]
+             f"плотностей {m['densities_total']} у {m['coins_with_densities']}"]
+    if m.get("universe_note"):
+        lines.append(m["universe_note"])
+    lines.append("")
     for c in data["coins"]:
         if c.get("gap"):
             lines.append(f"{c['symbol']:9} {c['gap']}")
@@ -395,12 +400,17 @@ def main() -> None:
     ap.add_argument("--db", default="data/screener.db")
     ap.add_argument("--exchange", default="binance_futures")
     ap.add_argument("--symbols", nargs="*", default=None)
+    ap.add_argument("--universe", default=None,
+                    help="срез вселенной (tools/live/universe.py): состав монет "
+                         "и его происхождение; важнее --symbols")
     ap.add_argument("--json", dest="json_path")
     ap.add_argument("--html", dest="html_path")
     ap.add_argument("--template", default=str(TEMPLATE))
     a = ap.parse_args()
 
-    data = build(a.db, a.exchange, a.symbols)
+    symbols, uni = universe.from_arg(a.universe)
+    data = build(a.db, a.exchange, symbols or a.symbols,
+                 universe_note=universe.note_of(uni))
     print(render_text(data))
     if a.json_path:
         Path(a.json_path).write_text(

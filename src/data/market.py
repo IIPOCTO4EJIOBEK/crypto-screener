@@ -179,6 +179,62 @@ def binance_futures_orderbook(symbol: str, depth: int = 100) -> OrderBook:
 
 
 # --------------------------------------------------------------------------
+# Вселенная: отбор монет по обороту.
+#
+# Биржа торгует не только монетами. У Binance USDT-M есть токенизированное
+# золото, серебро, нефть, акции и ETF, и по обороту они стоят в одном ряду
+# с крупнейшими монетами: 30.09.2026 среди 59 инструментов с оборотом свыше
+# 100 млн в сутки двадцать оказались не монетами (XAUUSDT — 1.8 млрд,
+# CLUSDT, SOXLUSDT, SKHYNIXUSDT и подобные).
+#
+# Отличаются они парой полей, а не именем: у монет underlyingType = COIN и
+# contractType = PERPETUAL, у остальных — EQUITY / COMMODITY / PREMARKET /
+# INDEX и TRADIFI_PERPETUAL. Отбор идёт по этим полям, а не по списку
+# исключений: список имён пришлось бы править руками при каждом листинге.
+# --------------------------------------------------------------------------
+
+def binance_futures_contracts() -> list[dict]:
+    """Все контракты USDT-M. Один запрос на весь рынок, а не на монету."""
+    return _get(f"{_BINANCE_FAPI}/fapi/v1/exchangeInfo", None,
+                use_proxy=False)["symbols"]
+
+
+def binance_futures_volumes() -> dict[str, float]:
+    """Суточный оборот в котируемой валюте по всем контрактам. Один запрос."""
+    raw = _get(f"{_BINANCE_FAPI}/fapi/v1/ticker/24hr", None, use_proxy=False)
+    return {r["symbol"]: float(r["quoteVolume"]) for r in raw}
+
+
+def futures_coin_universe(min_quote_volume: float, *, quote: str = "USDT",
+                          contracts: list[dict] | None = None,
+                          volumes: dict[str, float] | None = None
+                          ) -> list[tuple[str, float]]:
+    """Монеты-перпетуалы с суточным оборотом не ниже порога.
+
+    Возвращает (символ, оборот за сутки) по убыванию оборота. Оборот — в
+    котируемой валюте (для USDT это доллары, но это совпадение, а не
+    определение: поле так и называется — quoteVolume).
+    """
+    if contracts is None:
+        contracts = binance_futures_contracts()
+    if volumes is None:
+        volumes = binance_futures_volumes()
+    out: list[tuple[str, float]] = []
+    for c in contracts:
+        if (c.get("underlyingType") != "COIN"
+                or c.get("contractType") != "PERPETUAL"
+                or c.get("status") != "TRADING"
+                or c.get("quoteAsset") != quote):
+            continue
+        sym = c.get("symbol") or ""
+        v = volumes.get(sym)
+        if sym and v is not None and v >= min_quote_volume:
+            out.append((sym, v))
+    out.sort(key=lambda x: (-x[1], x[0]))
+    return out
+
+
+# --------------------------------------------------------------------------
 # Bybit v5 — доступен напрямую.
 # --------------------------------------------------------------------------
 _BYBIT = "https://api.bybit.com"

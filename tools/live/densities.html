@@ -46,6 +46,14 @@ td.num{font-variant-numeric:tabular-nums}
 .ctl select{margin-left:4px}
 select{background:#1a1f2b;color:var(--fg);border:1px solid var(--line);
        border-radius:6px;padding:4px 7px;font:inherit;font-size:12px}
+/* переключатель таймфрейма: кнопки строятся по числу ТФ из данных */
+.tf{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.tf button{background:#1a1f2b;color:var(--dim);border:0;border-right:1px solid var(--line);
+           padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+.tf button:last-child{border-right:0}
+.tf button:hover{color:var(--fg)}
+.tf button.active{background:#2a3244;color:var(--fg)}
+#tfNote{margin-top:14px}
 .caveat ol{margin:0;padding-left:20px}
 .caveat li{margin:4px 0}
 p.note2{margin:8px 0 0}
@@ -62,8 +70,10 @@ p.note2{margin:8px 0 0}
 
 <h1>Плотности стакана</h1>
 <p class="sub" id="meta"></p>
+<p class="sub" id="uniNote"></p>
 
 <div class="controls">
+  <div class="ctl" id="tfCtl">Таймфрейм <span class="tf" id="tfBtns"></span></div>
   <label class="ctl">Монета<select id="fCoin"></select></label>
   <label class="ctl">Сторона<select id="fSide">
     <option value="all">все</option>
@@ -81,6 +91,17 @@ p.note2{margin:8px 0 0}
 </div>
 <p class="sub" id="tblNote"></p>
 <p class="sub note2" id="legend"></p>
+
+<div class="caveat" id="tfNote">
+  Колонка «касаний» — наша собственная мера, а не отраслевая: такого столбца нет
+  ни в одном известном нам продукте. Она отвечает на узкий вопрос «сколько раз
+  цена за это окно свечей накрывала цену уровня» и не говорит, отскакивала ли
+  цена от заявки. Канон изображения плотностей стакана — тепловая карта
+  «время × цена», где яркость означает объём заявок, а не таблица. Тепловой
+  карты здесь пока нет потому, что для неё нужна накопленная история снимков
+  стакана с уровнями, а её мало: в базе лежат только суммарные полосы по
+  сторонам стакана, сырых уровней нет.
+</div>
 
 <h2>Сводка по монетам</h2>
 <div class="thin">
@@ -123,6 +144,53 @@ var DATA = JSON.parse(document.getElementById('data').textContent);
 var M = DATA.meta || {};
 var COINS = DATA.coins || [];
 var GAPS = DATA.gaps || [];
+
+/* Таймфреймы берутся из данных, а не из списка в шаблоне: сначала
+   meta.touch_tfs, при его отсутствии — ключи touches у самих плотностей.
+   Порядок — как пришёл; первый в списке становится ТФ по умолчанию. */
+function tfList(){
+  var out = [];
+  if(Object.prototype.toString.call(M.touch_tfs) === '[object Array]'){
+    M.touch_tfs.forEach(function(tf){
+      if(typeof tf === 'string' && tf && out.indexOf(tf) < 0) out.push(tf);
+    });
+  }
+  if(!out.length){
+    COINS.forEach(function(c){
+      (c.densities || []).forEach(function(d){
+        Object.keys(d.touches || {}).forEach(function(tf){
+          if(tf && out.indexOf(tf) < 0) out.push(tf);
+        });
+      });
+    });
+  }
+  return out;
+}
+var TFS = tfList();
+
+/* ---------- ТФ в адресе: #tf=1h ---------- */
+/* replaceState на file:// у Chromium может бросить SecurityError (у документа
+   с file:// источник непрозрачный), поэтому есть запасной путь через
+   location.hash — он тоже не перезагружает документ. */
+function putTf(tf){
+  try { history.replaceState(null, '', '#tf=' + encodeURIComponent(tf)); return; }
+  catch(e){}
+  try { location.hash = 'tf=' + encodeURIComponent(tf); } catch(e){}
+}
+/* Битый или пустой хеш — не ошибка, а «нет выбора»: вернём null, и вызывающий
+   возьмёт первый ТФ по порядку. */
+function readTf(){
+  var h = String(location.hash || '').replace(/^#/, '');
+  if(!h) return null;
+  var parts = h.split('&');
+  for(var i = 0; i < parts.length; i++){
+    var kv = parts[i].split('=');
+    if(kv[0] !== 'tf') continue;
+    var v = decodeURIComponent(kv.slice(1).join('='));
+    return TFS.indexOf(v) >= 0 ? v : null;
+  }
+  return null;
+}
 
 /* ---------- вывод чисел: только формат, никаких расчётов ---------- */
 function fin(v){ return typeof v === 'number' && isFinite(v); }
@@ -235,6 +303,11 @@ function windowText(tf){
            esc((M.touch_tfs || []).join(' и ')));
   }
   el('meta').innerHTML = p.join(' · ');
+
+  /* Происхождение среза вселенной: builder отдаёт его в meta.universe_note.
+     Нет поля или оно пустое — строки нет вовсе, а не «—». */
+  var u = M.universe_note;
+  if(typeof u === 'string' && u !== ''){ el('uniNote').textContent = u; }
 })();
 
 /* ---------- столбцы главной таблицы ---------- */
@@ -279,27 +352,35 @@ var COLS = [
      return '<td class="num">' + esc(txt(r.d.absorb_text)) + '</td>';
    }},
 
-  {k:'t5', t:'касаний 5m ' + windowText('5m'), num:true,
-   sv:function(r){ return touchOf(r,'5m').n; },
+  /* Касания и последнее касание — по одному столбцу, и оба следуют за
+     переключателем: параллельных колонок по каждому ТФ здесь нет. Ключи
+     столбцов не зависят от ТФ, поэтому сортировка по ним переживает смену
+     таймфрейма — меняются значения, а не столбец. */
+  {k:'touch', t:'касаний', num:true,
+   sv:function(r){ return touchOf(r, state.tf).n; },
    cell:function(r){
-     var t = touchOf(r,'5m');
+     var t = touchOf(r, state.tf);
      return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
    }},
 
-  {k:'t1', t:'касаний 1h ' + windowText('1h'), num:true,
-   sv:function(r){ return touchOf(r,'1h').n; },
+  {k:'last', t:'Последнее касание', num:false,
+   sv:function(r){ return touchOf(r, state.tf).last_msk; },
    cell:function(r){
-     var t = touchOf(r,'1h');
-     return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
-   }},
-
-  {k:'last', t:'Последнее касание (по 1h)', num:false,
-   sv:function(r){ return touchOf(r,'1h').last_msk; },
-   cell:function(r){
-     var v = touchOf(r,'1h').last_msk;
+     var v = touchOf(r, state.tf).last_msk;
      return '<td class="' + cls(v == null ? 'dim' : '') + '">' + esc(txt(v)) + '</td>';
    }}
 ];
+
+/* Подписи этих двух столбцов зависят от активного ТФ и его окна касаний */
+function colTitle(c){
+  if(c.k === 'touch'){
+    return state.tf ? 'касаний ' + state.tf + ' ' + windowText(state.tf) : 'касаний';
+  }
+  if(c.k === 'last'){
+    return state.tf ? 'Последнее касание (' + state.tf + ')' : 'Последнее касание';
+  }
+  return c.t;
+}
 
 function allRows(){
   var out = [];
@@ -310,7 +391,8 @@ function allRows(){
 }
 
 /* ---------- фильтры, сортировка, отрисовка ---------- */
-var state = { coin:'all', side:'all', key:'notional', dir:-1 };
+/* tf — активный таймфрейм касаний; подставляется из хеша на старте */
+var state = { coin:'all', side:'all', key:'notional', dir:-1, tf:'' };
 
 function colByKey(k){
   for(var i = 0; i < COLS.length; i++){ if(COLS[i].k === k) return COLS[i]; }
@@ -378,11 +460,12 @@ function buildControls(){
   el('fSide').value = 'all';
 }
 
-(function(){
-  buildControls();
+/* Шапка таблицы перестраивается на смену ТФ: подписи столбцов касаний
+   содержат сам ТФ и фактическое окно его свечей. */
+function buildHead(){
   el('thr').innerHTML = COLS.map(function(c){
     return '<th class="' + cls(c.num ? 'num' : '', 'sortable') + '" data-k="' +
-      esc(c.k) + '">' + esc(c.t) + '</th>';
+      esc(c.k) + '">' + esc(colTitle(c)) + '</th>';
   }).join('');
   Array.prototype.forEach.call(el('thr').querySelectorAll('th'), function(th){
     th.addEventListener('click', function(){
@@ -397,14 +480,49 @@ function buildControls(){
       render();
     });
   });
+}
+
+function tfButtons(){
+  el('tfBtns').innerHTML = TFS.map(function(tf){
+    return '<button type="button" class="' + cls(tf === state.tf ? 'active' : '') +
+      '" data-tf="' + esc(tf) + '">' + esc(tf) + '</button>';
+  }).join('');
+  Array.prototype.forEach.call(el('tfBtns').querySelectorAll('button'), function(b){
+    b.addEventListener('click', function(){ setTf(b.getAttribute('data-tf')); });
+  });
+  el('tfCtl').hidden = !TFS.length;
+}
+
+/* Смена ТФ трогает только state.tf: фильтры по монете и стороне и сортировка
+   остаются как были. */
+function setTf(tf){
+  if(TFS.indexOf(tf) < 0 || tf === state.tf) return;
+  state.tf = tf;
+  putTf(tf);
+  tfButtons();
+  buildHead();
+  render();
+}
+
+(function(){
+  buildControls();
+  state.tf = readTf() || TFS[0] || '';
+  tfButtons();
+  buildHead();
   el('fCoin').addEventListener('change', function(){ state.coin = this.value; render(); });
   el('fSide').addEventListener('change', function(){ state.side = this.value; render(); });
+  /* Хеш правится и руками: держим таблицу в согласии с адресом */
+  window.addEventListener('hashchange', function(){
+    var tf = readTf();
+    if(tf && tf !== state.tf){ state.tf = tf; tfButtons(); buildHead(); render(); }
+  });
 
   el('legend').textContent = '«До цены» — расстояние от середины стакана со знаком: ' +
     'минус — уровень ниже середины (бид), плюс — выше (аск). «×медианы» — во сколько ' +
     'раз размер уровня больше медианного размера уровня в этом стакане. «Съедание» — ' +
     'оценка времени, за которое поток сделок выбрал бы объём уровня, по среднему ' +
-    'объёму за 2 часа. Бид и аск окрашены по стороне стакана.';
+    'объёму за 2 часа. Бид и аск окрашены по стороне стакана. Столбцы касаний — ' +
+    'по активному таймфрейму из переключателя.';
   render();
 })();
 

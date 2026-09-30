@@ -34,6 +34,7 @@ from src.backtest.expectancy import MIN_TRADES, STEP_BY_TF
 from src.backtest.walk import HISTORY
 from src.data.market import Candle
 from src.storage import db
+from tools.live import universe
 
 # Время в отчёте и на странице — московское: МСК это UTC+3 без перехода на
 # летнее, то есть фиксированный сдвиг, а не местная зона машины.
@@ -113,11 +114,18 @@ def _books(conn, exchange: str) -> dict[str, dict]:
 
 
 def signals(conn, tfs: tuple[str, ...], exchange: str = "binance_futures",
-            min_candles: int = 60) -> tuple[list[Formation], list[str]]:
-    """Формации по всем монетам базы. Второе — что не удалось разобрать."""
+            min_candles: int = 60,
+            symbols: list[str] | None = None) -> tuple[list[Formation], list[str]]:
+    """Формации по монетам базы. Второе — что не удалось разобрать.
+
+    `symbols` задаёт состав; без него берётся всё, что есть в базе по этой
+    бирже. Состав из среза вселенной точнее: база хранит и то, что уже
+    выпало из оборота.
+    """
     found: list[Formation] = []
     notes: list[str] = []
-    symbols = db.symbols_present(conn, exchange)
+    if symbols is None:
+        symbols = db.symbols_present(conn, exchange)
     btc_by_tf: dict[str, list[Candle]] = {}
     for sym in symbols:
         for tf in tfs:
@@ -245,6 +253,8 @@ def render_text(rows: list[Row], notes: list[str], stats: dict,
     measured = [r for r in rows if r.exp_net is not None]
     neg = sum(1 for r in measured if r.exp_net < 0)
     out.append(f"рынок: {meta['market']}")
+    if meta.get("universe_note"):
+        out.append(meta["universe_note"])
     out.append(f"сигналов {len(rows)}, из них с измерением {len(measured)}")
     if measured:
         out.append(f"у этих сигналов чистая ожидаемость положительна у "
@@ -321,6 +331,9 @@ def render_html(rows: list[Row], notes: list[str], meta: dict,
                if measured and neg == len(measured)
                else f"из {len(measured)} сегодняшних сигналов с измерением "
                     f"в плюсе {len(measured) - neg}")
+    # Оговорка о составе: без неё «монет 39» на странице ничем не подтверждено.
+    note = (f"<br>{e(meta['universe_note'])}" if meta.get("universe_note")
+            else "")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -355,7 +368,7 @@ def render_html(rows: list[Row], notes: list[str], meta: dict,
 <h1>Скринер: сигналы и их измеренный результат</h1>
 <div class="meta">{e(meta['when'])} МСК · монет {meta['symbols']} ·
   таймфреймы {e(meta['tfs'])} · измерение от {e(meta['measured_on'] or '—')}
-  ({e(meta['scope'] or '—')})<br>рынок: {e(meta['market'])}</div>
+  ({e(meta['scope'] or '—')})<br>рынок: {e(meta['market'])}{note}</div>
 <div class="verdict">{e(verdict)}: измеренных сигналов {len(measured)} из
   {len(rows)}. {e(_table_note(stats, rows))}. Ранжирование — по чистой
   ожидаемости, а не по уверенности детектора.</div>
@@ -377,6 +390,9 @@ def main() -> None:
     p.add_argument("--db", default=None)
     p.add_argument("--tfs", nargs="+", default=["5m", "15m", "1h"])
     p.add_argument("--exchange", default="binance_futures")
+    p.add_argument("--universe", default=None,
+                   help="срез вселенной (tools/live/universe.py): состав монет "
+                        "и его происхождение")
     p.add_argument("--fee", type=float, default=Costs().taker_fee,
                    help="комиссия за сторону; по умолчанию — из модели издержек")
     p.add_argument("--slippage", type=float, default=Costs().slippage)
@@ -384,10 +400,11 @@ def main() -> None:
     p.add_argument("--html", dest="html_path", default=None)
     a = p.parse_args()
 
+    symbols, uni = universe.from_arg(a.universe)
     conn = db.connect(a.db)
     stats = db.load_formation_stats(conn)
     costs = Costs(taker_fee=a.fee, slippage=a.slippage)
-    found, notes = signals(conn, tuple(a.tfs), a.exchange)
+    found, notes = signals(conn, tuple(a.tfs), a.exchange, symbols=symbols)
     rows = rank(found, stats, conn, costs, a.exchange)
 
     # Строк измерения может оказаться больше одного прогона (база, записанная
@@ -405,7 +422,9 @@ def main() -> None:
     meta = {
         "when": datetime.now(MSK).strftime("%Y-%m-%d %H:%M"),
         "market": _market_label(a.exchange),
-        "symbols": len(db.symbols_present(conn, a.exchange)),
+        "symbols": len(symbols) if symbols is not None
+                   else len(db.symbols_present(conn, a.exchange)),
+        "universe_note": universe.note_of(uni),
         "tfs": ", ".join(a.tfs),
         "measured_on": measured_on,
         "scope": scope,

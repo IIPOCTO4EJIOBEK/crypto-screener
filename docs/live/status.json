@@ -1,0 +1,23 @@
+{
+  "at": "2026-09-30 14:16 МСК",
+  "at_unix": 1790766996,
+  "elapsed": 109.53,
+  "universe": {
+    "n": 39,
+    "min_quote_volume": 100000000.0,
+    "at": "2026-09-30 14:14 МСК"
+  },
+  "collected": {
+    "symbols": 39,
+    "books": 39,
+    "candles": 31200
+  },
+  "pages": {
+    "screen": 1.25,
+    "structures": 1.14,
+    "densities": 43.4,
+    "landing_repo": 0.21
+  },
+  "errors": [],
+  "round": 1
+}

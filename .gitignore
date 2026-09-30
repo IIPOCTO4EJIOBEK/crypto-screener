@@ -11,6 +11,7 @@ data/*.parquet
 data/*.csv
 data/*.jsonl
 data/tg/
+data/universe-turnover.json
 docs/tiger/
 tools/news/delist_raw.json
 tools/prototype/data.json
