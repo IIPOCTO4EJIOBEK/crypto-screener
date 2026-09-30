@@ -32,6 +32,7 @@ from src.backtest import significance
 from src.backtest.expectancy import MIN_TRADES
 from src.storage import db as dbm
 from tools.live.screen import MSK
+from tools.live import universe
 
 REPO = Path(__file__).resolve().parents[2]
 DB_PATH = REPO / "data" / "screener.db"
@@ -413,6 +414,9 @@ def build(*, db_path: Path, log_dir: Path, mode: str,
     trend, g = load_trend(trend_paths)
     gaps += g
 
+    uni = universe.load(REPO / "data" / "universe-turnover.json")
+    universe_note = universe.note_of(uni)
+
     link = links(mode)
     data = {
         "meta": {
@@ -428,6 +432,7 @@ def build(*, db_path: Path, log_dir: Path, mode: str,
             "trend": trend,
             "gaps": gaps,
             "caveats": caveats(measurement, trend),
+            "universe_note": universe_note,
         },
         "measurement": measurement,
         "cards": cards(live, trend, link),

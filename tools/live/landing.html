@@ -265,6 +265,7 @@ function setHTML(id, html){ el(id).innerHTML = html; }
   if(M.subtitle) s.push(tx(M.subtitle));
   if(M.built_at) s.push('сборка ' + tx(M.built_at));
   if(M.market) s.push(tx(M.market));
+  if(M.universe_note) s.push(tx(M.universe_note));
   el('hSub').textContent = s.join(' · ');
 
   var ch = [];
