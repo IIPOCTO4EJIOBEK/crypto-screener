@@ -1,11 +1,11 @@
 {
-  "at": "2026-09-30 14:16 МСК",
-  "at_unix": 1790766996,
-  "elapsed": 109.53,
+  "at": "2026-09-30 14:33 МСК",
+  "at_unix": 1790768025,
+  "elapsed": 107.9,
   "universe": {
     "n": 39,
     "min_quote_volume": 100000000.0,
-    "at": "2026-09-30 14:14 МСК"
+    "at": "2026-09-30 14:31 МСК"
   },
   "collected": {
     "symbols": 39,
@@ -14,8 +14,8 @@
   },
   "pages": {
     "screen": 1.25,
-    "structures": 1.14,
-    "densities": 43.4,
+    "structures": 1.08,
+    "densities": 44.08,
     "landing_repo": 0.21
   },
   "errors": [],
