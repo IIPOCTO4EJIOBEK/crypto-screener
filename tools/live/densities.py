@@ -258,7 +258,7 @@ def build(db_path: str, exchange: str, symbols: list[str] | None) -> dict:
 
     live = [c for c in coins if c.get("densities")]
     meta = {
-        "collected_at": datetime.now(MSK).strftime("%Y-%m-%d %H:%M"),
+        "collected_at": datetime.now(MSK).strftime("%Y-%m-%d %H:%M МСК"),
         "market": _market_label(exchange),
         "exchange": exchange,
         "symbols": len(coins),
@@ -353,7 +353,7 @@ def _px(value: float, digits: int) -> str:
 def render_text(data: dict) -> str:
     m = data["meta"]
     lines = [f"Плотности стакана — {m['market']}",
-             f"собрано {m['collected_at']} МСК, монет {m['symbols']}, "
+             f"собрано {m['collected_at']}, монет {m['symbols']}, "
              f"плотностей {m['densities_total']} у {m['coins_with_densities']}",
              ""]
     for c in data["coins"]:
