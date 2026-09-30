@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Плотности стакана</title>
+<style>
+:root { --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
+        --good:#3ddc97; --bad:#ff6b6b; }
+*{box-sizing:border-box}
+body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+       font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); }
+th { color:var(--dim); font-weight:400; position:sticky; top:0; background:var(--bg); }
+td.num { text-align:right; white-space:nowrap; }
+.sub { color:var(--dim); font-size:11px; }
+.caveat { margin-top:18px; padding:10px 12px; border-left:3px solid var(--line);
+          background:#161922; color:var(--dim); }
+/* --- надстройка над общим домом страницы --- */
+.page{max-width:1600px;margin:0 auto}
+h1{font-size:20px;font-weight:600;margin:0 0 6px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);
+   font-weight:400;margin:26px 0 8px}
+p.sub{margin:0 0 4px}
+.thin{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+      border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th.num{text-align:right}
+th.sortable{cursor:pointer;-webkit-user-select:none;user-select:none}
+th.sorted{color:var(--fg)}
+th.sorted.desc::after{content:' ↓'}
+th.sorted.asc::after{content:' ↑'}
+tbody tr:hover td{background:#171a22}
+tbody tr:last-child td{border-bottom:none}
+td.sym{font-weight:600;white-space:nowrap}
+td.num{font-variant-numeric:tabular-nums}
+.dim{color:var(--dim)}
+.good{color:var(--good)}
+.bad{color:var(--bad)}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;
+     padding:0 5px;font-size:11px}
+.tag.bid{color:var(--good)}
+.tag.ask{color:var(--bad)}
+.controls{margin:14px 0 0;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.ctl{color:var(--dim);font-size:12px}
+.ctl select{margin-left:4px}
+select{background:#1a1f2b;color:var(--fg);border:1px solid var(--line);
+       border-radius:6px;padding:4px 7px;font:inherit;font-size:12px}
+.caveat ol{margin:0;padding-left:20px}
+.caveat li{margin:4px 0}
+p.note2{margin:8px 0 0}
+@media (max-width:700px){
+  body{padding:14px}
+  h1{font-size:17px}
+  th,td{padding:6px 7px;font-size:12px}
+  h2{margin:20px 0 6px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Плотности стакана</h1>
+<p class="sub" id="meta"></p>
+
+<div class="controls">
+  <label class="ctl">Монета<select id="fCoin"></select></label>
+  <label class="ctl">Сторона<select id="fSide">
+    <option value="all">все</option>
+    <option value="bid">бид</option>
+    <option value="ask">аск</option>
+  </select></label>
+</div>
+
+<h2>Плотности</h2>
+<div class="thin">
+  <table id="tbl">
+    <thead><tr id="thr"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+<p class="sub" id="tblNote"></p>
+<p class="sub note2" id="legend"></p>
+
+<h2>Сводка по монетам</h2>
+<div class="thin">
+  <table id="sum">
+    <thead><tr>
+      <th>Монета</th>
+      <th class="num">Цена</th>
+      <th class="num">Спред, б.п.</th>
+      <th class="num">Стакан до ±, %</th>
+      <th class="num">Плотностей в коридоре</th>
+      <th class="num">Показано</th>
+      <th class="num">Ближайшая, %</th>
+      <th class="num">Номинал плотностей бид / аск, млн</th>
+      <th class="num">Дисбаланс</th>
+    </tr></thead>
+    <tbody id="sumBody"></tbody>
+  </table>
+</div>
+<p class="sub" id="sumNote"></p>
+
+<h2>Оговорки</h2>
+<div class="caveat" id="caveatBox"><ol id="caveats"></ol></div>
+
+<section id="gapsSec">
+  <h2>Что не собралось</h2>
+  <div class="caveat"><ol id="gaps"></ol></div>
+</section>
+
+<p class="sub" style="margin-top:22px">Числа вшиты в файл на момент сбора и не
+пересчитываются: страница в сеть не ходит и ничего не досчитывает.</p>
+
+</div>
+
+<script id="data" type="application/json">__DATA_JSON__</script>
+<script>
+(function(){
+"use strict";
+
+var DATA = JSON.parse(document.getElementById('data').textContent);
+var M = DATA.meta || {};
+var COINS = DATA.coins || [];
+var GAPS = DATA.gaps || [];
+
+/* ---------- вывод чисел: только формат, никаких расчётов ---------- */
+function fin(v){ return typeof v === 'number' && isFinite(v); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function dash(){ return '—'; }
+function txt(v){ return (v == null || v === '') ? dash() : String(v); }
+function trim(s){ return s.indexOf('.') >= 0 ? s.replace(/0+$/,'').replace(/\.$/,'') : s; }
+function fixed(v,d){ return fin(v) ? Number(v).toFixed(d) : dash(); }
+function sgn(v,d){ return fin(v) ? (v > 0 ? '+' : '') + Number(v).toFixed(d) : dash(); }
+function gn(v){ return fin(v) ? trim(Number(v).toFixed(2)) : dash(); }
+function grp(v){
+  if(!fin(v)) return dash();
+  var neg = v < 0, s = String(Math.round(Math.abs(v))), out = '';
+  while(s.length > 3){ out = ' ' + s.slice(-3) + out; s = s.slice(0,-3); }
+  return (neg ? '-' : '') + s + out;
+}
+/* Цена уровня. Разрядность приходит из данных (`coin.price_digits`): она
+   подобрана Python'ом по самим ценам уровней, чтобы две соседние плотности
+   не слились в одну и ту же строку. Эвристики «по величине цены» здесь нет
+   намеренно — именно она печатала 1.5071 и 1.5072 одинаково как «1.51».
+   Если разрядности в данных нет (монета с gap, старый JSON) — 4 знака. */
+function px(v, digits){
+  if(!fin(v)) return dash();
+  var d = fin(digits) ? Math.max(0, Math.min(8, Math.round(digits))) : 4;
+  return trim(Number(v).toFixed(d));
+}
+/* Разрядность монеты берётся из данных как есть; поля может не быть */
+function digitsOf(c){
+  return fin(c && c.price_digits) ? c.price_digits : 4;
+}
+/* млн USDT: разрядность выбирается по величине, чтобы мелкие плотности
+   не превращались в «0.00» */
+function mln(v){
+  if(!fin(v)) return dash();
+  var a = Math.abs(v) / 1e6, d = a >= 100 ? 1 : a >= 1 ? 2 : 3;
+  return trim(Number(a).toFixed(d));
+}
+function mult(v){
+  if(!fin(v)) return dash();
+  var a = Math.abs(v), d = a >= 100 ? 0 : 1;
+  return '×' + Number(v).toFixed(d);
+}
+function pctS(v,d){ return fin(v) ? sgn(v,d) + ' %' : dash(); }
+function n0(v){ return fin(v) ? String(Math.round(v)) : dash(); }
+function el(id){ return document.getElementById(id); }
+/* класс собирается из непустых частей: лишних пробелов в разметке не остаётся */
+function cls(){ return Array.prototype.filter.call(arguments, function(x){ return !!x; }).join(' '); }
+/* русское число: «в 6 раз», но «в 3 раза» */
+function plural(n, one, few, many){
+  var a = Math.abs(Math.round(n)) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b > 1 && b < 5) return few;
+  if(b === 1) return one;
+  return many;
+}
+
+function liveCoins(){
+  return COINS.filter(function(c){ return !c.gap; });
+}
+function touchOf(r,tf){
+  var t = (r.d.touches || {})[tf];
+  return t || {};
+}
+
+/* ---------- окно касаний: берётся из данных, зашитых в файл ---------- */
+function windowList(tf){
+  var seen = {}, out = [];
+  liveCoins().forEach(function(c){
+    var w = (c.touch_windows || {})[tf];
+    if(fin(w) && !seen[w]){ seen[w] = 1; out.push(w); }
+  });
+  out.sort(function(a,b){ return a - b; });
+  return out;
+}
+function windowText(tf){
+  var w = windowList(tf);
+  if(!w.length) return 'за —';
+  if(w.length === 1) return 'за ' + gn(w[0]) + ' ч';
+  return 'за ' + gn(w[0]) + '–' + gn(w[w.length-1]) + ' ч';
+}
+
+/* ---------- шапка: рынок и параметры сбора ---------- */
+(function(){
+  var p = [];
+  if(M.market) p.push(esc(M.market));
+  p.push('собрано ' + esc(txt(M.collected_at)) + ' МСК');
+  p.push('монет ' + n0(M.symbols));
+  p.push('плотностей в коридоре ' + n0(M.densities_total) +
+         ', показано ' + n0(M.shown_total) +
+         ' (до ' + n0(M.max_rows) + ' на монету)');
+  p.push('глубина стакана ' + n0(M.depth) + ' уровней');
+  p.push('коридор ' + gn(M.min_distance_pct) + '–' + gn(M.max_distance_pct) +
+         ' % от середины');
+  var thr = '';
+  if(fin(M.outlier_k)){
+    thr = 'в ' + gn(M.outlier_k) + ' ' +
+          plural(M.outlier_k, 'раз', 'раза', 'раз') + ' выше медианного уровня';
+  }
+  if(fin(M.min_notional)){
+    thr += (thr ? ' и' : '') + ' от ' + grp(M.min_notional) + ' USDT';
+  }
+  if(thr) p.push('порог: ' + thr);
+  if(fin(M.seconds)) p.push('сбор ' + gn(M.seconds) + ' с');
+  if(M.touch_candles){
+    p.push('касания по ' + grp(M.touch_candles) + ' закрытым свечам ' +
+           esc((M.touch_tfs || []).join(' и ')));
+  }
+  el('meta').innerHTML = p.join(' · ');
+})();
+
+/* ---------- столбцы главной таблицы ---------- */
+var COLS = [
+  {k:'symbol', t:'Монета', num:false,
+   sv:function(r){ return r.c.symbol; },
+   cell:function(r){ return '<td class="sym">' + esc(r.c.symbol) + '</td>'; }},
+
+  {k:'side', t:'Сторона', num:false,
+   sv:function(r){ return r.d.side === 'bid' ? 0 : 1; },
+   cell:function(r){
+     var isBid = r.d.side === 'bid';
+     return '<td><span class="tag ' + (isBid ? 'bid' : 'ask') + '">' +
+       (isBid ? 'бид' : 'аск') + '</span></td>';
+   }},
+
+  {k:'price', t:'Цена', num:true,
+   sv:function(r){ return r.d.price; },
+   cell:function(r){
+     return '<td class="num">' + px(r.d.price, digitsOf(r.c)) + '</td>';
+   }},
+
+  {k:'dist', t:'До цены, %', num:true,
+   sv:function(r){ return r.d.distance_pct; },
+   cell:function(r){
+     var v = r.d.distance_pct;
+     var sc = !fin(v) ? '' : (v < 0 ? 'good' : 'bad');
+     return '<td class="' + cls('num', sc) + '">' + pctS(v,3) + '</td>';
+   }},
+
+  {k:'notional', t:'Номинал, млн USDT', num:true,
+   sv:function(r){ return r.d.notional; },
+   cell:function(r){ return '<td class="num">' + mln(r.d.notional) + '</td>'; }},
+
+  {k:'kmed', t:'×медианы', num:true,
+   sv:function(r){ return r.d.k_median; },
+   cell:function(r){ return '<td class="num">' + mult(r.d.k_median) + '</td>'; }},
+
+  {k:'absorb', t:'Съедание', num:true,
+   sv:function(r){ return r.d.absorb_seconds; },
+   cell:function(r){
+     return '<td class="num">' + esc(txt(r.d.absorb_text)) + '</td>';
+   }},
+
+  {k:'t5', t:'касаний 5m ' + windowText('5m'), num:true,
+   sv:function(r){ return touchOf(r,'5m').n; },
+   cell:function(r){
+     var t = touchOf(r,'5m');
+     return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
+   }},
+
+  {k:'t1', t:'касаний 1h ' + windowText('1h'), num:true,
+   sv:function(r){ return touchOf(r,'1h').n; },
+   cell:function(r){
+     var t = touchOf(r,'1h');
+     return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
+   }},
+
+  {k:'last', t:'Последнее касание (по 1h)', num:false,
+   sv:function(r){ return touchOf(r,'1h').last_msk; },
+   cell:function(r){
+     var v = touchOf(r,'1h').last_msk;
+     return '<td class="' + cls(v == null ? 'dim' : '') + '">' + esc(txt(v)) + '</td>';
+   }}
+];
+
+function allRows(){
+  var out = [];
+  COINS.forEach(function(c){
+    (c.densities || []).forEach(function(d){ out.push({c:c, d:d}); });
+  });
+  return out;
+}
+
+/* ---------- фильтры, сортировка, отрисовка ---------- */
+var state = { coin:'all', side:'all', key:'notional', dir:-1 };
+
+function colByKey(k){
+  for(var i = 0; i < COLS.length; i++){ if(COLS[i].k === k) return COLS[i]; }
+  return null;
+}
+
+function apply(){
+  var rows = allRows();
+  if(state.coin !== 'all'){
+    rows = rows.filter(function(r){ return r.c.symbol === state.coin; });
+  }
+  if(state.side !== 'all'){
+    rows = rows.filter(function(r){ return r.d.side === state.side; });
+  }
+  var col = colByKey(state.key);
+  if(col){
+    rows.sort(function(a,b){
+      var av = col.sv(a), bv = col.sv(b);
+      var am = (av == null || av === '' || (typeof av === 'number' && !isFinite(av)));
+      var bm = (bv == null || bv === '' || (typeof bv === 'number' && !isFinite(bv)));
+      if(am && bm) return 0;
+      if(am) return 1;          /* пустое значение — всегда в конце */
+      if(bm) return -1;
+      if(av < bv) return -state.dir;
+      if(av > bv) return state.dir;
+      return 0;
+    });
+  }
+  return rows;
+}
+
+function render(){
+  var rows = apply(), total = allRows().length;
+  if(!rows.length){
+    el('tbody').innerHTML = '<tr><td colspan="' + COLS.length + '" class="dim">' +
+      'Под этот отбор не подходит ни одна строка: у выбранной монеты плотностей ' +
+      'нет, либо все они на другой стороне стакана.</td></tr>';
+  } else {
+    el('tbody').innerHTML = rows.map(function(r){
+      return '<tr>' + COLS.map(function(c){ return c.cell(r); }).join('') + '</tr>';
+    }).join('');
+  }
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'), function(th){
+    th.classList.remove('sorted','asc','desc');
+    if(th.getAttribute('data-k') === state.key){
+      th.classList.add('sorted');
+      th.classList.add(state.dir > 0 ? 'asc' : 'desc');
+    }
+  });
+  el('tblNote').textContent = 'Строк в таблице: ' + rows.length + ' из ' + total +
+    '. Клик по заголовку — сортировка по столбцу, повторный клик меняет сторону; ' +
+    'пустое значение («—») при сортировке всегда оказывается в конце. ' +
+    'Окно касаний в подписи столбца — фактическая длина окна по полученным свечам, ' +
+    'у разных монет она может отличаться.';
+}
+
+function buildControls(){
+  var opts = ['<option value="all">все монеты</option>'];
+  liveCoins().forEach(function(c){
+    var n = (c.densities || []).length;
+    opts.push('<option value="' + esc(c.symbol) + '">' + esc(c.symbol) +
+              ' — ' + n + ' шт.</option>');
+  });
+  el('fCoin').innerHTML = opts.join('');
+  el('fSide').value = 'all';
+}
+
+(function(){
+  buildControls();
+  el('thr').innerHTML = COLS.map(function(c){
+    return '<th class="' + cls(c.num ? 'num' : '', 'sortable') + '" data-k="' +
+      esc(c.k) + '">' + esc(c.t) + '</th>';
+  }).join('');
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'), function(th){
+    th.addEventListener('click', function(){
+      var k = th.getAttribute('data-k');
+      if(state.key === k){
+        state.dir = -state.dir;
+      } else {
+        var col = colByKey(k);
+        state.key = k;
+        state.dir = (col && col.num) ? -1 : 1;
+      }
+      render();
+    });
+  });
+  el('fCoin').addEventListener('change', function(){ state.coin = this.value; render(); });
+  el('fSide').addEventListener('change', function(){ state.side = this.value; render(); });
+
+  el('legend').textContent = '«До цены» — расстояние от середины стакана со знаком: ' +
+    'минус — уровень ниже середины (бид), плюс — выше (аск). «×медианы» — во сколько ' +
+    'раз размер уровня больше медианного размера уровня в этом стакане. «Съедание» — ' +
+    'оценка времени, за которое поток сделок выбрал бы объём уровня, по среднему ' +
+    'объёму за 2 часа. Бид и аск окрашены по стороне стакана.';
+  render();
+})();
+
+/* ---------- сводка по монетам: все монеты, фильтры на неё не влияют ---------- */
+(function(){
+  var html = [];
+  var shallow = [];
+  COINS.forEach(function(c){
+    if(c.gap){
+      html.push('<tr><td class="sym">' + esc(c.symbol) + '</td>' +
+        '<td class="dim" colspan="8">' + esc(c.gap) + '</td></tr>');
+      return;
+    }
+    var reachCls = (fin(c.reach_pct) && fin(M.max_distance_pct) &&
+                    c.reach_pct < M.max_distance_pct) ? 'dim' : '';
+    if(reachCls === 'dim') shallow.push(c);
+    var walls = mln(c.wall_notional_bid) + ' / ' + mln(c.wall_notional_ask);
+    html.push('<tr>' +
+      '<td class="sym">' + esc(c.symbol) + '</td>' +
+      '<td class="num">' + px(c.mid, digitsOf(c)) + '</td>' +
+      '<td class="num">' + fixed(c.spread_bps,2) + '</td>' +
+      '<td class="' + cls('num', reachCls) + '">' +
+        (fin(c.reach_pct) ? '±' + fixed(c.reach_pct,2) : dash()) + '</td>' +
+      '<td class="num">' + n0(c.n_densities) + '</td>' +
+      '<td class="num">' + n0(c.n_shown) + '</td>' +
+      '<td class="num">' + (fin(c.nearest_pct) ? fixed(c.nearest_pct,3) : dash()) + '</td>' +
+      '<td class="num">' + walls + '</td>' +
+      '<td class="num">' + sgn(c.imbalance,3) + '</td>' +
+    '</tr>');
+  });
+  el('sumBody').innerHTML = html.join('');
+
+  var n = '';
+  n += 'Сводка по всем монетам сбора и от фильтров выше не зависит. ';
+  if(shallow.length){
+    n += 'Стакан отдан не до конца коридора (' + gn(M.max_distance_pct) + ' %): ' +
+      shallow.map(function(c){
+        return c.symbol + ' — до ±' + fixed(c.reach_pct,2) + ' %';
+      }).join(', ') +
+      '. Дальше этого расстояния плотностей не видно не потому, что их нет, ' +
+      'а потому, что биржа не отдала уровни. ' +
+      'Отмечены приглушённым цветом в столбце «Стакан до ±».';
+  } else {
+    n += 'Стакан всех монет достаёт до дальней границы коридора.';
+  }
+  el('sumNote').textContent = n;
+})();
+
+/* ---------- оговорки ---------- */
+(function(){
+  var cv = M.caveats || [];
+  if(cv.length){
+    el('caveats').innerHTML = cv.map(function(c){
+      return '<li>' + esc(c) + '</li>';
+    }).join('');
+  } else {
+    el('caveats').innerHTML = '<li>оговорок в данных нет</li>';
+  }
+})();
+
+/* ---------- что не собралось ---------- */
+(function(){
+  if(!GAPS.length){
+    el('gapsSec').setAttribute('hidden','');
+    return;
+  }
+  el('gaps').innerHTML = GAPS.map(function(g){
+    return '<li>' + esc(g) + '</li>';
+  }).join('');
+})();
+
+})();
+</script>
+</body>
+</html>

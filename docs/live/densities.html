@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Плотности стакана</title>
+<style>
+:root { --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
+        --good:#3ddc97; --bad:#ff6b6b; }
+*{box-sizing:border-box}
+body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+       font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); }
+th { color:var(--dim); font-weight:400; position:sticky; top:0; background:var(--bg); }
+td.num { text-align:right; white-space:nowrap; }
+.sub { color:var(--dim); font-size:11px; }
+.caveat { margin-top:18px; padding:10px 12px; border-left:3px solid var(--line);
+          background:#161922; color:var(--dim); }
+/* --- надстройка над общим домом страницы --- */
+.page{max-width:1600px;margin:0 auto}
+h1{font-size:20px;font-weight:600;margin:0 0 6px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);
+   font-weight:400;margin:26px 0 8px}
+p.sub{margin:0 0 4px}
+.thin{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);
+      border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th.num{text-align:right}
+th.sortable{cursor:pointer;-webkit-user-select:none;user-select:none}
+th.sorted{color:var(--fg)}
+th.sorted.desc::after{content:' ↓'}
+th.sorted.asc::after{content:' ↑'}
+tbody tr:hover td{background:#171a22}
+tbody tr:last-child td{border-bottom:none}
+td.sym{font-weight:600;white-space:nowrap}
+td.num{font-variant-numeric:tabular-nums}
+.dim{color:var(--dim)}
+.good{color:var(--good)}
+.bad{color:var(--bad)}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;
+     padding:0 5px;font-size:11px}
+.tag.bid{color:var(--good)}
+.tag.ask{color:var(--bad)}
+.controls{margin:14px 0 0;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.ctl{color:var(--dim);font-size:12px}
+.ctl select{margin-left:4px}
+select{background:#1a1f2b;color:var(--fg);border:1px solid var(--line);
+       border-radius:6px;padding:4px 7px;font:inherit;font-size:12px}
+.caveat ol{margin:0;padding-left:20px}
+.caveat li{margin:4px 0}
+p.note2{margin:8px 0 0}
+@media (max-width:700px){
+  body{padding:14px}
+  h1{font-size:17px}
+  th,td{padding:6px 7px;font-size:12px}
+  h2{margin:20px 0 6px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Плотности стакана</h1>
+<p class="sub" id="meta"></p>
+
+<div class="controls">
+  <label class="ctl">Монета<select id="fCoin"></select></label>
+  <label class="ctl">Сторона<select id="fSide">
+    <option value="all">все</option>
+    <option value="bid">бид</option>
+    <option value="ask">аск</option>
+  </select></label>
+</div>
+
+<h2>Плотности</h2>
+<div class="thin">
+  <table id="tbl">
+    <thead><tr id="thr"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+<p class="sub" id="tblNote"></p>
+<p class="sub note2" id="legend"></p>
+
+<h2>Сводка по монетам</h2>
+<div class="thin">
+  <table id="sum">
+    <thead><tr>
+      <th>Монета</th>
+      <th class="num">Цена</th>
+      <th class="num">Спред, б.п.</th>
+      <th class="num">Стакан до ±, %</th>
+      <th class="num">Плотностей в коридоре</th>
+      <th class="num">Показано</th>
+      <th class="num">Ближайшая, %</th>
+      <th class="num">Номинал плотностей бид / аск, млн</th>
+      <th class="num">Дисбаланс</th>
+    </tr></thead>
+    <tbody id="sumBody"></tbody>
+  </table>
+</div>
+<p class="sub" id="sumNote"></p>
+
+<h2>Оговорки</h2>
+<div class="caveat" id="caveatBox"><ol id="caveats"></ol></div>
+
+<section id="gapsSec">
+  <h2>Что не собралось</h2>
+  <div class="caveat"><ol id="gaps"></ol></div>
+</section>
+
+<p class="sub" style="margin-top:22px">Числа вшиты в файл на момент сбора и не
+пересчитываются: страница в сеть не ходит и ничего не досчитывает.</p>
+
+</div>
+
+<script id="data" type="application/json">{"meta": {"collected_at": "2026-09-30 12:56", "market": "Binance USDT-M перпетуал (fapi.binance.com)", "exchange": "binance_futures", "symbols": 8, "seconds": 7.6, "depth": 1000, "max_rows": 12, "outlier_k": 6.0, "min_notional": 50000, "min_distance_pct": 0.1, "max_distance_pct": 3.0, "touch_tfs": ["5m", "1h"], "touch_candles": 1000, "coins_with_densities": 8, "densities_total": 1474, "shown_total": 96, "caveats": ["Плотность — снимок стакана на момент сбора, а не наблюдение за заявкой: в базе хранятся только суммарные полосы, сырых уровней нет, поэтому ни времени жизни, ни признаков спуфинга здесь быть не может. Одна плотность — одна строка.", "Порог плотности задан относительно самого стакана: уровень считается крупным, если он больше медианного в 6 раз, и его номинал не меньше 50 тыс. USDT. Медиана берётся по первым 1000 уровням каждой стороны — это всё, что отдаёт биржа.", "Коридор поиска — от 0.1 % до 3 % от середины. Ближе 0.1 % уровень не считается плотностью: у лучшей цены скапливается весь поток, и как уровень для отскока он бесполезен.", "Показаны 12 крупнейших по номиналу плотностей каждой монеты из всех найденных в коридоре (всего их 1474 на 8 монетах). Крупнейшая — не значит ближайшая: расстояние до каждой стоит в таблице, ближайшая вынесена в сводку по монете.", "Касание — свеча, чей диапазон накрыл цену плотности; подряд идущие свечи считаются одним касанием. Касания посчитаны по 1000 закрытым свечам с биржи (5m, 1h), последняя, ещё формирующаяся, отброшена. Цена плотности — сегодняшняя, поэтому «касания» означают «сколько раз цена была на этой цене за это окно», а не «сколько раз отскакивала от этой заявки»: сама заявка могла появиться час назад.", "Время поедания — оценка Digash: размер заявки ÷ (средний объём за 2 часа × 2). Считается по последним 24 свечам 5m. Это порядок величины, а не срок.", "Стакан отдаётся биржей не на всю глубину: у BTCUSDT, ETHUSDT последний уровень лежит ближе 0.5 % от середины, поэтому дальше этого расстояния плотностей не видно не потому, что их нет, а потому, что их не отдали."]}, "coins": [{"symbol": "ADAUSDT", "mid": 0.24745, "spread_bps": 4.041220448575024, "imbalance": 0.11465955846891349, "reach_pct": 41.9276621539705, "median_level": 2329.5, "threshold_size": 13977.0, "n_densities": 123, "n_shown": 12, "nearest_pct": 0.10103051121438683, "nearest_notional": 132123.7032, "corridor_pct": 3.0, "price_digits": 5, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 9057353.2952, "wall_notional_ask": 7999734.4022, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 62315536.0, "densities": [{"side": "ask", "price": 0.25, "distance_pct": 1.0305112143867434, "size": 2175578.0, "notional": 543894.5, "k_median": 933.9248765829577, "absorb_seconds": 62.842120141596794, "absorb_text": "63 с", "touches": {"5m": {"n": 19, "last_msk": "2026-09-29 18:10"}, "1h": {"n": 21, "last_msk": "2026-09-29 18:00"}}}, {"side": "bid", "price": 0.2458, "distance_pct": -0.6668013740149575, "size": 1696452.0, "notional": 416987.9016, "k_median": 728.2472633612363, "absorb_seconds": 49.00244459102462, "absorb_text": "49 с", "touches": {"5m": {"n": 36, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 18, "last_msk": "2026-09-30 09:00"}}}, {"side": "bid", "price": 0.245, "distance_pct": -0.9900990099009932, "size": 1482604.0, "notional": 363237.98, "k_median": 636.4473062889032, "absorb_seconds": 42.82539108706374, "absorb_text": "43 с", "touches": {"5m": {"n": 48, "last_msk": "2026-09-30 12:00"}, "1h": {"n": 17, "last_msk": "2026-09-30 11:00"}}}, {"side": "bid", "price": 0.2424, "distance_pct": -2.040816326530612, "size": 1431503.0, "notional": 346996.3272, "k_median": 614.5108392358875, "absorb_seconds": 41.349325792527885, "absorb_text": "41 с", "touches": {"5m": {"n": 27, "last_msk": "2026-09-30 10:15"}, "1h": {"n": 16, "last_msk": "2026-09-30 10:00"}}}, {"side": "bid", "price": 0.2443, "distance_pct": -1.2729844413012785, "size": 1364385.0, "notional": 333319.25549999997, "k_median": 585.6986477784932, "absorb_seconds": 39.410605406651726, "absorb_text": "39 с", "touches": {"5m": {"n": 52, "last_msk": "2026-09-30 11:45"}, "1h": {"n": 18, "last_msk": "2026-09-30 11:00"}}}, {"side": "bid", "price": 0.2464, "distance_pct": -0.42432814710042244, "size": 1347235.0, "notional": 331958.704, "k_median": 578.3365529083494, "absorb_seconds": 38.91522332408406, "absorb_text": "39 с", "touches": {"5m": {"n": 29, "last_msk": "2026-09-30 12:25"}, "1h": {"n": 24, "last_msk": "2026-09-30 09:00"}}}, {"side": "ask", "price": 0.2485, "distance_pct": 0.42432814710042244, "size": 1294715.0, "notional": 321736.6775, "k_median": 555.790942262288, "absorb_seconds": 37.39816985606927, "absorb_text": "37 с", "touches": {"5m": {"n": 21, "last_msk": "2026-09-30 12:40"}, "1h": {"n": 20, "last_msk": "2026-09-29 18:00"}}}, {"side": "ask", "price": 0.2491, "distance_pct": 0.6668013740149464, "size": 1192370.0, "notional": 297019.36699999997, "k_median": 511.8566215926164, "absorb_seconds": 34.44190867587178, "absorb_text": "34 с", "touches": {"5m": {"n": 20, "last_msk": "2026-09-30 12:35"}, "1h": {"n": 21, "last_msk": "2026-09-29 18:00"}}}, {"side": "ask", "price": 0.253, "distance_pct": 2.2428773489593854, "size": 1141005.0, "notional": 288674.265, "k_median": 489.8068254990341, "absorb_seconds": 32.958217674642164, "absorb_text": "33 с", "touches": {"5m": {"n": 34, "last_msk": "2026-09-29 17:55"}, "1h": {"n": 18, "last_msk": "2026-09-29 17:00"}}}, {"side": "bid", "price": 0.2427, "distance_pct": -1.9195797130733498, "size": 1127015.0, "notional": 273526.5405, "k_median": 483.80124490233953, "absorb_seconds": 32.55411299037852, "absorb_text": "33 с", "touches": {"5m": {"n": 29, "last_msk": "2026-09-30 10:15"}, "1h": {"n": 19, "last_msk": "2026-09-30 10:00"}}}, {"side": "ask", "price": 0.2529, "distance_pct": 2.202465144473635, "size": 1019853.0, "notional": 257920.8237, "k_median": 437.7990985189955, "absorb_seconds": 29.45871154827265, "absorb_text": "29 с", "touches": {"5m": {"n": 35, "last_msk": "2026-09-29 17:55"}, "1h": {"n": 17, "last_msk": "2026-09-29 17:00"}}}, {"side": "ask", "price": 0.2524, "distance_pct": 2.0004041220448614, "size": 1002881.0, "notional": 253127.1644, "k_median": 430.5134148959004, "absorb_seconds": 28.968471040672743, "absorb_text": "29 с", "touches": {"5m": {"n": 33, "last_msk": "2026-09-29 17:55"}, "1h": {"n": 16, "last_msk": "2026-09-29 17:00"}}}]}, {"symbol": "AVAXUSDT", "mid": 11.163499999999999, "spread_bps": 0.8957764142065175, "imbalance": -0.06340174761227393, "reach_pct": 11.927262955166393, "median_level": 133.5, "threshold_size": 801.0, "n_densities": 57, "n_shown": 12, "nearest_pct": 0.17467640077035843, "nearest_notional": 84694.4, "corridor_pct": 3.0, "price_digits": 4, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 2558206.391, "wall_notional_ask": 2267950.151, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 1844961.0, "densities": [{"side": "ask", "price": 11.293, "distance_pct": 1.1600304563980848, "size": 17232.0, "notional": 194600.976, "k_median": 129.07865168539325, "absorb_seconds": 16.812062694008166, "absorb_text": "17 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-30 09:00"}, "1h": {"n": 14, "last_msk": "2026-09-30 09:00"}}}, {"side": "bid", "price": 11.033, "distance_pct": -1.1689882205401498, "size": 16686.0, "notional": 184096.63799999998, "k_median": 124.98876404494382, "absorb_seconds": 16.27936850697657, "absorb_text": "16 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 11:40"}, "1h": {"n": 20, "last_msk": "2026-09-30 11:00"}}}, {"side": "bid", "price": 11.075, "distance_pct": -0.7927621265732055, "size": 15603.0, "notional": 172803.22499999998, "k_median": 116.87640449438203, "absorb_seconds": 15.222760806325988, "absorb_text": "15 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-30 11:50"}, "1h": {"n": 19, "last_msk": "2026-09-30 11:00"}}}, {"side": "ask", "price": 11.258, "distance_pct": 0.8465087114256284, "size": 15271.0, "notional": 171920.91799999998, "k_median": 114.38951310861424, "absorb_seconds": 14.898851520438646, "absorb_text": "15 с", "touches": {"5m": {"n": 12, "last_msk": "2026-09-30 09:05"}, "1h": {"n": 16, "last_msk": "2026-09-30 09:00"}}}, {"side": "ask", "price": 11.211, "distance_pct": 0.4254937967483424, "size": 13933.0, "notional": 156202.863, "k_median": 104.36704119850187, "absorb_seconds": 13.59345807309748, "absorb_text": "14 с", "touches": {"5m": {"n": 15, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 18, "last_msk": "2026-09-30 09:00"}}}, {"side": "bid", "price": 11.107, "distance_pct": -0.5061136740269608, "size": 13428.0, "notional": 149144.796, "k_median": 100.58426966292134, "absorb_seconds": 13.100764731612214, "absorb_text": "13 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 12:00"}, "1h": {"n": 17, "last_msk": "2026-09-30 11:00"}}}, {"side": "bid", "price": 11.108, "distance_pct": -0.4971559098848798, "size": 13394.0, "notional": 148780.552, "k_median": 100.32958801498127, "absorb_seconds": 13.067593298720135, "absorb_text": "13 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 12:00"}, "1h": {"n": 17, "last_msk": "2026-09-30 11:00"}}}, {"side": "ask", "price": 11.208, "distance_pct": 0.3986205043221311, "size": 11568.0, "notional": 129654.144, "k_median": 86.65168539325843, "absorb_seconds": 11.286092226339743, "absorb_text": "11 с", "touches": {"5m": {"n": 14, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 18, "last_msk": "2026-09-30 09:00"}}}, {"side": "ask", "price": 11.254, "distance_pct": 0.810677654857352, "size": 10652.0, "notional": 119877.608, "k_median": 79.79026217228464, "absorb_seconds": 10.392414799012013, "absorb_text": "10 с", "touches": {"5m": {"n": 13, "last_msk": "2026-09-30 09:05"}, "1h": {"n": 16, "last_msk": "2026-09-30 09:00"}}}, {"side": "bid", "price": 11.05, "distance_pct": -1.0167062301249463, "size": 10121.0, "notional": 111837.05, "k_median": 75.812734082397, "absorb_seconds": 9.874355067668096, "absorb_text": "10 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-30 11:45"}, "1h": {"n": 20, "last_msk": "2026-09-30 11:00"}}}, {"side": "bid", "price": 11.143, "distance_pct": -0.18363416491242363, "size": 9521.0, "notional": 106092.50300000001, "k_median": 71.31835205992509, "absorb_seconds": 9.28897684016085, "absorb_text": "9 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 12:50"}, "1h": {"n": 15, "last_msk": "2026-09-30 10:00"}}}, {"side": "ask", "price": 11.356, "distance_pct": 1.7243695973485091, "size": 9037.0, "notional": 102624.172, "k_median": 67.69288389513109, "absorb_seconds": 8.816771736638335, "absorb_text": "9 с", "touches": {"5m": {"n": 12, "last_msk": "2026-09-30 06:10"}, "1h": {"n": 12, "last_msk": "2026-09-30 06:00"}}}]}, {"symbol": "BNBUSDT", "mid": 764.805, "spread_bps": 0.13075228326162755, "imbalance": -0.49714539105371097, "reach_pct": 1.373552735664646, "median_level": 1.8050000000000002, "threshold_size": 10.830000000000002, "n_densities": 51, "n_shown": 12, "nearest_pct": 0.10394806519308308, "nearest_notional": 85278.7962, "corridor_pct": 3.0, "price_digits": 3, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 3119617.2331, "wall_notional_ask": 3493573.2253, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 29496.46, "densities": [{"side": "ask", "price": 773.5, "distance_pct": 1.136891102960892, "size": 537.04, "notional": 415400.43999999994, "k_median": 297.5290858725761, "absorb_seconds": 32.77247506988974, "absorb_text": "33 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-28 20:15"}, "1h": {"n": 21, "last_msk": "2026-09-28 20:00"}}}, {"side": "ask", "price": 770.0, "distance_pct": 0.6792581115447794, "size": 460.64, "notional": 354692.8, "k_median": 255.20221606648195, "absorb_seconds": 28.110220684109212, "absorb_text": "28 с", "touches": {"5m": {"n": 12, "last_msk": "2026-09-28 22:00"}, "1h": {"n": 15, "last_msk": "2026-09-28 22:00"}}}, {"side": "bid", "price": 755.0, "distance_pct": -1.2820261373814175, "size": 357.43, "notional": 269859.65, "k_median": 198.02216066481992, "absorb_seconds": 21.811905564260933, "absorb_text": "22 с", "touches": {"5m": {"n": 8, "last_msk": "2026-09-29 23:00"}, "1h": {"n": 17, "last_msk": "2026-09-29 23:00"}}}, {"side": "ask", "price": 771.47, "distance_pct": 0.8714639679395503, "size": 275.18, "notional": 212293.1146, "k_median": 152.45429362880884, "absorb_seconds": 16.79265918689904, "absorb_text": "17 с", "touches": {"5m": {"n": 9, "last_msk": "2026-09-28 20:20"}, "1h": {"n": 19, "last_msk": "2026-09-28 20:00"}}}, {"side": "ask", "price": 769.9, "distance_pct": 0.6661828832186018, "size": 258.84, "notional": 199280.91599999997, "k_median": 143.40166204986147, "absorb_seconds": 15.795522581353831, "absorb_text": "16 с", "touches": {"5m": {"n": 11, "last_msk": "2026-09-28 22:00"}, "1h": {"n": 15, "last_msk": "2026-09-28 22:00"}}}, {"side": "ask", "price": 768.0, "distance_pct": 0.4177535450212865, "size": 254.68, "notional": 195594.24, "k_median": 141.09695290858724, "absorb_seconds": 15.541661609562638, "absorb_text": "16 с", "touches": {"5m": {"n": 14, "last_msk": "2026-09-29 11:20"}, "1h": {"n": 19, "last_msk": "2026-09-29 11:00"}}}, {"side": "ask", "price": 770.15, "distance_pct": 0.6988709540340384, "size": 240.03, "notional": 184859.1045, "k_median": 132.98060941828254, "absorb_seconds": 14.647656023807603, "absorb_text": "15 с", "touches": {"5m": {"n": 11, "last_msk": "2026-09-28 22:00"}, "1h": {"n": 16, "last_msk": "2026-09-28 22:00"}}}, {"side": "bid", "price": 762.83, "distance_pct": -0.2582357594419374, "size": 230.48, "notional": 175817.0584, "k_median": 127.68975069252076, "absorb_seconds": 14.064874225585037, "absorb_text": "14 с", "touches": {"5m": {"n": 33, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 19, "last_msk": "2026-09-30 09:00"}}}, {"side": "bid", "price": 759.79, "distance_pct": -0.6557227005576568, "size": 229.98, "notional": 174736.5042, "k_median": 127.41274238227145, "absorb_seconds": 14.03436208955244, "absorb_text": "14 с", "touches": {"5m": {"n": 34, "last_msk": "2026-09-30 11:50"}, "1h": {"n": 22, "last_msk": "2026-09-30 11:00"}}}, {"side": "ask", "price": 772.39, "distance_pct": 0.9917560685403517, "size": 219.77, "notional": 169748.1503, "k_median": 121.75623268698061, "absorb_seconds": 13.41130427176685, "absorb_text": "13 с", "touches": {"5m": {"n": 15, "last_msk": "2026-09-28 20:15"}, "1h": {"n": 23, "last_msk": "2026-09-28 20:00"}}}, {"side": "ask", "price": 768.28, "distance_pct": 0.454364184334572, "size": 218.31, "notional": 167723.20679999999, "k_median": 120.94736842105262, "absorb_seconds": 13.322208834551672, "absorb_text": "13 с", "touches": {"5m": {"n": 15, "last_msk": "2026-09-29 11:20"}, "1h": {"n": 21, "last_msk": "2026-09-29 11:00"}}}, {"side": "bid", "price": 759.94, "distance_pct": -0.6361098580683829, "size": 219.87, "notional": 167088.00780000002, "k_median": 121.81163434903046, "absorb_seconds": 13.41740669897337, "absorb_text": "13 с", "touches": {"5m": {"n": 33, "last_msk": "2026-09-30 11:50"}, "1h": {"n": 22, "last_msk": "2026-09-30 11:00"}}}]}, {"symbol": "BTCUSDT", "mid": 83573.55, "spread_bps": 0.011965508226684251, "imbalance": -0.10334368455261067, "reach_pct": 0.15860281153547134, "median_level": 0.0235, "threshold_size": 0.14100000000000001, "n_densities": 126, "n_shown": 12, "nearest_pct": 0.10021113139264755, "nearest_notional": 63368.758200000004, "corridor_pct": 3.0, "price_digits": 2, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 16833434.166699998, "wall_notional_ask": 12753534.3074, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 12118.366, "densities": [{"side": "bid", "price": 83482.1, "distance_pct": -0.10942457272665465, "size": 25.136, "notional": 2098406.0656, "k_median": 1069.6170212765958, "absorb_seconds": 3.73357266152879, "absorb_text": "4 с", "touches": {"5m": {"n": 40, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 14, "last_msk": "2026-09-30 08:00"}}}, {"side": "ask", "price": 83700.0, "distance_pct": 0.15130385151761183, "size": 15.586, "notional": 1304548.2, "k_median": 663.2340425531916, "absorb_seconds": 2.3150645887407593, "absorb_text": "2 с", "touches": {"5m": {"n": 14, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 14, "last_msk": "2026-09-30 02:00"}}}, {"side": "bid", "price": 83467.7, "distance_pct": -0.12665490457208747, "size": 13.004, "notional": 1085413.9708, "k_median": 553.3617021276596, "absorb_seconds": 1.93154753701943, "absorb_text": "2 с", "touches": {"5m": {"n": 43, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83473.6, "distance_pct": -0.11959525471874426, "size": 9.876, "notional": 824385.2736, "k_median": 420.25531914893617, "absorb_seconds": 1.4669304426025753, "absorb_text": "1 с", "touches": {"5m": {"n": 44, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 14, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83482.4, "distance_pct": -0.10906560747988894, "size": 9.582, "notional": 799928.3568, "k_median": 407.74468085106383, "absorb_seconds": 1.4232611888434465, "absorb_text": "1 с", "touches": {"5m": {"n": 40, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 14, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83455.9, "distance_pct": -0.14077420427875653, "size": 8.375, "notional": 698943.1625, "k_median": 356.3829787234043, "absorb_seconds": 1.243979592628247, "absorb_text": "1 с", "touches": {"5m": {"n": 42, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-30 08:00"}}}, {"side": "ask", "price": 83695.6, "distance_pct": 0.14603902789818418, "size": 8.336, "notional": 697686.5216000001, "k_median": 354.72340425531917, "absorb_seconds": 1.2381867324357096, "absorb_text": "1 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-30 12:35"}, "1h": {"n": 14, "last_msk": "2026-09-30 03:00"}}}, {"side": "bid", "price": 83477.4, "distance_pct": -0.11504836159288283, "size": 7.713, "notional": 643861.1862, "k_median": 328.21276595744683, "absorb_seconds": 1.145649504231841, "absorb_text": "1 с", "touches": {"5m": {"n": 41, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 14, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83460.3, "distance_pct": -0.13550938065931148, "size": 6.952, "notional": 580216.0056, "k_median": 295.82978723404256, "absorb_seconds": 1.0326144630389937, "absorb_text": "1 с", "touches": {"5m": {"n": 44, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83460.7, "distance_pct": -0.13503076033027892, "size": 6.764, "notional": 564528.1748, "k_median": 287.82978723404256, "absorb_seconds": 1.0046899062134287, "absorb_text": "1 с", "touches": {"5m": {"n": 43, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-30 08:00"}}}, {"side": "bid", "price": 83456.7, "distance_pct": -0.13981696362067403, "size": 6.631, "notional": 553401.3777, "k_median": 282.17021276595744, "absorb_seconds": 0.9849347676081083, "absorb_text": "менее 1 с", "touches": {"5m": {"n": 42, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-30 08:00"}}}, {"side": "ask", "price": 83676.4, "distance_pct": 0.12306525210427374, "size": 6.462, "notional": 540716.8968, "k_median": 274.97872340425533, "absorb_seconds": 0.9598323734404456, "absorb_text": "менее 1 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-30 12:35"}, "1h": {"n": 14, "last_msk": "2026-09-30 03:00"}}}]}, {"symbol": "DOGEUSDT", "mid": 0.094275, "spread_bps": 1.0607265977190266, "imbalance": 0.04773956020423469, "reach_pct": 10.623176876160166, "median_level": 36774.0, "threshold_size": 220644.0, "n_densities": 257, "n_shown": 12, "nearest_pct": 0.1113762927605346, "nearest_notional": 81217.10484, "corridor_pct": 3.0, "price_digits": 6, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 19898729.12853, "wall_notional_ask": 16454746.58979, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 336326544.0, "densities": [{"side": "bid", "price": 0.0928, "distance_pct": -1.5645717316361754, "size": 12301830.0, "notional": 1141609.824, "k_median": 334.52520802741066, "absorb_seconds": 65.8386749277809, "absorb_text": "66 с", "touches": {"5m": {"n": 29, "last_msk": "2026-09-29 20:50"}, "1h": {"n": 29, "last_msk": "2026-09-29 20:00"}}}, {"side": "bid", "price": 0.0915, "distance_pct": -2.9435163086714398, "size": 7094250.0, "notional": 649123.875, "k_median": 192.91483113069017, "absorb_seconds": 37.968011231370426, "absorb_text": "38 с", "touches": {"5m": {"n": 1, "last_msk": "2026-09-28 17:50"}, "1h": {"n": 24, "last_msk": "2026-09-28 17:00"}}}, {"side": "ask", "price": 0.09601, "distance_pct": 1.8403606470432252, "size": 4614750.0, "notional": 443062.14749999996, "k_median": 125.48947626040137, "absorb_seconds": 24.697872196492465, "absorb_text": "25 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-29 17:45"}, "1h": {"n": 13, "last_msk": "2026-09-29 17:00"}}}, {"side": "ask", "price": 0.09597, "distance_pct": 1.7979315831344493, "size": 4521596.0, "notional": 433937.56812, "k_median": 122.95632784032196, "absorb_seconds": 24.19931743478445, "absorb_text": "24 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-29 17:45"}, "1h": {"n": 14, "last_msk": "2026-09-29 17:00"}}}, {"side": "ask", "price": 0.096, "distance_pct": 1.829753381066035, "size": 4144974.0, "notional": 397917.504, "k_median": 112.71479849893947, "absorb_seconds": 22.183658510165053, "absorb_text": "22 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-29 17:45"}, "1h": {"n": 13, "last_msk": "2026-09-29 17:00"}}}, {"side": "ask", "price": 0.09604, "distance_pct": 1.8721824449748106, "size": 4113948.0, "notional": 395103.56592, "k_median": 111.87110458476097, "absorb_seconds": 22.017609172114586, "absorb_text": "22 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-29 17:45"}, "1h": {"n": 13, "last_msk": "2026-09-29 17:00"}}}, {"side": "ask", "price": 0.09612, "distance_pct": 1.9570405727923623, "size": 3952448.0, "notional": 379909.30176, "k_median": 107.47941480393756, "absorb_seconds": 21.153270614287287, "absorb_text": "21 с", "touches": {"5m": {"n": 19, "last_msk": "2026-09-29 16:55"}, "1h": {"n": 14, "last_msk": "2026-09-29 16:00"}}}, {"side": "ask", "price": 0.0957, "distance_pct": 1.5115354017501943, "size": 3952776.0, "notional": 378280.66319999995, "k_median": 107.4883341491271, "absorb_seconds": 21.155026051110614, "absorb_text": "21 с", "touches": {"5m": {"n": 13, "last_msk": "2026-09-29 17:55"}, "1h": {"n": 14, "last_msk": "2026-09-29 17:00"}}}, {"side": "bid", "price": 0.0926, "distance_pct": -1.776717051180054, "size": 3871821.0, "notional": 358530.6246, "k_median": 105.28691466797194, "absorb_seconds": 20.721759624182383, "absorb_text": "21 с", "touches": {"5m": {"n": 18, "last_msk": "2026-09-29 08:35"}, "1h": {"n": 28, "last_msk": "2026-09-29 08:00"}}}, {"side": "ask", "price": 0.09512, "distance_pct": 0.8963139750729234, "size": 3760050.0, "notional": 357655.956, "k_median": 102.24751182900962, "absorb_seconds": 20.123567766925945, "absorb_text": "20 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-29 18:10"}, "1h": {"n": 13, "last_msk": "2026-09-29 18:00"}}}, {"side": "ask", "price": 0.09647, "distance_pct": 2.328294881994169, "size": 3677042.0, "notional": 354724.24174, "k_median": 99.99026486104313, "absorb_seconds": 19.679313804027316, "absorb_text": "20 с", "touches": {"5m": {"n": 23, "last_msk": "2026-09-28 04:40"}, "1h": {"n": 12, "last_msk": "2026-09-28 04:00"}}}, {"side": "ask", "price": 0.0962, "distance_pct": 2.041898700609914, "size": 3599561.0, "notional": 346277.7682, "k_median": 97.88331429814544, "absorb_seconds": 19.264640021990058, "absorb_text": "19 с", "touches": {"5m": {"n": 20, "last_msk": "2026-09-29 16:55"}, "1h": {"n": 14, "last_msk": "2026-09-29 16:00"}}}]}, {"symbol": "ETHUSDT", "mid": 2688.605, "spread_bps": 0.03719400953363651, "imbalance": 0.8434883440028988, "reach_pct": 0.41452723624333, "median_level": 1.815, "threshold_size": 10.89, "n_densities": 331, "n_shown": 12, "nearest_pct": 0.10060979578628795, "nearest_notional": 75066.01852, "corridor_pct": 3.0, "price_digits": 3, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 39714739.17962, "wall_notional_ask": 46078125.81136, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 255190.88, "densities": [{"side": "ask", "price": 2698.0, "distance_pct": 0.3494377195608868, "size": 955.21, "notional": 2577156.58, "k_median": 526.2865013774106, "absorb_seconds": 6.737615388136128, "absorb_text": "7 с", "touches": {"5m": {"n": 21, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 21, "last_msk": "2026-09-29 22:00"}}}, {"side": "ask", "price": 2695.0, "distance_pct": 0.2378556909624129, "size": 879.004, "notional": 2368915.7800000003, "k_median": 484.2997245179064, "absorb_seconds": 6.2000930440774376, "absorb_text": "6 с", "touches": {"5m": {"n": 31, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 28, "last_msk": "2026-09-29 22:00"}}}, {"side": "ask", "price": 2694.03, "distance_pct": 0.20177750171558045, "size": 800.467, "notional": 2156482.1120100003, "k_median": 441.02865013774107, "absorb_seconds": 5.6461288898725535, "absorb_text": "6 с", "touches": {"5m": {"n": 30, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 29, "last_msk": "2026-09-29 22:00"}}}, {"side": "bid", "price": 2682.5, "distance_pct": -0.22706942819789513, "size": 512.93, "notional": 1375934.7249999999, "k_median": 282.60606060606057, "absorb_seconds": 3.617974121959217, "absorb_text": "4 с", "touches": {"5m": {"n": 39, "last_msk": "2026-09-30 12:25"}, "1h": {"n": 26, "last_msk": "2026-09-30 02:00"}}}, {"side": "ask", "price": 2697.83, "distance_pct": 0.34311473794030395, "size": 500.0, "notional": 1348915.0, "k_median": 275.4820936639118, "absorb_seconds": 3.5267718031302686, "absorb_text": "4 с", "touches": {"5m": {"n": 23, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 23, "last_msk": "2026-09-29 22:00"}}}, {"side": "bid", "price": 2681.86, "distance_pct": -0.25087359429889816, "size": 500.34, "notional": 1341841.8324, "k_median": 275.6694214876033, "absorb_seconds": 3.529170007956397, "absorb_text": "4 с", "touches": {"5m": {"n": 39, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 25, "last_msk": "2026-09-30 02:00"}}}, {"side": "bid", "price": 2680.01, "distance_pct": -0.3196825119346204, "size": 425.392, "notional": 1140054.81392, "k_median": 234.37575757575758, "absorb_seconds": 3.0005210217543823, "absorb_text": "3 с", "touches": {"5m": {"n": 34, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 24, "last_msk": "2026-09-30 02:00"}}}, {"side": "ask", "price": 2698.93, "distance_pct": 0.3840281484264077, "size": 413.601, "notional": 1116280.1469299998, "k_median": 227.87933884297522, "absorb_seconds": 2.917352689092964, "absorb_text": "3 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-29 18:00"}}}, {"side": "bid", "price": 2685.52, "distance_pct": -0.11474351940876537, "size": 415.465, "notional": 1115739.5668, "k_median": 228.90633608815426, "absorb_seconds": 2.9305004943750337, "absorb_text": "3 с", "touches": {"5m": {"n": 41, "last_msk": "2026-09-30 12:40"}, "1h": {"n": 27, "last_msk": "2026-09-30 02:00"}}}, {"side": "bid", "price": 2681.76, "distance_pct": -0.25459299525217727, "size": 401.948, "notional": 1077928.0684800001, "k_median": 221.45895316804408, "absorb_seconds": 2.83515774544921, "absorb_text": "3 с", "touches": {"5m": {"n": 39, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 25, "last_msk": "2026-09-30 02:00"}}}, {"side": "bid", "price": 2678.22, "distance_pct": -0.38625978899839203, "size": 397.74, "notional": 1065235.2227999999, "k_median": 219.1404958677686, "absorb_seconds": 2.805476433954066, "absorb_text": "3 с", "touches": {"5m": {"n": 39, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 24, "last_msk": "2026-09-30 08:00"}}}, {"side": "ask", "price": 2699.0, "distance_pct": 0.38663172909371146, "size": 386.252, "notional": 1042494.148, "k_median": 212.81101928374656, "absorb_seconds": 2.724445325005345, "absorb_text": "3 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 12:30"}, "1h": {"n": 15, "last_msk": "2026-09-29 18:00"}}}]}, {"symbol": "SOLUSDT", "mid": 119.305, "spread_bps": 0.8381878378949009, "imbalance": 0.09681008238252772, "reach_pct": 8.377687439755253, "median_level": 302.885, "threshold_size": 1817.31, "n_densities": 213, "n_shown": 12, "nearest_pct": 0.11315535811574612, "nearest_notional": 472555.99919999996, "corridor_pct": 3.0, "price_digits": 3, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 56867609.7257, "wall_notional_ask": 45856937.2389, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 1366374.23, "densities": [{"side": "bid", "price": 116.0, "distance_pct": -2.7702108042412363, "size": 45736.04, "notional": 5305380.64, "k_median": 151.00133714115918, "absorb_seconds": 60.250603526092554, "absorb_text": "60 с", "touches": {"5m": {"n": 0, "last_msk": null}, "1h": {"n": 8, "last_msk": "2026-09-25 10:00"}}}, {"side": "bid", "price": 115.8, "distance_pct": -2.9378483718201327, "size": 24908.7, "notional": 2884427.46, "k_median": 82.23814318965945, "absorb_seconds": 32.81360187830826, "absorb_text": "33 с", "touches": {"5m": {"n": 0, "last_msk": null}, "1h": {"n": 7, "last_msk": "2026-09-25 10:00"}}}, {"side": "ask", "price": 120.0, "distance_pct": 0.5825405473366524, "size": 19428.93, "notional": 2331471.6, "k_median": 64.14622711590208, "absorb_seconds": 25.594799164208478, "absorb_text": "26 с", "touches": {"5m": {"n": 17, "last_msk": "2026-09-30 05:05"}, "1h": {"n": 10, "last_msk": "2026-09-30 05:00"}}}, {"side": "bid", "price": 117.0, "distance_pct": -1.932022966346764, "size": 17539.45, "notional": 2052115.6500000001, "k_median": 57.907951862918274, "absorb_seconds": 23.10568313338287, "absorb_text": "23 с", "touches": {"5m": {"n": 5, "last_msk": "2026-09-29 06:15"}, "1h": {"n": 12, "last_msk": "2026-09-29 06:00"}}}, {"side": "ask", "price": 119.98, "distance_pct": 0.5657767905787663, "size": 13673.45, "notional": 1640540.5310000002, "k_median": 45.144031563134526, "absorb_seconds": 18.012788487675152, "absorb_text": "18 с", "touches": {"5m": {"n": 20, "last_msk": "2026-09-30 05:05"}, "1h": {"n": 9, "last_msk": "2026-09-30 05:00"}}}, {"side": "ask", "price": 121.9, "distance_pct": 2.175097439336154, "size": 11783.22, "notional": 1436374.518, "k_median": 38.90328012281889, "absorb_seconds": 15.522684440557693, "absorb_text": "16 с", "touches": {"5m": {"n": 19, "last_msk": "2026-09-28 04:30"}, "1h": {"n": 8, "last_msk": "2026-09-28 04:00"}}}, {"side": "ask", "price": 121.6, "distance_pct": 1.923641087967803, "size": 11695.04, "notional": 1422116.864, "k_median": 38.612146524258385, "absorb_seconds": 15.406520071737596, "absorb_text": "15 с", "touches": {"5m": {"n": 16, "last_msk": "2026-09-29 16:55"}, "1h": {"n": 12, "last_msk": "2026-09-29 16:00"}}}, {"side": "bid", "price": 117.8, "distance_pct": -1.2614726960311886, "size": 11698.63, "notional": 1378098.6139999998, "k_median": 38.62399920762005, "absorb_seconds": 15.4112493763879, "absorb_text": "15 с", "touches": {"5m": {"n": 22, "last_msk": "2026-09-30 11:35"}, "1h": {"n": 17, "last_msk": "2026-09-30 11:00"}}}, {"side": "ask", "price": 121.0, "distance_pct": 1.4207283852311245, "size": 10857.95, "notional": 1313811.9500000002, "k_median": 35.84842431946119, "absorb_seconds": 14.303775328081239, "absorb_text": "14 с", "touches": {"5m": {"n": 13, "last_msk": "2026-09-29 17:20"}, "1h": {"n": 13, "last_msk": "2026-09-29 17:00"}}}, {"side": "bid", "price": 117.07, "distance_pct": -1.8733498176941568, "size": 11065.17, "notional": 1295399.4519, "k_median": 36.53257837132905, "absorb_seconds": 14.576757642743306, "absorb_text": "15 с", "touches": {"5m": {"n": 6, "last_msk": "2026-09-29 08:35"}, "1h": {"n": 11, "last_msk": "2026-09-29 08:00"}}}, {"side": "bid", "price": 116.15, "distance_pct": -2.64448262855706, "size": 10515.98, "notional": 1221431.077, "k_median": 34.71938194364198, "absorb_seconds": 13.853279419650647, "absorb_text": "14 с", "touches": {"5m": {"n": 0, "last_msk": null}, "1h": {"n": 9, "last_msk": "2026-09-25 10:00"}}}, {"side": "bid", "price": 118.92, "distance_pct": -0.32270231758937606, "size": 9721.82, "notional": 1156118.8344, "k_median": 32.09739670171847, "absorb_seconds": 12.807088728539618, "absorb_text": "13 с", "touches": {"5m": {"n": 44, "last_msk": "2026-09-30 12:25"}, "1h": {"n": 17, "last_msk": "2026-09-30 09:00"}}}]}, {"symbol": "XRPUSDT", "mid": 1.50995, "spread_bps": 0.6622735852179806, "imbalance": 0.04390997297174905, "reach_pct": 6.6260472201066385, "median_level": 5957.0, "threshold_size": 35742.0, "n_densities": 316, "n_shown": 12, "nearest_pct": 0.10265240570879436, "nearest_notional": 206167.81032, "corridor_pct": 3.0, "price_digits": 5, "touch_windows": {"5m": 83.2, "1h": 999.0}, "wall_notional_bid": 24466850.0465, "wall_notional_ask": 19081659.86656, "candles": {"5m": 999, "1h": 999}, "avg_volume_2h": 63522693.7, "densities": [{"side": "bid", "price": 1.5023, "distance_pct": -0.5066392926918067, "size": 436283.0, "notional": 655427.9508999999, "k_median": 73.23871076044989, "absorb_seconds": 12.362658984658264, "absorb_text": "12 с", "touches": {"5m": {"n": 28, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 33, "last_msk": "2026-09-30 10:00"}}}, {"side": "bid", "price": 1.47, "distance_pct": -2.6457829729461193, "size": 438335.6, "notional": 644353.3319999999, "k_median": 73.58328017458452, "absorb_seconds": 12.42082213525526, "absorb_text": "12 с", "touches": {"5m": {"n": 7, "last_msk": "2026-09-29 05:35"}, "1h": {"n": 27, "last_msk": "2026-09-29 05:00"}}}, {"side": "bid", "price": 1.5044, "distance_pct": -0.36756183979601603, "size": 419884.5, "notional": 631674.2418, "k_median": 70.48589894242068, "absorb_seconds": 11.897985680037367, "absorb_text": "12 с", "touches": {"5m": {"n": 29, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 32, "last_msk": "2026-09-30 09:00"}}}, {"side": "ask", "price": 1.5187, "distance_pct": 0.5794893870657992, "size": 410681.0, "notional": 623701.2347, "k_median": 68.94090985395333, "absorb_seconds": 11.637192268501044, "absorb_text": "12 с", "touches": {"5m": {"n": 38, "last_msk": "2026-09-29 19:25"}, "1h": {"n": 30, "last_msk": "2026-09-29 19:00"}}}, {"side": "bid", "price": 1.48, "distance_pct": -1.9835093877280652, "size": 417215.3, "notional": 617478.644, "k_median": 70.03782105086452, "absorb_seconds": 11.822350348470817, "absorb_text": "12 с", "touches": {"5m": {"n": 27, "last_msk": "2026-09-29 20:55"}, "1h": {"n": 31, "last_msk": "2026-09-29 20:00"}}}, {"side": "ask", "price": 1.5171, "distance_pct": 0.4735256134309076, "size": 351695.0, "notional": 533556.4845, "k_median": 59.03894577807621, "absorb_seconds": 9.96574551749527, "absorb_text": "10 с", "touches": {"5m": {"n": 33, "last_msk": "2026-09-29 19:25"}, "1h": {"n": 26, "last_msk": "2026-09-29 19:00"}}}, {"side": "bid", "price": 1.5028, "distance_pct": -0.4735256134309076, "size": 339172.8, "notional": 509708.88383999997, "k_median": 56.936847406412625, "absorb_seconds": 9.610912328171624, "absorb_text": "10 с", "touches": {"5m": {"n": 30, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 35, "last_msk": "2026-09-30 10:00"}}}, {"side": "ask", "price": 1.5194, "distance_pct": 0.6258485380310725, "size": 322752.0, "notional": 490389.3888, "k_median": 54.180292093335574, "absorb_seconds": 9.145607123395651, "absorb_text": "9 с", "touches": {"5m": {"n": 37, "last_msk": "2026-09-29 19:20"}, "1h": {"n": 29, "last_msk": "2026-09-29 19:00"}}}, {"side": "ask", "price": 1.5172, "distance_pct": 0.4801483492831021, "size": 308495.1, "notional": 468048.76572, "k_median": 51.786990095685745, "absorb_seconds": 8.741618902726097, "absorb_text": "9 с", "touches": {"5m": {"n": 34, "last_msk": "2026-09-29 19:25"}, "1h": {"n": 27, "last_msk": "2026-09-29 19:00"}}}, {"side": "ask", "price": 1.5157, "distance_pct": 0.3808073115003903, "size": 304513.9, "notional": 461551.71823000006, "k_median": 51.118667114319294, "absorb_seconds": 8.628806306430295, "absorb_text": "9 с", "touches": {"5m": {"n": 35, "last_msk": "2026-09-29 19:25"}, "1h": {"n": 25, "last_msk": "2026-09-29 19:00"}}}, {"side": "bid", "price": 1.5016, "distance_pct": -0.5529984436570654, "size": 306618.9, "notional": 460418.94024, "k_median": 51.47203290246769, "absorb_seconds": 8.688454280710078, "absorb_text": "9 с", "touches": {"5m": {"n": 31, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 33, "last_msk": "2026-09-30 10:00"}}}, {"side": "bid", "price": 1.503, "distance_pct": -0.460280141726548, "size": 277528.5, "notional": 417125.3355, "k_median": 46.58863521907, "absorb_seconds": 7.864139111594381, "absorb_text": "8 с", "touches": {"5m": {"n": 29, "last_msk": "2026-09-30 12:20"}, "1h": {"n": 35, "last_msk": "2026-09-30 10:00"}}}]}], "gaps": []}</script>
+<script>
+(function(){
+"use strict";
+
+var DATA = JSON.parse(document.getElementById('data').textContent);
+var M = DATA.meta || {};
+var COINS = DATA.coins || [];
+var GAPS = DATA.gaps || [];
+
+/* ---------- вывод чисел: только формат, никаких расчётов ---------- */
+function fin(v){ return typeof v === 'number' && isFinite(v); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function dash(){ return '—'; }
+function txt(v){ return (v == null || v === '') ? dash() : String(v); }
+function trim(s){ return s.indexOf('.') >= 0 ? s.replace(/0+$/,'').replace(/\.$/,'') : s; }
+function fixed(v,d){ return fin(v) ? Number(v).toFixed(d) : dash(); }
+function sgn(v,d){ return fin(v) ? (v > 0 ? '+' : '') + Number(v).toFixed(d) : dash(); }
+function gn(v){ return fin(v) ? trim(Number(v).toFixed(2)) : dash(); }
+function grp(v){
+  if(!fin(v)) return dash();
+  var neg = v < 0, s = String(Math.round(Math.abs(v))), out = '';
+  while(s.length > 3){ out = ' ' + s.slice(-3) + out; s = s.slice(0,-3); }
+  return (neg ? '-' : '') + s + out;
+}
+/* Цена уровня. Разрядность приходит из данных (`coin.price_digits`): она
+   подобрана Python'ом по самим ценам уровней, чтобы две соседние плотности
+   не слились в одну и ту же строку. Эвристики «по величине цены» здесь нет
+   намеренно — именно она печатала 1.5071 и 1.5072 одинаково как «1.51».
+   Если разрядности в данных нет (монета с gap, старый JSON) — 4 знака. */
+function px(v, digits){
+  if(!fin(v)) return dash();
+  var d = fin(digits) ? Math.max(0, Math.min(8, Math.round(digits))) : 4;
+  return trim(Number(v).toFixed(d));
+}
+/* Разрядность монеты берётся из данных как есть; поля может не быть */
+function digitsOf(c){
+  return fin(c && c.price_digits) ? c.price_digits : 4;
+}
+/* млн USDT: разрядность выбирается по величине, чтобы мелкие плотности
+   не превращались в «0.00» */
+function mln(v){
+  if(!fin(v)) return dash();
+  var a = Math.abs(v) / 1e6, d = a >= 100 ? 1 : a >= 1 ? 2 : 3;
+  return trim(Number(a).toFixed(d));
+}
+function mult(v){
+  if(!fin(v)) return dash();
+  var a = Math.abs(v), d = a >= 100 ? 0 : 1;
+  return '×' + Number(v).toFixed(d);
+}
+function pctS(v,d){ return fin(v) ? sgn(v,d) + ' %' : dash(); }
+function n0(v){ return fin(v) ? String(Math.round(v)) : dash(); }
+function el(id){ return document.getElementById(id); }
+/* класс собирается из непустых частей: лишних пробелов в разметке не остаётся */
+function cls(){ return Array.prototype.filter.call(arguments, function(x){ return !!x; }).join(' '); }
+/* русское число: «в 6 раз», но «в 3 раза» */
+function plural(n, one, few, many){
+  var a = Math.abs(Math.round(n)) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b > 1 && b < 5) return few;
+  if(b === 1) return one;
+  return many;
+}
+
+function liveCoins(){
+  return COINS.filter(function(c){ return !c.gap; });
+}
+function touchOf(r,tf){
+  var t = (r.d.touches || {})[tf];
+  return t || {};
+}
+
+/* ---------- окно касаний: берётся из данных, зашитых в файл ---------- */
+function windowList(tf){
+  var seen = {}, out = [];
+  liveCoins().forEach(function(c){
+    var w = (c.touch_windows || {})[tf];
+    if(fin(w) && !seen[w]){ seen[w] = 1; out.push(w); }
+  });
+  out.sort(function(a,b){ return a - b; });
+  return out;
+}
+function windowText(tf){
+  var w = windowList(tf);
+  if(!w.length) return 'за —';
+  if(w.length === 1) return 'за ' + gn(w[0]) + ' ч';
+  return 'за ' + gn(w[0]) + '–' + gn(w[w.length-1]) + ' ч';
+}
+
+/* ---------- шапка: рынок и параметры сбора ---------- */
+(function(){
+  var p = [];
+  if(M.market) p.push(esc(M.market));
+  p.push('собрано ' + esc(txt(M.collected_at)) + ' МСК');
+  p.push('монет ' + n0(M.symbols));
+  p.push('плотностей в коридоре ' + n0(M.densities_total) +
+         ', показано ' + n0(M.shown_total) +
+         ' (до ' + n0(M.max_rows) + ' на монету)');
+  p.push('глубина стакана ' + n0(M.depth) + ' уровней');
+  p.push('коридор ' + gn(M.min_distance_pct) + '–' + gn(M.max_distance_pct) +
+         ' % от середины');
+  var thr = '';
+  if(fin(M.outlier_k)){
+    thr = 'в ' + gn(M.outlier_k) + ' ' +
+          plural(M.outlier_k, 'раз', 'раза', 'раз') + ' выше медианного уровня';
+  }
+  if(fin(M.min_notional)){
+    thr += (thr ? ' и' : '') + ' от ' + grp(M.min_notional) + ' USDT';
+  }
+  if(thr) p.push('порог: ' + thr);
+  if(fin(M.seconds)) p.push('сбор ' + gn(M.seconds) + ' с');
+  if(M.touch_candles){
+    p.push('касания по ' + grp(M.touch_candles) + ' закрытым свечам ' +
+           esc((M.touch_tfs || []).join(' и ')));
+  }
+  el('meta').innerHTML = p.join(' · ');
+})();
+
+/* ---------- столбцы главной таблицы ---------- */
+var COLS = [
+  {k:'symbol', t:'Монета', num:false,
+   sv:function(r){ return r.c.symbol; },
+   cell:function(r){ return '<td class="sym">' + esc(r.c.symbol) + '</td>'; }},
+
+  {k:'side', t:'Сторона', num:false,
+   sv:function(r){ return r.d.side === 'bid' ? 0 : 1; },
+   cell:function(r){
+     var isBid = r.d.side === 'bid';
+     return '<td><span class="tag ' + (isBid ? 'bid' : 'ask') + '">' +
+       (isBid ? 'бид' : 'аск') + '</span></td>';
+   }},
+
+  {k:'price', t:'Цена', num:true,
+   sv:function(r){ return r.d.price; },
+   cell:function(r){
+     return '<td class="num">' + px(r.d.price, digitsOf(r.c)) + '</td>';
+   }},
+
+  {k:'dist', t:'До цены, %', num:true,
+   sv:function(r){ return r.d.distance_pct; },
+   cell:function(r){
+     var v = r.d.distance_pct;
+     var sc = !fin(v) ? '' : (v < 0 ? 'good' : 'bad');
+     return '<td class="' + cls('num', sc) + '">' + pctS(v,3) + '</td>';
+   }},
+
+  {k:'notional', t:'Номинал, млн USDT', num:true,
+   sv:function(r){ return r.d.notional; },
+   cell:function(r){ return '<td class="num">' + mln(r.d.notional) + '</td>'; }},
+
+  {k:'kmed', t:'×медианы', num:true,
+   sv:function(r){ return r.d.k_median; },
+   cell:function(r){ return '<td class="num">' + mult(r.d.k_median) + '</td>'; }},
+
+  {k:'absorb', t:'Съедание', num:true,
+   sv:function(r){ return r.d.absorb_seconds; },
+   cell:function(r){
+     return '<td class="num">' + esc(txt(r.d.absorb_text)) + '</td>';
+   }},
+
+  {k:'t5', t:'касаний 5m ' + windowText('5m'), num:true,
+   sv:function(r){ return touchOf(r,'5m').n; },
+   cell:function(r){
+     var t = touchOf(r,'5m');
+     return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
+   }},
+
+  {k:'t1', t:'касаний 1h ' + windowText('1h'), num:true,
+   sv:function(r){ return touchOf(r,'1h').n; },
+   cell:function(r){
+     var t = touchOf(r,'1h');
+     return '<td class="' + cls('num', fin(t.n) ? '' : 'dim') + '">' + n0(t.n) + '</td>';
+   }},
+
+  {k:'last', t:'Последнее касание (по 1h)', num:false,
+   sv:function(r){ return touchOf(r,'1h').last_msk; },
+   cell:function(r){
+     var v = touchOf(r,'1h').last_msk;
+     return '<td class="' + cls(v == null ? 'dim' : '') + '">' + esc(txt(v)) + '</td>';
+   }}
+];
+
+function allRows(){
+  var out = [];
+  COINS.forEach(function(c){
+    (c.densities || []).forEach(function(d){ out.push({c:c, d:d}); });
+  });
+  return out;
+}
+
+/* ---------- фильтры, сортировка, отрисовка ---------- */
+var state = { coin:'all', side:'all', key:'notional', dir:-1 };
+
+function colByKey(k){
+  for(var i = 0; i < COLS.length; i++){ if(COLS[i].k === k) return COLS[i]; }
+  return null;
+}
+
+function apply(){
+  var rows = allRows();
+  if(state.coin !== 'all'){
+    rows = rows.filter(function(r){ return r.c.symbol === state.coin; });
+  }
+  if(state.side !== 'all'){
+    rows = rows.filter(function(r){ return r.d.side === state.side; });
+  }
+  var col = colByKey(state.key);
+  if(col){
+    rows.sort(function(a,b){
+      var av = col.sv(a), bv = col.sv(b);
+      var am = (av == null || av === '' || (typeof av === 'number' && !isFinite(av)));
+      var bm = (bv == null || bv === '' || (typeof bv === 'number' && !isFinite(bv)));
+      if(am && bm) return 0;
+      if(am) return 1;          /* пустое значение — всегда в конце */
+      if(bm) return -1;
+      if(av < bv) return -state.dir;
+      if(av > bv) return state.dir;
+      return 0;
+    });
+  }
+  return rows;
+}
+
+function render(){
+  var rows = apply(), total = allRows().length;
+  if(!rows.length){
+    el('tbody').innerHTML = '<tr><td colspan="' + COLS.length + '" class="dim">' +
+      'Под этот отбор не подходит ни одна строка: у выбранной монеты плотностей ' +
+      'нет, либо все они на другой стороне стакана.</td></tr>';
+  } else {
+    el('tbody').innerHTML = rows.map(function(r){
+      return '<tr>' + COLS.map(function(c){ return c.cell(r); }).join('') + '</tr>';
+    }).join('');
+  }
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'), function(th){
+    th.classList.remove('sorted','asc','desc');
+    if(th.getAttribute('data-k') === state.key){
+      th.classList.add('sorted');
+      th.classList.add(state.dir > 0 ? 'asc' : 'desc');
+    }
+  });
+  el('tblNote').textContent = 'Строк в таблице: ' + rows.length + ' из ' + total +
+    '. Клик по заголовку — сортировка по столбцу, повторный клик меняет сторону; ' +
+    'пустое значение («—») при сортировке всегда оказывается в конце. ' +
+    'Окно касаний в подписи столбца — фактическая длина окна по полученным свечам, ' +
+    'у разных монет она может отличаться.';
+}
+
+function buildControls(){
+  var opts = ['<option value="all">все монеты</option>'];
+  liveCoins().forEach(function(c){
+    var n = (c.densities || []).length;
+    opts.push('<option value="' + esc(c.symbol) + '">' + esc(c.symbol) +
+              ' — ' + n + ' шт.</option>');
+  });
+  el('fCoin').innerHTML = opts.join('');
+  el('fSide').value = 'all';
+}
+
+(function(){
+  buildControls();
+  el('thr').innerHTML = COLS.map(function(c){
+    return '<th class="' + cls(c.num ? 'num' : '', 'sortable') + '" data-k="' +
+      esc(c.k) + '">' + esc(c.t) + '</th>';
+  }).join('');
+  Array.prototype.forEach.call(el('thr').querySelectorAll('th'), function(th){
+    th.addEventListener('click', function(){
+      var k = th.getAttribute('data-k');
+      if(state.key === k){
+        state.dir = -state.dir;
+      } else {
+        var col = colByKey(k);
+        state.key = k;
+        state.dir = (col && col.num) ? -1 : 1;
+      }
+      render();
+    });
+  });
+  el('fCoin').addEventListener('change', function(){ state.coin = this.value; render(); });
+  el('fSide').addEventListener('change', function(){ state.side = this.value; render(); });
+
+  el('legend').textContent = '«До цены» — расстояние от середины стакана со знаком: ' +
+    'минус — уровень ниже середины (бид), плюс — выше (аск). «×медианы» — во сколько ' +
+    'раз размер уровня больше медианного размера уровня в этом стакане. «Съедание» — ' +
+    'оценка времени, за которое поток сделок выбрал бы объём уровня, по среднему ' +
+    'объёму за 2 часа. Бид и аск окрашены по стороне стакана.';
+  render();
+})();
+
+/* ---------- сводка по монетам: все монеты, фильтры на неё не влияют ---------- */
+(function(){
+  var html = [];
+  var shallow = [];
+  COINS.forEach(function(c){
+    if(c.gap){
+      html.push('<tr><td class="sym">' + esc(c.symbol) + '</td>' +
+        '<td class="dim" colspan="8">' + esc(c.gap) + '</td></tr>');
+      return;
+    }
+    var reachCls = (fin(c.reach_pct) && fin(M.max_distance_pct) &&
+                    c.reach_pct < M.max_distance_pct) ? 'dim' : '';
+    if(reachCls === 'dim') shallow.push(c);
+    var walls = mln(c.wall_notional_bid) + ' / ' + mln(c.wall_notional_ask);
+    html.push('<tr>' +
+      '<td class="sym">' + esc(c.symbol) + '</td>' +
+      '<td class="num">' + px(c.mid, digitsOf(c)) + '</td>' +
+      '<td class="num">' + fixed(c.spread_bps,2) + '</td>' +
+      '<td class="' + cls('num', reachCls) + '">' +
+        (fin(c.reach_pct) ? '±' + fixed(c.reach_pct,2) : dash()) + '</td>' +
+      '<td class="num">' + n0(c.n_densities) + '</td>' +
+      '<td class="num">' + n0(c.n_shown) + '</td>' +
+      '<td class="num">' + (fin(c.nearest_pct) ? fixed(c.nearest_pct,3) : dash()) + '</td>' +
+      '<td class="num">' + walls + '</td>' +
+      '<td class="num">' + sgn(c.imbalance,3) + '</td>' +
+    '</tr>');
+  });
+  el('sumBody').innerHTML = html.join('');
+
+  var n = '';
+  n += 'Сводка по всем монетам сбора и от фильтров выше не зависит. ';
+  if(shallow.length){
+    n += 'Стакан отдан не до конца коридора (' + gn(M.max_distance_pct) + ' %): ' +
+      shallow.map(function(c){
+        return c.symbol + ' — до ±' + fixed(c.reach_pct,2) + ' %';
+      }).join(', ') +
+      '. Дальше этого расстояния плотностей не видно не потому, что их нет, ' +
+      'а потому, что биржа не отдала уровни. ' +
+      'Отмечены приглушённым цветом в столбце «Стакан до ±».';
+  } else {
+    n += 'Стакан всех монет достаёт до дальней границы коридора.';
+  }
+  el('sumNote').textContent = n;
+})();
+
+/* ---------- оговорки ---------- */
+(function(){
+  var cv = M.caveats || [];
+  if(cv.length){
+    el('caveats').innerHTML = cv.map(function(c){
+      return '<li>' + esc(c) + '</li>';
+    }).join('');
+  } else {
+    el('caveats').innerHTML = '<li>оговорок в данных нет</li>';
+  }
+})();
+
+/* ---------- что не собралось ---------- */
+(function(){
+  if(!GAPS.length){
+    el('gapsSec').setAttribute('hidden','');
+    return;
+  }
+  el('gaps').innerHTML = GAPS.map(function(g){
+    return '<li>' + esc(g) + '</li>';
+  }).join('');
+})();
+
+})();
+</script>
+</body>
+</html>
