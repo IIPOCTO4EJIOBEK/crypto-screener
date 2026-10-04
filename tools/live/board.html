@@ -774,13 +774,14 @@ function drawChart(kl){
     }
     return null;
   }
-  // Перехай (для шорта — перелой): ближайший прошлый экстремум зигзага за входом — там обычно берут прибыль
+  // Перехай (для шорта — перелой): прошлый экстремум зигзага за входом — там обычно берут прибыль
   function perehai(f){
     if(f.entry==null) return null;
-    var up=f.dir!=='short', best=null;
+    // последний по времени экстремум дальше 0,3R от входа: мелкие зубцы у входа целью не считаем
+    var up=f.dir!=='short', best=null, m=f.stop!=null?Math.abs(f.entry-f.stop)*0.3:0;
     piv.slice(0,-1).forEach(function(q){
-      if(up && q.t==='H' && q.p>f.entry && (!best || q.p<best.p)) best=q;
-      if(!up && q.t==='L' && q.p<f.entry && (!best || q.p>best.p)) best=q;
+      if(up && q.t==='H' && q.p>f.entry+m) best=q;
+      if(!up && q.t==='L' && q.p<f.entry-m) best=q;
     });
     return best;
   }
