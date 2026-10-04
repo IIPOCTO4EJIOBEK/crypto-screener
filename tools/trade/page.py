@@ -6,12 +6,14 @@
 
     python -m tools.trade.page                      # data/trade/paper-spot/bot.html
     python -m tools.trade.page --out /path/bot.html
+    python -m tools.trade.page --all                # data/trade/bots.html: все боты, по вкладке
 """
 
 from __future__ import annotations
 
 import argparse
 import html
+import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -86,7 +88,7 @@ def sparkline(values: list[float], w: int = 640, h: int = 120) -> str:
             f'</svg><div class="sub">мин {lo:.2f} · макс {hi:.2f} USDT</div>')
 
 
-def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
+def section(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
           holding: int = 5, lookback: int = 28, side: str = "long",
           now_ms: int | None = None) -> str:
     rows = ledger.journal()
@@ -189,33 +191,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
     rebalance_text = ("каждый день" if holding == 1 else f"раз в {holding} дней")
     mode_name = {"paper": "бумажный", "testnet": "тестовая сеть", "live": "ЖИВОЙ СЧЁТ"}.get(mode, mode)
 
-    return f"""<!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Торговый бот</title>
-<style>
-  :root {{ --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
-           --good:#3ddc97; --bad:#ff6b6b; }}
-  body {{ margin:0; padding:24px; background:var(--bg); color:var(--fg);
-          font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; max-width:1100px; }}
-  h1 {{ font-size:18px; margin:0 0 4px; }}
-  h2 {{ font-size:15px; margin:26px 0 8px; color:var(--fg); }}
-  .meta, .sub, .dim td {{ color:var(--dim); }}
-  .sub {{ font-size:12px; }}
-  .box {{ padding:10px 12px; border-left:3px solid var(--line); background:#161922; }}
-  .warn {{ border-left-color:var(--bad); }}
-  table {{ border-collapse:collapse; width:100%; }}
-  th,td {{ text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }}
-  th {{ color:var(--dim); font-weight:400; }}
-  td.num {{ text-align:right; white-space:nowrap; }}
-  .long, tr.long td:first-child {{ color:var(--good); }} .short {{ color:var(--bad); }}
-  .grid {{ display:grid; grid-template-columns:1fr 1fr; gap:24px; }}
-  @media (max-width:800px) {{ .grid {{ grid-template-columns:1fr; }} body {{ padding:16px; }} }}
-  .chart {{ width:100%; height:120px; background:#161922; }}
-  .wrap {{ overflow-x:auto; }}
-  ul {{ margin:6px 0 0; padding-left:18px; }}
-</style></head><body>
-<h1>Торговый бот: тренд-фильтр {lookback}/{holding} · {'фьючерсы' if market == 'future' else 'спот'}{' · лонг и шорт' if side == 'longshort' else ''}</h1>
+    return f"""<h1>Торговый бот: тренд-фильтр {lookback}/{holding} · {'фьючерсы' if market == 'future' else 'спот'}{' · лонг и шорт' if side == 'longshort' else ''}</h1>
 <div class="meta">режим: {e(mode_name)} · рынок: {e(market)} · обновлено {t(now_ms) if now_ms else '—'} МСК</div>
 {f'<div class="box warn">ОСТАНОВЛЕН: {e(halted)}</div>' if halted else ''}
 
@@ -280,17 +256,131 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 </table></div>
 {f'<h2>Ошибки и пропуски</h2><div class="box"><ul>{"".join(err_rows)}</ul></div>' if err_rows else ''}
 <p class="sub">Источник: журнал бота {e(ledger.journal_path)}. Код: src/trade, tools/trade, описание — docs/04-торговля.md.</p>
+"""
+
+
+STYLE = """
+  :root { --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
+          --good:#3ddc97; --bad:#ff6b6b; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+         font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; max-width:1100px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:26px 0 8px; color:var(--fg); }
+  .meta, .sub, .dim td { color:var(--dim); }
+  .sub { font-size:12px; }
+  .box { padding:10px 12px; border-left:3px solid var(--line); background:#161922; }
+  .warn { border-left-color:var(--bad); }
+  table { border-collapse:collapse; width:100%; }
+  th,td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:400; }
+  td.num { text-align:right; white-space:nowrap; }
+  .long, tr.long td:first-child { color:var(--good); } .short { color:var(--bad); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  @media (max-width:800px) { .grid { grid-template-columns:1fr; } body { padding:16px; } }
+  .chart { width:100%; height:120px; background:#161922; }
+  .wrap { overflow-x:auto; }
+  ul { margin:6px 0 0; padding-left:18px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 18px; border-bottom:1px solid var(--line); }
+  .tabs button { font:inherit; color:var(--dim); background:none; border:0;
+                 border-bottom:2px solid transparent; padding:8px 12px; cursor:pointer; text-align:left; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--good); }
+  .tabs .sub { display:block; }
+  .tab[hidden] { display:none; }
+"""
+
+
+def shell(title: str, inner: str) -> str:
+    return f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{e(title)}</title>
+<style>{STYLE}</style></head><body>
+{inner}
 </body></html>
 """
 
 
-def write(ledger: Ledger, out: Path, **kw) -> Path:
+def build(ledger: Ledger, **kw) -> str:
+    return shell("Торговый бот", section(ledger, **kw))
+
+
+def ledger_root(data: Path, mode: str, market: str, side: str) -> Path:
+    return Path(data) / (f"{mode}-{market}" + ("" if side == "long" else f"-{side}"))
+
+
+def profile_kw(args: list[str]) -> dict:
+    """Параметры страницы из аргументов профиля tools.trade.run (остальные игнорируются)."""
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--mode", default="paper")
+    ap.add_argument("--market", default="spot")
+    ap.add_argument("--side", default="long")
+    ap.add_argument("--holding", type=int, default=5)
+    ap.add_argument("--lookback", type=int, default=28)
+    a, _ = ap.parse_known_args(args)
+    return dict(mode=a.mode, market=a.market, side=a.side, holding=a.holding, lookback=a.lookback)
+
+
+def tab_label(ledger: Ledger, *, market: str, side: str, holding: int, lookback: int, **_) -> tuple[str, str]:
+    name = ("Фьючерсы" if market == "future" else "Спот") + f" {lookback}/{holding}"
+    if side == "longshort":
+        name += " · лонг+шорт"
+    eq = [r for r in ledger.journal() if r["kind"] == "equity"]
+    if not eq:
+        return name, "ещё не запускался"
+    first, last = eq[0]["equity"], eq[-1]["equity"]
+    return name, f"{last:.2f} USDT · {pct(last / first - 1.0 if first else None)}"
+
+
+def build_all(data: Path, profiles: list[list[str]]) -> str:
+    """Одна страница со всеми ботами из профилей, по вкладке на бота."""
+    buttons, tabs = [], []
+    for i, args in enumerate(profiles):
+        kw = profile_kw(args)
+        ledger = Ledger(ledger_root(data, kw["mode"], kw["market"], kw["side"]))
+        tid = ledger.root.name
+        name, sub = tab_label(ledger, **kw)
+        buttons.append(f'<button role="tab" data-tab="{e(tid)}" aria-selected="{"true" if i == 0 else "false"}">'
+                       f'{e(name)}<span class="sub">{e(sub)}</span></button>')
+        tabs.append(f'<div class="tab" id="{e(tid)}"{"" if i == 0 else " hidden"}>{section(ledger, **kw)}</div>')
+    script = """<script>
+(function () {
+  var btns = document.querySelectorAll('.tabs button');
+  function show(id) {
+    var found = false;
+    btns.forEach(function (b) { var on = b.dataset.tab === id; found = found || on;
+      b.setAttribute('aria-selected', on); document.getElementById(b.dataset.tab).hidden = !on; });
+    return found;
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () {
+    show(b.dataset.tab); history.replaceState(null, '', '#' + b.dataset.tab); }); });
+  if (location.hash) show(location.hash.slice(1));
+})();
+</script>"""
+    inner = f'<div class="tabs" role="tablist">{"".join(buttons)}</div>{"".join(tabs)}{script}'
+    return shell("Торговые боты", inner)
+
+
+def load_profiles(data: Path) -> list[list[str]]:
+    path = Path(data) / "profiles.json"
+    return json.loads(path.read_text()) if path.exists() else [[]]
+
+
+def _write(out: Path, text: str) -> Path:
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp")
-    tmp.write_text(build(ledger, **kw), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     tmp.replace(out)
     return out
+
+
+def write(ledger: Ledger, out: Path, **kw) -> Path:
+    return _write(out, build(ledger, **kw))
+
+
+def write_all(data: Path, out: Path | None = None) -> Path:
+    data = Path(data)
+    return _write(out or data / "bots.html", build_all(data, load_profiles(data)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -301,8 +391,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--side", default="long")
     ap.add_argument("--holding", type=int, default=5)
     ap.add_argument("--out")
+    ap.add_argument("--all", action="store_true",
+                    help="одна страница со всеми ботами из profiles.json (data/trade/bots.html)")
     a = ap.parse_args(argv)
-    ledger = Ledger(Path(a.data) / (f"{a.mode}-{a.market}" + ("" if a.side == "long" else f"-{a.side}")))
+    if a.all:
+        print(write_all(Path(a.data), Path(a.out) if a.out else None))
+        return 0
+    ledger = Ledger(ledger_root(Path(a.data), a.mode, a.market, a.side))
     out = Path(a.out) if a.out else ledger.root / "bot.html"
     print(write(ledger, out, mode=a.mode, market=a.market, side=a.side, holding=a.holding))
     return 0

@@ -203,6 +203,25 @@ def test_страница_бота_собирается_из_журнала(tmp_
         == pytest.approx(150 / 140 - 1)
 
 
+def test_общая_страница_ботов_по_вкладкам(tmp_path):
+    from tools.trade import page
+
+    series = {"A": ramp(40, 1.0)}
+    broker = PaperBroker("spot", fee=0.001, book=book_at({"A": 140.0}, spread=0.02))
+    step(series, broker=broker, ledger=Ledger(tmp_path / "paper-spot"),
+         limits=Limits(capital=1000), now_ms=START + 40 * DAY_MS)
+    (tmp_path / "profiles.json").write_text(
+        '[[], ["--market", "future", "--holding", "1", "--side", "longshort"]]')
+    text = page.write_all(tmp_path).read_text(encoding="utf-8")
+    assert text.count('role="tab"') == 2
+    assert 'id="paper-spot"' in text and 'id="paper-future-longshort" hidden' in text
+    assert "Спот 28/5" in text and "Фьючерсы 28/1 · лонг+шорт" in text
+    assert "ещё не запускался" in text and "покупка" in text
+    # без profiles.json — один бот по умолчанию
+    (tmp_path / "profiles.json").unlink()
+    assert page.build_all(tmp_path, page.load_profiles(tmp_path)).count('role="tab"') == 1
+
+
 def test_фандинг_на_фьючерсах_списывается_с_прошлого_шага(tmp_path):
     series = {"A": ramp(40, 1.0)}
     prices = {"A": 100.0}

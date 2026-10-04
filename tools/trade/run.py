@@ -97,6 +97,7 @@ def publish_page(ledger: Ledger, a) -> None:
         page.write(ledger, ledger.root / "bot.html", **kw)
         if a.page_out:
             page.write(ledger, Path(a.page_out), **kw)
+        page.write_all(Path(a.data))      # общая страница всех ботов, по вкладке на бота
     except Exception as e:
         print(f"страница бота: {type(e).__name__}: {e}", file=sys.stderr)
 
