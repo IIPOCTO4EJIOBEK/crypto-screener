@@ -22,9 +22,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
-import requests
+from tools.live.market_stats import Banned, _get, banned
 
 API = "https://fapi.binance.com/fapi/v1/depth"
+NEAR = 1.5                  # сверяем только плотности ближе 1,5% — их и могут съесть
 LIMIT = 500                 # вес 10; 1000 уровней стоили бы 20
 KEEP = 0.33                 # меньше трети исходного объёма — заявки больше нет
 
@@ -43,9 +44,7 @@ def key(sym: str, d: dict) -> str:
 
 def _book(sym: str) -> dict | None:
     try:
-        r = requests.get(API, params={"symbol": sym, "limit": LIMIT}, timeout=10)
-        r.raise_for_status()
-        return r.json()
+        return _get("/fapi/v1/depth", symbol=sym, limit=LIMIT)
     except Exception:                               # noqa: BLE001
         return None
 
@@ -72,10 +71,13 @@ def classify(d: dict, book: dict, touched: bool) -> dict:
 def check(path: Path, touched_since: Callable[[str, str, float, float], bool],
           workers: int = 6) -> dict:
     """Сверить все плотности снимка со стаканом. touched_since(sym, side, price, t)."""
+    if banned():
+        raise Banned("ждём снятия ограничения Binance")
     mtime, by_sym = snapshot(path)
     since = mtime - 150                             # стакан снимают в начале страницы
+    by_sym = {s: [d for d in ds if abs(d.get("distance_pct") or 99) <= NEAR] for s, ds in by_sym.items()}
     syms = [s for s, ds in by_sym.items() if ds]
-    with ThreadPoolExecutor(workers) as ex:
+    with ThreadPoolExecutor(3) as ex:
         books = dict(zip(syms, ex.map(_book, syms)))
     items: dict[str, dict] = {}
     for sym in syms:

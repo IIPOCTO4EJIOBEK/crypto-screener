@@ -22,10 +22,29 @@ import requests
 
 API = "https://fapi.binance.com"
 TIMEOUT = 10
+# Binance за превышение веса сначала отвечает 429, потом банит IP (418) на всё
+# время, пока запросы продолжаются. Поймали — молчим до снятия бана: от этого
+# IP живёт и круг скринера.
+BANNED_UNTIL = 0.0
+
+
+class Banned(RuntimeError):
+    pass
+
+
+def banned() -> bool:
+    return time.time() < BANNED_UNTIL
 
 
 def _get(path: str, **params):
+    global BANNED_UNTIL
+    if banned():
+        raise Banned("ждём снятия ограничения Binance")
     r = requests.get(API + path, params=params, timeout=TIMEOUT)
+    if r.status_code in (418, 429):
+        wait = float(r.headers.get("Retry-After") or 0) or 600.0
+        BANNED_UNTIL = time.time() + max(wait, 120.0)
+        raise Banned(f"Binance {r.status_code}, пауза {wait:g} с")
     r.raise_for_status()
     return r.json()
 
@@ -67,6 +86,8 @@ def fetch(symbols: list[str], workers: int = 8) -> dict[str, dict]:
     """{symbol: {tpm, tpm_avg, cvd1h, day_hi, ..., funding, next_funding}}."""
     started = time.time()
     res: dict[str, dict] = {s: {} for s in symbols}
+    if banned():
+        raise Banned("ждём снятия ограничения Binance")
     t24 = _safe(lambda: _get("/fapi/v1/ticker/24hr")) or []
     for t in t24:
         if t.get("symbol") in res:

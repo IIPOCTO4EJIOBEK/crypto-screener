@@ -46,8 +46,8 @@ SILENT = 30.0               # столько секунд без сообщен�
 TFS = ("5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
-STATS_EVERY = 60.0          # пауза между проходами рыночных метрик, с
-DENS_EVERY = 30.0           # пауза между сверками плотностей со стаканом, с
+STATS_EVERY = 120.0         # пауза между проходами рыночных метрик, с
+DENS_EVERY = 90.0           # пауза между сверками плотностей со стаканом, с
 
 
 def _write(path: Path, obj) -> None:
@@ -98,6 +98,7 @@ class Feed:
     async def load(self, http: aiohttp.ClientSession, sym: str, tf: str,
                    sem: asyncio.Semaphore) -> None:
         async with sem:
+            await asyncio.sleep(0.25)               # история на старте: не больше ~12 запросов в секунду
             for attempt in range(3):
                 try:
                     async with http.get(REST, params={"symbol": sym, "interval": tf,
@@ -107,6 +108,9 @@ class Feed:
                         break
                     raise RuntimeError(str(data)[:200])
                 except Exception as e:              # noqa: BLE001
+                    if "-1003" in str(e) or "banned" in str(e):
+                        print(f"klines: Binance ограничил IP, история {sym} {tf} пропущена")
+                        return                      # повтор только продлит бан
                     if attempt == 2:
                         print(f"klines: история {sym} {tf} не получена: {type(e).__name__} {e}")
                         return
@@ -175,6 +179,8 @@ class Feed:
             mtime = src.stat().st_mtime        # новый снимок сверяем сразу
             if mtime == seen and time.monotonic() - last < DENS_EVERY:
                 continue
+            if time.monotonic() - last < 30:   # но не чаще раза в 30 с
+                continue
             seen, last = mtime, time.monotonic()
             try:
                 st = await asyncio.to_thread(dens_watch.check, src, self.touched)
@@ -187,7 +193,7 @@ class Feed:
         """Одно подключение: WS на весь состав + догрузка истории."""
         syms = self.syms
         streams = "/".join(f"{s.lower()}@kline_{tf}" for s in syms for tf in self.tfs)
-        sem = asyncio.Semaphore(6)
+        sem = asyncio.Semaphore(3)
         async with http.ws_connect(WS + streams, heartbeat=60, max_msg_size=0) as ws:
             self.hist.clear()
             self.pending.clear()
