@@ -51,7 +51,16 @@ svg.sp{display:block}
 #chart .hd b{font-size:15px}
 #chart .hd .x{margin-left:auto;background:none;border:0;color:var(--txt);font-size:22px;cursor:pointer}
 #chart .hd a{color:var(--mute)}
-#chart iframe{flex:1;border:0;background:var(--bg);width:100%}
+#chart .body{flex:1;display:flex;min-height:0;background:var(--bg)}
+#cbox{flex:1;min-width:0;position:relative}
+#cside{width:300px;overflow:auto;border-left:1px solid var(--line);padding:10px 12px;background:var(--panel)}
+#cside h4{margin:4px 0 8px;font-size:13px;color:var(--mute);font-weight:600}
+.fc{border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:8px;cursor:pointer}
+.fc.on{border-color:var(--acc);background:#18233a}
+.fc .t{font-weight:700}.fc .k{color:var(--mute);font-size:12px;margin-top:4px}
+.fc ul{margin:6px 0 0 16px;padding:0;color:var(--mute);font-size:12px}
+#chint{position:absolute;left:10px;top:8px;z-index:3;color:var(--mute);font-size:12px;pointer-events:none}
+@media (max-width:800px){#cside{display:none}}
 tbody tr{cursor:pointer}
 .f{cursor:pointer}
 footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
@@ -106,7 +115,8 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
 </table>
 </div>
 <footer id="foot"></footer>
-<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><iframe id="cframe" title="График"></iframe></div>
+<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="mute" id="creg"></span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
+<script src="vendor/lightweight-charts-4.2.0.js"></script>
 
 <script id="data" type="application/json">__DATA__</script>
 <script>
@@ -194,16 +204,86 @@ var vol=document.getElementById('vol'); vol.value=String(S.vol||0); vol.onchange
   th.onclick=function(){ if(S.k===th.dataset.k) S.dir=-S.dir; else {S.k=th.dataset.k; S.dir=(th.dataset.k==='coin')?1:-1;} save(); render(); };
 });
 var C={sym:null,tf:'15m'};
+var CH=null, CHD=null, MSK=3*3600;
+function loadCharts(cb){
+  if(CHD) return cb();
+  fetch('charts.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){CHD=j.pairs;try{cb();}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';}})
+    .catch(function(){ document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Не удалось загрузить данные графика</div>'; });
+}
 function openChart(sym,tf){
   C.sym=sym; C.tf=tf||C.tf;
   document.getElementById('ctitle').textContent=sym.replace(/USDT$/,'')+' / USDT';
   document.getElementById('cbin').href='https://www.binance.com/ru/futures/'+sym;
+  document.getElementById('cfull').href='structures.html#tf='+encodeURIComponent(C.tf)+'&sym='+encodeURIComponent(sym)+'&embed=1';
   [].forEach.call(document.querySelectorAll('#ctf button'),function(b){b.classList.toggle('on',b.dataset.v===C.tf);});
-  document.getElementById('cframe').src='structures.html#tf='+encodeURIComponent(C.tf)+'&sym='+encodeURIComponent(sym)+'&embed=1';
   document.getElementById('chart').classList.add('open'); paused=true;
+  loadCharts(drawChart);
 }
-function closeChart(){ document.getElementById('chart').classList.remove('open'); document.getElementById('cframe').src='about:blank'; paused=false; }
-document.getElementById('tb').addEventListener('click',function(e){
+function closeChart(){ document.getElementById('chart').classList.remove('open'); if(CH){CH.remove();CH=null;} paused=false; }
+function drawChart(){
+  var box=document.getElementById('cbox'), side=document.getElementById('cside');
+  if(CH){CH.remove();CH=null;}
+  var p=(CHD[C.sym]||{})[C.tf];
+  if(!p || !p.candles.length){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
+  document.getElementById('creg').textContent=p.regime?('режим: '+p.regime):'';
+  var cs=p.candles, T=function(i){ return Math.floor(cs[Math.max(0,Math.min(cs.length-1,i))][0]/1000)+MSK; };
+  var last=cs[cs.length-1][4], dig = last>=1000?1:last>=100?2:last>=1?3:last>=0.01?5:7;
+  CH=LightweightCharts.createChart(box,{autoSize:true,
+    layout:{background:{color:'#0f1115'},textColor:'#c7cdd8',fontSize:12},
+    grid:{vertLines:{color:'#1c212b'},horzLines:{color:'#1c212b'}},
+    rightPriceScale:{borderColor:'#262c37',scaleMargins:{top:.08,bottom:.22}},
+    timeScale:{borderColor:'#262c37',timeVisible:true,secondsVisible:false,rightOffset:8,barSpacing:8},
+    crosshair:{mode:0}, localization:{locale:'ru-RU'}});
+  var cand=CH.addCandlestickSeries({upColor:'#1fbf75',downColor:'#ef4f5a',borderVisible:false,wickUpColor:'#1fbf75',wickDownColor:'#ef4f5a',
+    priceFormat:{type:'price',precision:dig,minMove:Math.pow(10,-dig)}});
+  cand.setData(cs.map(function(c){return {time:Math.floor(c[0]/1000)+MSK,open:c[1],high:c[2],low:c[3],close:c[4]};}));
+  var splash={}; (p.splashes||[]).forEach(function(i){splash[i]=1;});
+  var vol=CH.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
+  CH.priceScale('vol').applyOptions({scaleMargins:{top:.82,bottom:0}});
+  vol.setData(cs.map(function(c,i){return {time:Math.floor(c[0]/1000)+MSK,value:c[5],color:splash[i]?'rgba(240,180,41,.85)':(c[4]>=c[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)')};}));
+  // уровни: подпись на шкале, без текста поверх свечей
+  p.levels.forEach(function(l){
+    cand.createPriceLine({price:l.price,color:l.kind==='support'?'#1fbf75':'#ef4f5a',lineWidth:1,lineStyle:2,axisLabelVisible:true,
+      title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')});
+  });
+  // наклонные: отрезок от первой точки до последней свечи
+  var seen={};
+  p.lines.forEach(function(ln){
+    var key=ln.a.join()+ln.b.join(); if(seen[key]) return; seen[key]=1;
+    var s=CH.addLineSeries({color:ln.kind==='up'?'#4c8dff':'#c084fc',lineWidth:2,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
+    var ta=T(ln.a[0]), tb=T(ln.b[0]); if(ta>=tb) return;
+    s.setData([{time:ta,value:ln.a[1]},{time:tb,value:ln.b[1]}]);
+  });
+  // формации: маркеры на свечах; вход/стоп/цель — только у выбранной
+  // подпись только у выбранной формации, у остальных стрелка — без наложения текста
+  function setMarks(sel){
+    cand.setMarkers(p.forms.map(function(f,i){ if(f.idx==null) return null;
+      var up=f.dir!=='short';
+      return {time:T(f.idx),position:up?'belowBar':'aboveBar',color:up?'#1fbf75':'#ef4f5a',shape:up?'arrowUp':'arrowDown',text:i===sel?f.title:'',size:i===sel?1.4:0.8};
+    }).filter(Boolean).sort(function(a,b){return a.time-b.time;}));
+  }
+  var fl=[];
+  function pick(i){
+    setMarks(i);
+    fl.forEach(function(x){cand.removePriceLine(x);}); fl=[];
+    [].forEach.call(side.querySelectorAll('.fc'),function(el,j){el.classList.toggle('on',j===i);});
+    var f=p.forms[i]; if(!f) return;
+    if(f.entry!=null) fl.push(cand.createPriceLine({price:f.entry,color:'#4c8dff',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:'вход'}));
+    if(f.stop!=null) fl.push(cand.createPriceLine({price:f.stop,color:'#ef4f5a',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'стоп'}));
+    if(f.target!=null) fl.push(cand.createPriceLine({price:f.target,color:'#1fbf75',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'цель'}));
+  }
+  side.innerHTML='<h4>Формации на '+esc(C.tf)+' ('+p.forms.length+')</h4>'+(p.forms.length?p.forms.map(function(f,i){
+    return '<div class="fc" data-i="'+i+'"><div class="t '+(f.dir==='short'?'down':'up')+'">'+esc(f.title)+(f.dir==='short'?' ↓':' ↑')+'</div>'+
+      '<div class="k">вход '+px(f.entry)+' · стоп '+px(f.stop)+' · цель '+px(f.target)+(f.rr!=null?' · R:R '+f.rr:'')+'</div>'+
+      (f.exp!=null?'<div class="k">замер: '+(f.exp>0?'+':'')+f.exp+'R'+(f.sig?' (значимо)':'')+'</div>':'')+
+      '<ul>'+(f.reasons||[]).map(function(r){return '<li>'+esc(r)+'</li>';}).join('')+'</ul>'+
+      (f.invalid?'<div class="k">отмена: '+esc(f.invalid)+'</div>':'')+'</div>';
+  }).join(''):'<div class="mute">формаций нет</div>')+
+  '<h4 style="margin-top:14px">Уровни</h4>'+p.levels.map(function(l){return '<div class="k">'+(l.kind==='support'?'поддержка':'сопротивление')+' '+px(l.price)+(l.touches?', касаний '+l.touches:'')+'</div>';}).join('');
+  [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
+  if(p.forms.length) pick(0); else setMarks(-1);
+  var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
+}document.getElementById('tb').addEventListener('click',function(e){
   var tr=e.target.closest('tr[data-sym]'); if(!tr) return;
   var chip=e.target.closest('.f[data-tf]');
   openChart(tr.dataset.sym, chip?chip.dataset.tf:null);

@@ -131,6 +131,35 @@ def _natr(cands: list[tuple], n: int = 14) -> float | None:
     return round(sum(trs) / n / cands[-1][4] * 100, 2)
 
 
+def charts(struct: dict) -> dict:
+    """Данные для графиков таблицы: свечи и разметка каждой пары из структур.
+
+    Отдельным файлом `charts.json`: таблица грузит его, только когда
+    открывают график, а сама страница остаётся лёгкой.
+    """
+    out: dict[str, dict] = {}
+    for p in struct.get("pairs", []):
+        cs = p.get("candles") or []
+        out.setdefault(p["symbol"], {})[p["tf"]] = {
+            "candles": cs,
+            "levels": [{"price": l["price"], "kind": l["kind"], "touches": l.get("touches")}
+                       for l in p.get("levels", [])],
+            "lines": [{"kind": t["kind"], "touches": t.get("touches"),
+                       "a": [t["from_idx"], t["from_value"]], "b": [t["to_idx"], t["to_value"]]}
+                      for t in p.get("trendlines", [])],
+            "forms": [{"title": f.get("title") or f["kind"], "dir": f.get("direction"),
+                       "idx": f.get("idx"), "entry": f.get("entry"), "stop": f.get("stop"),
+                       "target": f.get("target"), "rr": f.get("rr"),
+                       "invalid": f.get("invalid"), "reasons": f.get("reasons", [])[:4],
+                       "exp": (f.get("measured") or {}).get("exp_net"),
+                       "sig": bool((f.get("measured") or {}).get("significant"))}
+                      for f in p.get("formations", [])],
+            "splashes": p.get("splashes", []),
+            "regime": (p.get("regime") or {}).get("label"),
+        }
+    return out
+
+
 def _dedupe(fs: list[dict]) -> list[dict]:
     """Одна и та же формация на одном ТФ и в одну сторону — один раз."""
     seen, out = set(), []
@@ -206,6 +235,7 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
         },
         "rows": rows,
         "trends": trends,
+        "charts": charts(struct),
     }
 
 
@@ -218,6 +248,11 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     out = Path(a.html)
     data = build(a.db, out.parent, Path(a.universe) if a.universe else None)
+    chart_data = data.pop("charts")
+    tmpc = out.parent / "charts.json.tmp"
+    tmpc.write_text(json.dumps({"built_unix": data["meta"]["built_unix"], "pairs": chart_data},
+                               separators=(",", ":")), encoding="utf-8")
+    tmpc.replace(out.parent / "charts.json")
     page = Path(a.template).read_text(encoding="utf-8").replace(
         "__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
     tmp = out.with_suffix(".tmp")
