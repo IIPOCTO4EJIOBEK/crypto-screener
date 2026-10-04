@@ -62,6 +62,9 @@ class Position:
     be_after_tp1: bool = False           # после первого тейка стоп — в безубыток
     realized: float = 0.0                # P&L частичных выходов за вычетом их комиссий
     qty0: float = 0.0                    # начальный объём
+    reasons: list = field(default_factory=list)   # почему скринер нашёл формацию
+    book: dict = field(default_factory=dict)      # стакан на входе: спред, перекос, плотность
+    signal_ts: int = 0                   # время сигнальной свечи формации
 
     @property
     def risk(self) -> float:
@@ -176,7 +179,8 @@ def _reached(pos: Position, c: Candle, level: float) -> bool:
     return c.high >= level if pos.side == "long" else c.low <= level
 
 
-def check_exits(pos: Position, candles: list[Candle], now_ms: int) -> list[Exit]:
+def check_exits(pos: Position, candles: list[Candle], now_ms: int,
+                bar_ms: int = 60_000) -> list[Exit]:
     """Пройти закрытые минутные свечи после последней проверки; выходы по порядку.
 
     Частичный выход (первый тейк) — Exit с qty > 0, позиция уменьшается на месте;
@@ -187,7 +191,7 @@ def check_exits(pos: Position, candles: list[Candle], now_ms: int) -> list[Exit]
     out: list[Exit] = []
     long = pos.side == "long"
     for c in candles:
-        if c.ts < pos.last_check_ms or c.ts + 60_000 > now_ms or c.ts < pos.opened_ms:
+        if c.ts < pos.last_check_ms or c.ts + bar_ms > now_ms or c.ts < pos.opened_ms:
             continue
         moved = pos.risk0 and abs(abs(pos.stop - pos.entry) - pos.risk0) > 1e-12
         px = _stop_hit(pos, c)
@@ -509,7 +513,11 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                          breakeven_r=cfg.breakeven_r, trail_r=cfg.trail_r, best=fill.price,
                          trail_pct=cfg.trail_pct, stop_on_close=cfg.stop_on_close,
                          tp1_r=cfg.tp1_r, tp1_frac=cfg.tp1_frac,
-                         be_after_tp1=cfg.be_after_tp1, qty0=fill.qty)
+                         be_after_tp1=cfg.be_after_tp1, qty0=fill.qty,
+                         reasons=list(row.get("reasons") or []),
+                         book={k: row.get(k) for k in ("spread_bps", "imbalance", "band_usdt", "mid")
+                               if row.get(k) is not None},
+                         signal_ts=int(row.get("ts") or 0))
             if cfg.no_target:
                 p.target = 0.0
             st.cash -= fill.fee
@@ -520,7 +528,10 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                        tf=p.tf, side=side, qty=p.qty, entry=p.entry, stop=p.stop,
                        target=p.target, signal_entry=p.signal_entry, fee=fill.fee,
                        slippage_bp=fill.slippage_bp, measured_r=p.measured_r,
-                       measured_n=p.measured_n, trend=tr, expires_ms=p.expires_ms)
+                       measured_n=p.measured_n, trend=tr, expires_ms=p.expires_ms,
+                       reasons=p.reasons, book=p.book, risk0=p.risk0,
+                       tp1=(p.entry + (1 if side == "long" else -1) * p.tp1_r * p.risk0)
+                       if p.tp1_r else None)
             out["events"].append(
                 f"ВХОД {SIDE_RU[side]} {p.symbol} {p.title} {p.tf}: {p.entry:.6g}, "
                 f"стоп {p.stop:.6g}, цель {p.target:.6g}"

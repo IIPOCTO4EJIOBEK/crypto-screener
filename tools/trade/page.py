@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import html
 import sys
 from datetime import datetime, timedelta, timezone
@@ -284,12 +285,52 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 """
 
 
+def to_json(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
+            holding: int = 5, lookback: int = 28, side: str = "long",
+            now_ms: int | None = None) -> dict:
+    """Данные страницы тренд-бота для внешней вёрстки (графики по монетам).
+
+    По каждой монете портфеля — сторона, количество, цена и моментум, по
+    которому она выбрана; плюс все сделки (fills) и кривая капитала.
+    Свечи для графиков берутся по symbol с биржи или из базы скринера.
+    """
+    j = ledger.journal()
+    state = json.loads(ledger.state_path.read_text()) if ledger.state_path.exists() else {}
+    sig = next((r for r in reversed(j) if r["kind"] == "signal"), None)
+    eqs = [r for r in j if r["kind"] == "equity"]
+    prices = (eqs[-1].get("prices") or {}) if eqs else {}
+    mom = (sig or {}).get("momentum") or {}
+    pos = [{"symbol": s, "side": "long" if q > 0 else "short", "qty": abs(q),
+            "price": prices.get(s), "momentum": mom.get(s),
+            "why": (f"цена за {lookback} дн. {'выросла' if (mom.get(s) or 0) > 0 else 'упала'} "
+                    f"на {abs(mom.get(s) or 0):.1%}") if s in mom else None}
+           for s, q in (state.get("positions") or {}).items() if q]
+    return {
+        "bot": ledger.root.name, "mode": mode, "market": market, "side": side,
+        "rule": f"моментум {lookback} дн., ребаланс раз в {holding} дн.",
+        "updated_ms": now_ms, "halted": ledger.halted,
+        "equity": eqs[-1]["equity"] if eqs else state.get("cash"),
+        "start_equity": state.get("start_equity"), "peak": state.get("peak"),
+        "positions": pos,
+        "signal": sig and {"day_ts": sig.get("day_ts"), "momentum": mom,
+                           "longs": sig.get("longs"), "shorts": sig.get("shorts")},
+        "fills": [{k: r.get(k) for k in ("ts", "symbol", "side", "qty", "price", "fee",
+                                          "slippage_bp", "reduce")}
+                  for r in j if r["kind"] == "fill"][-500:],
+        "equity_curve": [[r["ts"], r["equity"]] for r in eqs][-2000:],
+    }
+
+
 def write(ledger: Ledger, out: Path, **kw) -> Path:
+    """bot.html и рядом bot.json (те же данные для внешней страницы)."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(build(ledger, **kw), encoding="utf-8")
     tmp.replace(out)
+    tmp = out.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(to_json(ledger, **kw), ensure_ascii=False), encoding="utf-8")
+    tmp.replace(out.with_suffix(".json"))
     return out
 
 

@@ -245,3 +245,34 @@ def test_команды_telegram(tmp_path):
     assert "screener-all" in out[1]
     tg_control.handle(["/resume"], tmp_path)
     assert not (bot / "PAUSE").exists()
+
+
+def test_исследование_правил_выхода():
+    """Повтор сделки правилом «как сейчас» совпадает с walk; трейлинг доводит тренд."""
+    from types import SimpleNamespace
+
+    from src.backtest.walk import Trade
+    from tools.exit_study import RULES, Rule, replay
+    bar = 300_000
+    cs = [Candle(T0 + i * bar, 100 + i, 101 + i, 99.5 + i, 100.5 + i, 1, 1, 1)
+          for i in range(30)]
+    f = SimpleNamespace(kind="flag", symbol="A", targets=[104.0], direction="long")
+    tr = Trade(f, "target", 2.0, 4, entry=100.0, stop=98.0, side="long",
+               entry_ms=cs[0].ts)
+    assert replay(tr, cs, "5m", RULES[0]) == pytest.approx(2.0)
+    r = replay(tr, cs, "5m", Rule("t", trail_r=1.5, no_target=True), horizon=20)
+    assert r > 5                                   # рост до конца окна — трейлинг не выбит
+
+
+def test_bot_json_для_страницы_скринера(tmp_path):
+    import json
+    book, broker, ledger, st, data = setup(tmp_path)
+    run(st, broker, ledger, data, [row(reasons=["флагшток +3 %", "пробой"], band_usdt=5e5,
+                                       spread_bps=1.2)], T0, Config(tp1_r=1.0))
+    screener_page.write(ledger, st, tmp_path / "bot.html", policy="all", trend="off",
+                        cfg=Config(tp1_r=1.0), now_ms=T0, signals=1)
+    d = json.loads((tmp_path / "bot.json").read_text())
+    o = d["open"][0]
+    assert o["symbol"] == "AAAUSDT" and o["reasons"] == ["флагшток +3 %", "пробой"]
+    assert o["book"]["band_usdt"] == 5e5
+    assert o["levels"]["tp1"] == pytest.approx(102.0) and o["levels"]["stop_now"] == 98.0
