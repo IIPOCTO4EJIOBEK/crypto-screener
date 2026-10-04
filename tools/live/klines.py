@@ -184,6 +184,11 @@ class Feed:
         seen, last = 0.0, 0.0
         while True:
             await asyncio.sleep(5)
+            try:                                    # общее меню на страницах, в том числе ботов
+                from tools.live import navinject
+                await asyncio.to_thread(navinject.ensure, self.out.parent)
+            except Exception as e:                  # noqa: BLE001
+                print(f"klines: меню не вставлено: {type(e).__name__} {e}")
             if self.alerts:
                 try:
                     await asyncio.to_thread(self.alerts.setups, self.out.parent)

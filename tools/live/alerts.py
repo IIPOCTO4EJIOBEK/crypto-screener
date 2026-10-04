@@ -140,11 +140,27 @@ class Alerts:
         except Exception as e:                      # noqa: BLE001
             print(f"alerts: Telegram недоступен: {type(e).__name__}", flush=True)
             return
+        self._log(text, bool(png))
         self.sent = {k: v for k, v in self.sent.items() if now - v < 86400}
         try:
             tmp = self.state_path.with_name(self.state_path.name + ".tmp")
             tmp.write_text(json.dumps(self.sent), encoding="utf-8")
             os.replace(tmp, self.state_path)
+        except Exception:                           # noqa: BLE001
+            pass
+
+    def _log(self, text: str, photo: bool) -> None:
+        """Лента для страницы alerts.html: последние 300 алертов."""
+        path = self.state_path.with_name("alerts_log.json")
+        try:
+            log = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:                           # noqa: BLE001
+            log = []
+        log.append({"t": int(time.time() * 1000), "text": text, "photo": photo})
+        try:
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(log[-300:], ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, path)
         except Exception:                           # noqa: BLE001
             pass
 

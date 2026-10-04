@@ -110,14 +110,8 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
 <body>
 <header>
   <h1>Крипто-скринер</h1>
-  <nav>
-    <a href="#trade" data-tab="trade">Можно торговать сейчас</a>
-    <a href="#coins" data-tab="coins">Монеты</a>
-    <a href="#forms" data-tab="forms">Формации</a>
-    <a href="#dens" data-tab="dens">Плотности</a>
-    <span id="bots"></span>
-    <a href="index.html">Методика</a>
-  </nav>
+  <nav id="gnav"></nav>
+  <script src="nav.js"></script>
   <span class="stamp" id="stamp"></span>
 </header>
 
@@ -321,7 +315,7 @@ function render(){
   [].forEach.call(document.querySelectorAll('#v-coins th'), function(th){ th.classList.toggle('sorted', th.dataset.k===S.k); });
 }
 
-document.getElementById('bots').innerHTML=(D.meta.bots||[]).map(function(b){return '<a href="'+esc(b.href)+'">'+esc(b.title)+'</a>';}).join('');
+// боты — в общем меню (nav.js), отдельные ссылки здесь больше не нужны
 document.getElementById('stamp').textContent = 'обновлено ' + D.meta.built_at + ' · ' + D.meta.market;
 document.getElementById('foot').textContent = 'Тренд: ' + D.meta.trend_rule + ' Формации — не старше ' + D.meta.fresh + ' свечей; подсвечены значимые по замеру. Плотность — ближайшая крупная заявка в стакане и расстояние до неё. Клик по строке открывает график монеты с уровнями, наклонными и формациями. Таблица обновляется раз в минуту, пока график закрыт; свечи на открытом графике идут вживую с биржи.';
 

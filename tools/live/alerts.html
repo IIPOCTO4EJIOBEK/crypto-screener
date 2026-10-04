@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Алерты скринера</title>
+<style>
+:root{--bg:#0f1115;--panel:#161a21;--row:#1b2029;--line:#262c37;--txt:#e6e9ef;--mute:#8b93a3;--up:#1fbf75;--down:#ef4f5a;--acc:#4c8dff;--warn:#f0b429}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:6px 0 4px}
+.mute{color:var(--mute)}
+.rules{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13px}
+.rules li{margin:3px 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.bar button{background:var(--row);color:var(--mute);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+.bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.a{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;white-space:pre-wrap}
+.a .t{color:var(--mute);font-size:12px;margin-bottom:4px}
+.a a{color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+<h1>Алерты</h1>
+<div class="mute">Те же сообщения уходят в Telegram-канал скринера, там — с картинкой графика. Лента обновляется сама.</div>
+<div class="rules">
+  <b>Когда приходит алерт</b>
+  <ul>
+    <li>🍽 съели плотность от 100 тыс $ — сверка стакана видит, что заявку разобрали сделками;</li>
+    <li>📊 всплеск объёма — закрытая 5м свеча с оборотом от 3× среднего за 2 часа;</li>
+    <li>⬆️⬇️ цена ближе 0,3% к хаю или лою дня;</li>
+    <li>🎯 новый сетап «можно торговать» — свежий сигнал по тренду своего ТФ, R:R от 1.</li>
+  </ul>
+  Одно событие по монете — не чаще раза в час. Сценарии в тексте — разметка по разворотам, а не совет.
+</div>
+<div class="bar" id="flt">
+  <button data-v="" class="on">Все</button><button data-v="🎯">Сетапы</button><button data-v="🍽">Плотности</button>
+  <button data-v="📊">Объём</button><button data-v="⬆">Хай/лой дня</button>
+</div>
+<div id="list" class="mute">Загружаю…</div>
+</main>
+<script>
+(function(){
+  var F='';
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function clean(t){ return esc(t).replace(/&lt;(\/?)b&gt;/g,'<$1b>').replace(/#([A-Z0-9]+USDT)/g,function(m,s){return '<a href="/#coins" data-sym="'+s+'">#'+s+'</a>';}); }
+  function load(){
+    fetch('kl/alerts_log.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}).then(function(xs){
+      var rows=xs.slice().reverse().filter(function(x){ return !F || x.text.indexOf(F)===0 || (F==='⬆'&&x.text.indexOf('⬇')===0); });
+      document.getElementById('list').innerHTML=rows.length?rows.map(function(x){
+        return '<div class="a"><div class="t">'+new Date(x.t).toLocaleString('ru-RU')+(x.photo?' · с графиком':'')+'</div>'+clean(x.text)+'</div>';
+      }).join(''):'<div class="mute">Алертов пока нет.</div>';
+    });
+  }
+  [].forEach.call(document.querySelectorAll('#flt button'),function(b){ b.onclick=function(){ F=b.dataset.v;
+    [].forEach.call(document.querySelectorAll('#flt button'),function(x){x.classList.toggle('on',x===b);}); load(); }; });
+  load(); setInterval(load,30000);
+})();
+</script>
+<script src="/nav.js"></script>
+</body>
+</html>
