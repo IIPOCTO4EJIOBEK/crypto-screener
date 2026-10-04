@@ -190,6 +190,8 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
                 "age": f.get("age_candles"), "exp": m.get("exp_net"), "n": m.get("n"),
                 "sig": bool(m.get("significant")), "price": p.get("price"),
                 "regime": (p.get("regime") or {}).get("label"),
+                "triggered": bool(f.get("triggered")), "invalid": f.get("invalid"),
+                "reasons": f.get("reasons", [])[:4],
             })
         for f in p.get("formations", []):
             if f.get("age_candles", 99) > FRESH:
@@ -243,6 +245,7 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
             "universe": uni.get("min_quote_volume"),
             "trend_rule": f"EMA{FAST}/EMA{SLOW}: лонг — цена > EMA{FAST} > EMA{SLOW} и EMA{SLOW} растёт; шорт — зеркально; иначе флэт. Общий тренд — когда 1ч и 4ч совпадают.",
             "fresh": FRESH,
+            "watch": uni.get("watch") or [],
             "bots": [{"href": h, "title": n} for h, n, src in BOTS if src.exists()],
         },
         "rows": rows,

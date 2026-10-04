@@ -65,6 +65,26 @@ tbody tr{cursor:pointer}
 .f{cursor:pointer}
 footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
 .view{display:none}.view.on{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;padding:12px 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+.card .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card .h b{font-size:15px}
+.card .lv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.card .lv div{background:var(--row);border-radius:6px;padding:6px}
+.card .lv span{display:block;color:var(--mute);font-size:11px}
+.card ul{margin:6px 0;padding-left:18px;color:var(--mute);font-size:12px}
+.card .k{color:var(--mute);font-size:12px;margin-top:4px}
+.badge{font-size:11px;padding:2px 6px;border-radius:4px;font-weight:600}
+.badge.ok{background:rgba(31,191,117,.16);color:var(--up)}
+.badge.mid{background:rgba(240,180,41,.16);color:var(--warn)}
+.badge.no{background:rgba(107,114,128,.18);color:var(--mute)}
+.card .act{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;font-weight:600;cursor:pointer}
+.btn.sec{background:var(--row);color:var(--txt);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.res{font-size:12px}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--flat);margin-right:4px}
+.live.on{background:var(--up)}
 @media (max-width:700px){header{padding:8px 12px}.bar,.summary{padding-left:12px;padding-right:12px}}
 </style>
 </head>
@@ -72,6 +92,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
 <header>
   <h1>Крипто-скринер</h1>
   <nav>
+    <a href="#trade" data-tab="trade">Можно торговать сейчас</a>
     <a href="#coins" data-tab="coins">Монеты</a>
     <a href="#forms" data-tab="forms">Формации</a>
     <a href="#dens" data-tab="dens">Плотности</a>
@@ -80,6 +101,16 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   </nav>
   <span class="stamp" id="stamp"></span>
 </header>
+
+<section id="v-trade" class="view">
+<div class="bar">
+  <span class="seg" id="ttf"><button data-v="all">Все ТФ</button><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span>
+  <span class="seg" id="tdir"><button data-v="all">Обе</button><button data-v="long">Лонг</button><button data-v="short">Шорт</button></span>
+  <label class="chk"><input type="checkbox" id="tsig"> только прошедшие замер</label>
+</div>
+<div class="summary" id="tsum"></div>
+<div class="cards" id="tcards"></div>
+</section>
 
 <section id="v-coins" class="view">
 <div class="bar">
@@ -152,7 +183,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   </tr></thead><tbody id="dtb"></tbody></table></div>
 </section>
 <footer id="foot"></footer>
-<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="mute" id="creg"></span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
+<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="mute" id="creg"></span><span class="mute" id="clive"><i class="live"></i>—</span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
 <script src="vendor/lightweight-charts-4.2.0.js"></script>
 
 <script id="data" type="application/json">__DATA__</script>
@@ -226,7 +257,7 @@ function render(){
 
 document.getElementById('bots').innerHTML=(D.meta.bots||[]).map(function(b){return '<a href="'+esc(b.href)+'">'+esc(b.title)+'</a>';}).join('');
 document.getElementById('stamp').textContent = 'обновлено ' + D.meta.built_at + ' · ' + D.meta.market;
-document.getElementById('foot').textContent = 'Тренд: ' + D.meta.trend_rule + ' Формации — не старше ' + D.meta.fresh + ' свечей; подсвечены значимые по замеру. Плотность — ближайшая крупная заявка в стакане и расстояние до неё. Клик по строке открывает график монеты с уровнями, наклонными и формациями. Страница обновляется раз в минуту, пока график закрыт.';
+document.getElementById('foot').textContent = 'Тренд: ' + D.meta.trend_rule + ' Формации — не старше ' + D.meta.fresh + ' свечей; подсвечены значимые по замеру. Плотность — ближайшая крупная заявка в стакане и расстояние до неё. Клик по строке открывает график монеты с уровнями, наклонными и формациями. Таблица обновляется раз в минуту, пока график закрыт; свечи на открытом графике идут вживую с биржи.';
 
 var q=document.getElementById('q'); q.value=S.q; q.oninput=function(){S.q=q.value;save();render();};
 [].forEach.call(document.querySelectorAll('#side button'), function(b){
@@ -326,11 +357,80 @@ segBind('dside',P,'side',renderDens);
 ['ddist','dmin'].forEach(function(id){var e=document.getElementById(id),key=id==='ddist'?'dist':'min';e.value=P[key];e.onchange=function(){P[key]=e.value;save();renderDens();};});
 
 /* ---------- вкладки ---------- */
+/* ---------- можно торговать сейчас ---------- */
+// Отбор как у бота managed: свежий сработавший сигнал (не старше свечи) на
+// 5м/15м/1ч, сторона совпадает с трендом своего ТФ (для 5м — тренд 15м).
+// trendline_bounce не торгуем: его плюс в замере оказался артефактом.
+var TS={tf:'all',dir:'all',sig:false};
+try { Object.assign(TS, JSON.parse(localStorage.getItem('board-trade') || '{}')); } catch(e) {}
+function saveT(){ try { localStorage.setItem('board-trade', JSON.stringify(TS)); } catch(e) {} }
+var EXIT_RULE='Ведение как у бота «по скринеру, управляемый»: половина позиции закрывается на +1R, стоп переносится в безубыток, остаток идёт трейлингом 1,5R от лучшей цены. Цель формации — ориентир, бот её не ждёт.';
+function verdict(f){
+  if(f.sig && f.exp>0) return ['ok','прошла замер с проверкой исполнения: +'+f.exp+'R на '+f.n+' сделках'];
+  if(f.exp!=null && f.exp>0) return ['mid','замер в плюсе, но не значим: +'+f.exp+'R на '+f.n+' сделках'];
+  if(f.exp!=null) return ['no','замер в минусе: '+f.exp+'R на '+f.n+' сделках'];
+  return ['no','замера нет'];
+}
+function tfTrend(sym,tf){ var r=TR[sym]; if(!r) return null; return ((r.trend||{})[tf==='5m'?'15m':tf]||{}).side||null; }
+function tradeList(){
+  var best={};
+  (D.forms||[]).forEach(function(f){
+    if(!f.triggered || f.age>1 || ['5m','15m','1h'].indexOf(f.tf)<0) return;
+    if(f.kind==='trendline_bounce' || f.entry==null || f.stop==null) return;
+    if(f.dir!==tfTrend(f.symbol,f.tf)) return;
+    var key=f.symbol+'|'+f.tf+'|'+f.dir, rank=(f.sig&&f.exp>0?2:f.exp>0?1:0)*100+(f.exp||0)-(f.age||0)*0.01;
+    if(!best[key] || best[key].rank<rank) best[key]=Object.assign({rank:rank},f);
+  });
+  return Object.keys(best).map(function(k){return best[k];}).sort(function(a,b){return b.rank-a.rank;});
+}
+function renderTrade(){
+  var all=tradeList(), xs=all.filter(function(f){
+    return (TS.tf==='all'||f.tf===TS.tf) && (TS.dir==='all'||f.dir===TS.dir) && (!TS.sig||(f.sig&&f.exp>0));
+  });
+  var nok=all.filter(function(f){return f.sig&&f.exp>0;}).length;
+  document.getElementById('tsum').innerHTML='Сетапов по тренду сейчас: <b>'+all.length+'</b>, из них прошли замер: <b>'+nok+'</b>. Показано: <b>'+xs.length+'</b>. Отбор: сигнал сработал не раньше прошлой свечи, сторона по тренду своего ТФ. «Отскок от наклонной» исключён: его плюс в замере оказался артефактом.';
+  document.getElementById('tcards').innerHTML = xs.length ? xs.map(function(f,i){
+    var v=verdict(f), r=TR[f.symbol]||{}, now=r.price||f.price, sign=f.dir==='short'?-1:1;
+    var risk=Math.abs(f.entry-f.stop), tp1=f.entry+sign*risk, dist=now?((now-f.entry)/f.entry*100):null;
+    return '<div class="card">'+
+      '<div class="h"><b>'+esc(f.coin)+'</b>'+tag(f.dir)+'<span class="tag flat">'+esc(f.tf)+'</span><span>'+esc(f.title)+'</span></div>'+
+      '<div class="k"><span class="badge '+v[0]+'">'+esc(v[1])+'</span></div>'+
+      '<div class="lv"><div><span>вход</span>'+px(f.entry)+'</div><div><span>стоп ('+(f.risk!=null?f.risk+'%':'—')+')</span><b class="down">'+px(f.stop)+'</b></div><div><span>тейк 1 (+1R)</span><b class="up">'+px(tp1)+'</b></div></div>'+
+      '<div class="k">Цель формации '+px(f.target)+(f.rr!=null?' (R:R '+f.rr+')':'')+'. Цена сейчас '+px(now)+(dist!=null?', от входа '+(dist>0?'+':'')+dist.toFixed(2)+'%':'')+'.</div>'+
+      '<div class="k"><b>Почему так:</b> тренд '+esc(f.tf==='5m'?'15м':f.tf)+' — '+SIDE[f.dir].toLowerCase()+', сделка по тренду'+(r.overall===f.dir?', общий тренд (1ч и 4ч) тоже за':'')+(f.regime?'; режим: '+esc(f.regime):'')+'.</div>'+
+      '<ul>'+(f.reasons||[]).map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>'+
+      '<div class="k"><b>Отмена:</b> '+(f.invalid?esc(f.invalid)+'; ':'')+'или если вход не случился за одну свечу '+esc(f.tf)+'.</div>'+
+      '<div class="k">'+esc(EXIT_RULE)+'</div>'+
+      '<div class="act"><button class="btn" data-go="'+i+'">В сделку</button><button class="btn sec" data-ch="'+i+'">График</button><span class="res" id="tres'+i+'"></span></div>'+
+    '</div>';
+  }).join('') : '<div class="mute" style="padding:8px 0">Сейчас нет сетапов, которые подходят под правила. Страница обновляется сама.</div>';
+  var box=document.getElementById('tcards');
+  [].forEach.call(box.querySelectorAll('[data-ch]'),function(b){ b.onclick=function(){ var f=xs[+b.dataset.ch]; openChart(f.symbol,f.tf); }; });
+  [].forEach.call(box.querySelectorAll('[data-go]'),function(b){ b.onclick=function(){ goTrade(xs[+b.dataset.go], b, document.getElementById('tres'+b.dataset.go)); }; });
+}
+function goTrade(f,btn,res){
+  if(!confirm('Открыть на бумаге '+SIDE[f.dir]+' '+f.coin+' ('+f.tf+', '+f.title+')?\nВход по рынку, стоп '+px(f.stop)+'. Ведение как у бота.')) return;
+  btn.disabled=true; paused=true; res.className='res mute'; res.textContent='отправляю…';
+  // секрет приёмника сюда не попадает: заголовок X-Token подставляет Caddy
+  fetch('api/hook?bot=managed',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({symbol:f.symbol,side:f.dir,stop:f.stop,target:f.target,tf:f.tf,source:'manual',
+      note:f.title+' '+f.tf+' со скринера'+(f.sig&&f.exp>0?' (прошла замер)':'')})})
+    .then(function(r){ return r.json().catch(function(){return {ok:false,error:'HTTP '+r.status};}).then(function(j){ j.status=r.status; return j; }); })
+    .then(function(j){
+      if(j.ok){ res.className='res up'; res.textContent='принято: откроется на ближайшем круге бота (до 2 мин), на бумаге'; }
+      else { res.className='res down'; res.textContent='не принято: '+(j.status===405||j.status===404||j.status===502?'приёмник сделок недоступен с этой страницы':(j.error||'ошибка')); btn.disabled=false; }
+      setTimeout(function(){ paused=document.getElementById('chart').classList.contains('open'); },15000);
+    })
+    .catch(function(e){ res.className='res down'; res.textContent='нет связи с приёмником: '+e.message; btn.disabled=false; paused=false; });
+}
+segBind('ttf',TS,'tf',function(){saveT();renderTrade();}); segBind('tdir',TS,'dir',function(){saveT();renderTrade();});
+(function(){ var c=document.getElementById('tsig'); c.checked=!!TS.sig; c.onchange=function(){TS.sig=c.checked;saveT();renderTrade();}; })();
+
 function showTab(name){
-  name=({coins:1,forms:1,dens:1})[name]?name:'coins';
+  name=({trade:1,coins:1,forms:1,dens:1})[name]?name:'coins';
   [].forEach.call(document.querySelectorAll('.view'),function(v){v.classList.toggle('on',v.id==='v-'+name);});
   [].forEach.call(document.querySelectorAll('nav a[data-tab]'),function(a){a.classList.toggle('on',a.dataset.tab===name);});
-  if(name==='forms') renderForms(); if(name==='dens') renderDens();
+  if(name==='forms') renderForms(); if(name==='dens') renderDens(); if(name==='trade') renderTrade();
 }
 window.addEventListener('hashchange',function(){showTab(location.hash.slice(1));});
 showTab(location.hash.slice(1));
@@ -338,10 +438,12 @@ showTab(location.hash.slice(1));
   document.getElementById(id).addEventListener('click',function(e){ var tr=e.target.closest('tr[data-sym]'); if(tr) openChart(tr.dataset.sym, tr.dataset.tf||null); });
 });
 var C={sym:null,tf:'15m'};
-var CH=null, CHD=null, CHDENS={}, MSK=3*3600;
+var CH=null, CHD=null, CHDENS={}, CHAT=0, MSK=3*3600;
 function loadCharts(cb){
-  if(CHD) return cb();
-  fetch('charts.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){CHD=j.pairs;CHDENS=j.dens||{};try{cb();}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';}})
+  // разметка (уровни, формации) пересобирается кругом скринера: берём свежую,
+  // если наша старше минуты; свечи дальше идут вживую из WebSocket биржи
+  if(CHD && Date.now()-CHAT<60000) return cb();
+  fetch('charts.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){CHD=j.pairs;CHDENS=j.dens||{};CHAT=Date.now();try{cb();}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';}})
     .catch(function(){ document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Не удалось загрузить данные графика</div>'; });
 }
 function openChart(sym,tf){
@@ -353,10 +455,35 @@ function openChart(sym,tf){
   document.getElementById('chart').classList.add('open'); paused=true;
   loadCharts(drawChart);
 }
-function closeChart(){ document.getElementById('chart').classList.remove('open'); if(CH){CH.remove();CH=null;} paused=false; }
+function closeChart(){ document.getElementById('chart').classList.remove('open'); liveStop(); if(CH){CH.remove();CH=null;} paused=false; }
+/* ---------- живые свечи: Binance USDT-M WebSocket, запасной путь — REST раз в 3 с ---------- */
+var LV={ws:null,timer:null,key:null};
+function liveStop(){ if(LV.ws){LV.ws.onclose=null;LV.ws.onerror=null;LV.ws.close();LV.ws=null;} if(LV.timer){clearInterval(LV.timer);LV.timer=null;} LV.key=null; liveMark(false,'—'); }
+function liveMark(on,text){ var el=document.getElementById('clive'); if(el) el.innerHTML='<i class="live'+(on?' on':'')+'"></i>'+esc(text); }
+function liveStart(sym,tf,cand,vol,dig){
+  liveStop(); var key=sym+'|'+tf; LV.key=key;
+  function put(t,o,h,l,c,qv){
+    if(LV.key!==key) return;
+    var time=Math.floor(t/1000)+MSK;
+    try{ cand.update({time:time,open:o,high:h,low:l,close:c}); vol.update({time:time,value:qv,color:c>=o?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)'}); }catch(e){}
+    liveMark(true,'онлайн · '+c.toFixed(dig)+' · '+new Date().toLocaleTimeString('ru-RU'));
+  }
+  function poll(){
+    fetch('https://fapi.binance.com/fapi/v1/klines?symbol='+sym+'&interval='+tf+'&limit=3').then(function(r){return r.json();}).then(function(a){
+      a.forEach(function(k){ put(k[0],+k[1],+k[2],+k[3],+k[4],+k[7]); });
+    }).catch(function(){ if(LV.key===key) liveMark(false,'нет связи с биржей'); });
+  }
+  function fallback(){ if(LV.key!==key||LV.timer) return; LV.ws=null; poll(); LV.timer=setInterval(poll,3000); }
+  poll();   // догнать свечи, прошедшие после сборки charts.json
+  try{
+    var ws=new WebSocket('wss://fstream.binance.com/ws/'+sym.toLowerCase()+'@kline_'+tf); LV.ws=ws;
+    ws.onmessage=function(e){ var k=JSON.parse(e.data).k; if(k) put(k.t,+k.o,+k.h,+k.l,+k.c,+k.q); };
+    ws.onerror=fallback; ws.onclose=fallback;
+  }catch(e){ fallback(); }
+}
 function drawChart(){
   var box=document.getElementById('cbox'), side=document.getElementById('cside');
-  if(CH){CH.remove();CH=null;}
+  liveStop(); if(CH){CH.remove();CH=null;}
   var p=(CHD[C.sym]||{})[C.tf];
   if(!p || !p.candles.length){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
   document.getElementById('creg').textContent=p.regime?('режим: '+p.regime):'';
@@ -421,6 +548,7 @@ function drawChart(){
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
   if(p.forms.length) pick(0); else setMarks(-1);
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
+  liveStart(C.sym,C.tf,cand,vol,dig);
 }document.getElementById('tb').addEventListener('click',function(e){
   var tr=e.target.closest('tr[data-sym]'); if(!tr) return;
   var chip=e.target.closest('.f[data-tf]');
