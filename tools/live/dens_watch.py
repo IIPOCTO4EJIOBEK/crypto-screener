@@ -25,7 +25,28 @@ from typing import Callable
 from tools.live.market_stats import Banned, _get, banned
 
 API = "https://fapi.binance.com/fapi/v1/depth"
-NEAR = 1.5                  # сверяем только плотности ближе 1,5% — их и могут съесть
+NEAR = 3.0                  # дальше 3% плотность не показываем — и не сверяем
+# Порог «большой» плотности (тред «Порог большой плотности»). Меняется в
+# data/dens_rules.json без правки кода; страница берёт правила из dens_state.json.
+RULES_PATH = Path(__file__).resolve().parents[2] / "data" / "dens_rules.json"
+DEFAULT_RULES = {
+    "min_k": 1.0,       # показывать, если заявка не меньше макс. 5м оборота за 30 мин (разъедят не быстрее 5 мин)
+    "big_k": 3.0,       # крупная — от 3× этого оборота, выделяется ярко
+    "min_usd": 50_000,  # меньше — не плотность
+    "max_dist": 3.0,    # дальше от цены, %, — не показываем
+    "min_age": 300,     # заявка должна простоять, с
+    "near_pct": 0.35,   # цена ближе этого, %, — выделять сильнее
+    "window_min": 30,   # окно для максимального 5м оборота, мин
+}
+
+
+def rules() -> dict:
+    r = dict(DEFAULT_RULES)
+    try:
+        r.update(json.loads(RULES_PATH.read_text(encoding="utf-8")))
+    except Exception:                               # noqa: BLE001
+        pass
+    return r
 LIMIT = 500                 # вес 10; 1000 уровней стоили бы 20
 KEEP = 0.33                 # меньше трети исходного объёма — заявки больше нет
 
@@ -69,13 +90,19 @@ def classify(d: dict, book: dict, touched: bool) -> dict:
 
 
 def check(path: Path, touched_since: Callable[[str, str, float, float], bool],
-          workers: int = 6) -> dict:
-    """Сверить все плотности снимка со стаканом. touched_since(sym, side, price, t)."""
+          workers: int = 6, vol5m: Callable[[str, int], float] | None = None,
+          first_seen: dict[str, float] | None = None) -> dict:
+    """Сверить все плотности снимка со стаканом. touched_since(sym, side, price, t);
+    vol5m(sym, n) — максимальный оборот 5м свечи за последние n свечей;
+    first_seen — с какого времени заявка стоит (хранится у вызывающего между проходами)."""
+    import time as _t
+    R = rules()
     if banned():
         raise Banned("ждём снятия ограничения Binance")
     mtime, by_sym = snapshot(path)
     since = mtime - 150                             # стакан снимают в начале страницы
-    by_sym = {s: [d for d in ds if abs(d.get("distance_pct") or 99) <= NEAR] for s, ds in by_sym.items()}
+    by_sym = {s: [d for d in ds if abs(d.get("distance_pct") or 99) <= R["max_dist"]
+                  and (d.get("notional") or 0) >= R["min_usd"]] for s, ds in by_sym.items()}
     syms = [s for s, ds in by_sym.items() if ds]
     with ThreadPoolExecutor(3) as ex:
         books = dict(zip(syms, ex.map(_book, syms)))
@@ -87,7 +114,35 @@ def check(path: Path, touched_since: Callable[[str, str, float, float], bool],
                 items[key(sym, d)] = {"s": "unknown"}
                 continue
             items[key(sym, d)] = classify(d, book, touched_since(sym, d["side"], d["price"], since))
+    # порог по обороту и время жизни заявки
+    now = _t.time()
+    n5 = max(1, int(R["window_min"] // 5))
+    vmax = {sym: (vol5m(sym, n5) if vol5m else 0.0) for sym in syms}
+    alive = set()
+    for sym in syms:
+        for d in by_sym[sym]:
+            k = key(sym, d)
+            it = items[k]
+            size = it.get("left") if it["s"] == "live" and it.get("left") else d.get("notional") or 0
+            if vmax.get(sym):
+                it["k5"] = round(size / vmax[sym], 2)
+            if first_seen is not None and it["s"] in ("live", "unknown"):
+                alive.add(k)
+                it["age"] = int(now - first_seen.setdefault(k, now))
+    if first_seen is not None:
+        for k in list(first_seen):
+            if k not in alive:
+                del first_seen[k]
     counts: dict[str, int] = {}
     for v in items.values():
         counts[v["s"]] = counts.get(v["s"], 0) + 1
-    return {"snapshot": int(mtime * 1000), "counts": counts, "items": items}
+    return {"snapshot": int(mtime * 1000), "counts": counts, "items": items, "rules": R}
+
+
+def shown(it: dict | None, R: dict) -> bool:
+    """Плотность проходит порог: стоит, не мельче 5м оборота и простояла min_age."""
+    if not it or it.get("s") in ("eaten", "pulled"):
+        return False
+    if it.get("k5") is not None and it["k5"] < R["min_k"]:
+        return False
+    return it.get("age") is None or it["age"] >= R["min_age"]

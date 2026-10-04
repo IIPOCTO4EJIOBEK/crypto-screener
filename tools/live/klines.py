@@ -72,6 +72,7 @@ class Feed:
         self.dirty_hist: set[tuple[str, str]] = set()
         self.syms: list[str] = []
         self.alerts = None
+        self.first_seen: dict[str, float] = {}
 
     def read_symbols(self) -> list[str]:
         try:
@@ -169,6 +170,11 @@ class Feed:
                     print(f"klines: метрики не собраны: {type(e).__name__} {e}")
             await asyncio.sleep(STATS_EVERY)
 
+    def vol5m(self, sym: str, n: int) -> float:
+        """Максимальный оборот 5м свечи за последние n свечей (с текущей)."""
+        cs = self.hist.get((sym, "5m")) or []
+        return max((c[5] for c in cs[-(n + 1):]), default=0.0)
+
     def touched(self, sym: str, side: str, price: float, since: float) -> bool:
         """Доходила ли цена до price с момента since (по 5м свечам в памяти)."""
         t0 = int(since * 1000) - 300_000
@@ -208,7 +214,7 @@ class Feed:
                 continue
             seen, last = mtime, time.monotonic()
             try:
-                st = await asyncio.to_thread(dens_watch.check, src, self.touched)
+                st = await asyncio.to_thread(dens_watch.check, src, self.touched, 3, self.vol5m, self.first_seen)
                 st["at"] = int(time.time() * 1000)
                 _write(self.out / "dens_state.json", st)
                 if self.alerts:

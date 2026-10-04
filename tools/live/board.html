@@ -199,7 +199,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   <span class="seg" id="dside"><button data-v="all">Обе</button><button data-v="bid">Покупка (bid)</button><button data-v="ask">Продажа (ask)</button></span>
   <select id="ddist"><option value="99">любое расстояние</option><option value="0.5">до 0,5%</option><option value="1">до 1%</option><option value="2">до 2%</option></select>
   <select id="dmin"><option value="0">любой размер</option><option value="1e5">от 100 тыс $</option><option value="5e5">от 500 тыс $</option><option value="1e6">от 1 млн $</option></select>
-  <label class="chk"><input type="checkbox" id="dgone"> показывать съеденные и снятые</label>
+  <label class="chk" title="Мелкие (быстрее 5 минут разъедают), свежие (меньше 5 минут), съеденные и снятые"><input type="checkbox" id="dgone"> показывать все, включая мелкие и снятые</label>
 </div>
 <div class="summary" id="dsum"></div>
 <div class="wrap"><table>
@@ -285,7 +285,7 @@ function render(){
   var html = rows.map(function(r){
     var tfs = '<span class="tf">'+['15m','1h','4h'].map(function(t){return tag((r.trend[t]||{}).side,true);}).join('')+'</span>';
     var dens = r.dens_pct==null ? '<span class="mute">—</span>' :
-      '<span class="dens'+(r.dens_pct<=0.5?' near':'')+'">'+r.dens_pct.toFixed(2)+'%</span> <span class="mute">'+money(r.dens_usd)+' $</span>';
+      '<span class="dens'+(r.dens_pct<=drules().near_pct?' near':'')+'">'+r.dens_pct.toFixed(2)+'%</span> <span class="mute">'+money(r.dens_usd)+' $</span>';
     var live = r.forms.filter(function(f){ return !fdead(f,r.price); });
     var fs = live.slice(0,3).map(function(f){
       var arrow = f.dir==='long'?' ↑':f.dir==='short'?' ↓':'';
@@ -401,11 +401,27 @@ var DST={at:0,items:{}}, STL={live:'стоит',eaten:'съедена',pulled:'�
 function dkey(sym,side,price){ return sym+'|'+side+'|'+Math.round(price*1e8); }
 function dstate(sym,side,price){ return (DST.items[dkey(sym,side,price)]||{}).s||null; }
 function dgone(sym,side,price){ var st=dstate(sym,side,price); return st==='eaten'||st==='pulled'; }
+// Порог плотности (настройки — data/dens_rules.json, приходят в dens_state.json):
+// показываем, если заявка стоит, не меньше макс. 5м оборота за 30 мин и простояла 5 мин;
+// от 3× — крупная (ярко), цена ближе 0,35% — выделение сильнее.
+function drules(){ return DST.rules||{min_k:1,big_k:3,min_usd:5e4,max_dist:3,min_age:300,near_pct:0.35}; }
+function ditem(sym,d){ return DST.items[dkey(sym,d.side,d.price)]; }
+function dshow(sym,d){
+  if(!DST.at) return true;                       // до первой сверки — как в снимке
+  var R=drules(), it=ditem(sym,d);
+  if(!it || it.s==='eaten' || it.s==='pulled') return false;
+  if((d.notional||0)<R.min_usd) return false;
+  if(it.k5!=null && it.k5<R.min_k) return false;
+  if(it.age!=null && it.age<R.min_age) return false;
+  return true;
+}
+function dbig(sym,d){ var it=ditem(sym,d); return !!(it && it.k5!=null && it.k5>=drules().big_k); }
 (D.dens||[]).forEach(function(d){ d.adist=d.dist==null?null:Math.abs(d.dist); });
 function dbadge(d){
   var it=DST.items[dkey(d.symbol,d.side,d.price)]; if(!it) return '<span class="mute">—</span>';
   var cls={live:'up',eaten:'near',pulled:'down',unknown:'mute'}[it.s]||'mute';
-  return '<span class="'+cls+'">'+STL[it.s]+'</span>'+(it.s==='live'&&it.left!=null&&d.notional&&it.left<d.notional*0.9?' <span class="mute">'+money(it.left)+' $</span>':'');
+  return (dbig(d.symbol,d)?'<b class="near">★ крупная</b> ':'')+'<span class="'+cls+'">'+STL[it.s]+'</span>'+(it.s==='live'&&it.left!=null&&d.notional&&it.left<d.notional*0.9?' <span class="mute">'+money(it.left)+' $</span>':'')+
+    (it.k5!=null?' <span class="mute">· '+it.k5.toFixed(1)+'× 5м</span>':'')+(it.age!=null&&it.age<drules().min_age?' <span class="mute">· стоит '+Math.round(it.age/60)+' мин</span>':'');
 }
 function renderDens(){
   var rows=(D.dens||[]).filter(function(d){
@@ -413,7 +429,7 @@ function renderDens(){
     if(P.side!=='all' && d.side!==P.side) return false;
     if(d.adist!=null && d.adist>+P.dist) return false;
     if((d.notional||0)<+P.min) return false;
-    if(!P.gone && dgone(d.symbol,d.side,d.price)) return false;
+    if(!P.gone && !dshow(d.symbol,d)) return false;
     return true;
   });
   sortRows(rows,P.k,P.sdir,function(d,k){return k==='coin'?d.coin:k==='st'?(dstate(d.symbol,d.side,d.price)||''):d[k];});
@@ -775,9 +791,11 @@ function drawChart(kl){
       title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')});
   });
   // плотности из стакана: оранжевые линии с размером
-  (CHDENS[C.sym]||[]).filter(function(d){ return !dgone(C.sym,d.side,d.price) && Math.abs(d.price-pxNow)/pxNow<=0.02; }).sort(function(a,b){return b.notional-a.notional;}).slice(0,3).forEach(function(d){
+  (CHDENS[C.sym]||[]).filter(function(d){ return dshow(C.sym,d) && Math.abs(d.price-pxNow)/pxNow*100<=drules().max_dist; }).sort(function(a,b){return b.notional-a.notional;}).slice(0,3).forEach(function(d){
     var it=DST.items[dkey(C.sym,d.side,d.price)]||{}, sz=it.s==='live'&&it.left?it.left:d.notional;
-    cand.createPriceLine({price:d.price,color:'#f0b429',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:(d.side==='bid'?'плотн. bid ':'плотн. ask ')+money(sz)+(isRound(d.price)?' · круглое':'')});
+    var big=dbig(C.sym,d), near=Math.abs(d.price-pxNow)/pxNow*100<=drules().near_pct;
+    cand.createPriceLine({price:d.price,color:big?'#ff8c00':'#f0b429',lineWidth:big||near?(near?4:3):2,lineStyle:0,axisLabelVisible:true,
+      title:(big?'★ ':'')+(d.side==='bid'?'плотн. bid ':'плотн. ask ')+money(sz)+(it.k5!=null?' · '+it.k5.toFixed(1)+'×5м':'')+(isRound(d.price)?' · круглое':'')+(near?' · рядом':'')});
   });
   // наклонные: отрезок от первой точки до последней свечи
   var seen={}, tLast=Math.floor(cs[cs.length-1][0]/1000)+MSK, SL=[];
@@ -948,7 +966,7 @@ function loadDens(){
     var changed=DST.at&&j.at!==DST.at;
     DST=j;
     if(changed) softRedraw(false);   // плотности на открытом графике — по свежей сверке
-    var by={}; (D.dens||[]).forEach(function(d){ if(!dgone(d.symbol,d.side,d.price)) (by[d.symbol]=by[d.symbol]||[]).push(d); });
+    var by={}; (D.dens||[]).forEach(function(d){ if(dshow(d.symbol,d)) (by[d.symbol]=by[d.symbol]||[]).push(d); });
     D.rows.forEach(function(r){
       var best=null, bd=1e9;
       (by[r.symbol]||[]).forEach(function(d){ var x=Math.abs(d.price-r.price)/r.price*100; if(x<bd){bd=x;best=d;} });

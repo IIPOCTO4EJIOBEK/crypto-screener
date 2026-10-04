@@ -276,18 +276,20 @@ class Alerts:
         """Плотность съедена: в прошлую сверку стояла, сейчас ушла сделками."""
         from tools.live import dens_watch
         items = state.get("items", {})
+        R = state.get("rules") or dens_watch.rules()
         for sym, ds in snapshot.items():
             for d in ds:
                 k = dens_watch.key(sym, d)
                 st = (items.get(k) or {}).get("s")
-                if st == "eaten" and self.dens_prev.get(k) == "live" and (d.get("notional") or 0) >= MIN_DENS:
+                if st == "eaten" and self.dens_prev.get(k) == "shown" and (d.get("notional") or 0) >= MIN_DENS:
                     side = "продажу" if d["side"] == "ask" else "покупку"
                     dd = dict(d)
                     self._send(f"eaten|{k}", lambda sym=sym, dd=dd, side=side: self._pack(
                         sym, "5m", f"🍽 <b>{sym.removesuffix('USDT')}</b> съели плотность на {side}: "
                                    f"{_fmt(dd['price'])}, было {_money(dd['notional'])} $",
                         hlines=[(dd["price"], "#f0b429", "съели")], title="плотность съедена"))
-        self.dens_prev = {k: v.get("s") for k, v in items.items()}
+        # «было на экране»: съеденной считаем только плотность, прошедшую порог
+        self.dens_prev = {k: ("shown" if dens_watch.shown(v, R) else v.get("s")) for k, v in items.items()}
 
     def stats_updated(self, coins: dict[str, dict]) -> None:
         """Цена у хая или лоя дня."""
