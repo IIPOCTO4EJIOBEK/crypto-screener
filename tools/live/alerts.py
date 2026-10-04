@@ -12,7 +12,9 @@
 
 Куда слать: токен бота `TELEGRAM_BOT_TOKEN` и чат `SCREENER_ALERT_CHAT`
 (по умолчанию канал проекта) берутся из окружения или из
-`/opt/crypto-screener/.env`. Бот должен быть администратором канала.
+`/opt/crypto-screener/.env`. Бот должен быть администратором канала. Если
+Telegram из сети ВМ не открывается, адрес прокси — `TELEGRAM_PROXY`
+(`http://логин:пароль@хост:порт`).
 Без токена модуль молчит и один раз пишет об этом в журнал.
 """
 
@@ -45,7 +47,8 @@ def _env() -> dict[str, str]:
             m = re.match(r"\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)", line)
             if m:
                 out[m.group(1)] = m.group(2).strip().strip('"').strip("'")
-    out.update({k: v for k, v in os.environ.items() if k in ("TELEGRAM_BOT_TOKEN", "SCREENER_ALERT_CHAT")})
+    out.update({k: v for k, v in os.environ.items()
+                if k in ("TELEGRAM_BOT_TOKEN", "SCREENER_ALERT_CHAT", "TELEGRAM_PROXY")})
     return out
 
 
@@ -64,6 +67,9 @@ class Alerts:
         env = _env()
         self.token = env.get("TELEGRAM_BOT_TOKEN")
         self.chat = env.get("SCREENER_ALERT_CHAT") or DEFAULT_CHAT
+        # из сети ВМ api.telegram.org недоступен напрямую — тогда через прокси
+        proxy = env.get("TELEGRAM_PROXY")
+        self.proxies = {"https": proxy, "http": proxy} if proxy else None
         self.state_path = out_dir / "alerts_sent.json"
         try:
             self.sent: dict[str, float] = json.loads(self.state_path.read_text(encoding="utf-8"))
@@ -105,7 +111,8 @@ class Alerts:
         try:
             r = requests.post(f"https://api.telegram.org/bot{self.token}/sendMessage",
                               data={"chat_id": self.chat, "text": text, "parse_mode": "HTML",
-                                    "disable_web_page_preview": "true"}, timeout=10)
+                                    "disable_web_page_preview": "true"}, timeout=10,
+                              proxies=self.proxies)
             if r.status_code != 200:
                 print(f"alerts: Telegram {r.status_code}: {r.text[:200]}", flush=True)
                 return
