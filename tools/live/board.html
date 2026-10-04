@@ -66,6 +66,12 @@ svg.sp{display:block}
 #ruler.down{border-color:#ef4f5a;background:rgba(239,79,90,.15)}
 #ruler span{position:absolute;left:50%;top:100%;transform:translate(-50%,4px);background:#4c8dff;color:#fff;padding:3px 8px;border-radius:4px;font-size:12px;line-height:1.35;white-space:nowrap;text-align:center}
 #ruler.down span{background:#ef4f5a}
+#fzone{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+#fzone .z{position:absolute}
+#fzone .tp{background:rgba(31,191,117,.14)}
+#fzone .sl{background:rgba(239,79,90,.14)}
+#fzone span{position:absolute;left:6px;font-size:11px;color:#e6e9ef;background:rgba(15,17,21,.75);padding:1px 6px;border-radius:3px;white-space:nowrap}
+#fzone .tp span{top:3px}#fzone .sl span{bottom:3px}
 #chint{position:absolute;left:10px;top:8px;z-index:3;color:var(--mute);font-size:12px;pointer-events:none}
 @media (max-width:800px){#cside{display:none}}
 tbody tr{cursor:pointer}
@@ -532,13 +538,14 @@ function liveStart(sym,tf,cand,vol,dig,lastT){
       lastT=k[0];
       var time=Math.floor(k[0]/1000)+MSK;
       try{ cand.update({time:time,open:k[1],high:k[2],low:k[3],close:k[4]}); vol.update({time:time,value:k[5],color:k[4]>=k[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)'}); }catch(e){}
+      if(ZONE) ZONE();
       liveMark(true,'онлайн · '+k[4].toFixed(dig)+' · '+new Date(j.t).toLocaleTimeString('ru-RU'));
     }).catch(function(){ if(LV.key===key) liveMark(false,'нет живых свечей'); });
   }
   poll(); LV.timer=setInterval(poll,LV.sec*1000);
 }
 /* ---------- линейка: зажать правую кнопку мыши и тянуть ---------- */
-var CAND=null, TFMIN={'5m':5,'15m':15,'1h':60}, RUL={on:false,a:null,el:null};
+var ZONE=null, CAND=null, TFMIN={'5m':5,'15m':15,'1h':60}, RUL={on:false,a:null,el:null};
 function rulEl(){ var box=document.getElementById('cbox'); if(!RUL.el||!box.contains(RUL.el)){ RUL.el=document.createElement('div'); RUL.el.id='ruler'; box.appendChild(RUL.el); } return RUL.el; }
 function rulPt(e){ var r=document.getElementById('cbox').getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
   return {x:x,y:y,p:CAND.coordinateToPrice(y),l:CH.timeScale().coordinateToLogical(x)}; }
@@ -564,11 +571,12 @@ function rulDraw(b){
   box.addEventListener('wheel',function(){ if(!RUL.on) rulHide(); },{passive:true});
   window.addEventListener('mousemove',function(e){ if(RUL.on) rulDraw(rulPt(e)); });
   window.addEventListener('mouseup',function(e){ if(e.button===2) RUL.on=false; });
+  window.addEventListener('resize',function(){ if(ZONE) setTimeout(ZONE,50); });
 })();
 function drawChart(kl){
   var box=document.getElementById('cbox'), side=document.getElementById('cside');
   liveStop(); if(CH){CH.remove();CH=null;}
-  rulHide(); CAND=null;
+  rulHide(); CAND=null; ZONE=null; var fz=document.getElementById('fzone'); if(fz) fz.innerHTML='';
   var p=(CHD[C.sym]||{})[C.tf];
   if((!p || !p.candles.length) && !(kl && kl.length)){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
   p=p||{candles:[],levels:[],lines:[],forms:[],splashes:[]};
@@ -614,15 +622,36 @@ function drawChart(kl){
   function setMarks(sel){
     cand.setMarkers(p.forms.map(function(f,i){ if(f.idx==null) return null;
       var up=f.dir!=='short';
-      return {time:T(f.idx),position:up?'belowBar':'aboveBar',color:up?'#1fbf75':'#ef4f5a',shape:up?'arrowUp':'arrowDown',text:i===sel?f.title:'',size:i===sel?1.4:0.8};
+      return {time:T(f.idx),position:up?'belowBar':'aboveBar',color:up?'#1fbf75':'#ef4f5a',shape:up?'arrowUp':'arrowDown',text:i===sel?f.title:'',size:i===sel?1.6:1};
     }).filter(Boolean).sort(function(a,b){return a.time-b.time;}));
   }
+  // зона сделки выбранной формации: от свечи сигнала вправо, зелёная до цели,
+  // красная до стопа — как инструмент «позиция» в TradingView
+  var FZ=null;
+  function zoneDraw(){
+    var el=document.getElementById('fzone');
+    if(!el){ el=document.createElement('div'); el.id='fzone'; box.appendChild(el); }
+    if(!FZ || !CH || FZ.entry==null){ el.innerHTML=''; return; }
+    var f=FZ, x1=CH.timeScale().timeToCoordinate(T(f.idx)), x2=box.clientWidth-CH.priceScale('right').width();
+    if(x1==null || x1<0) x1=0;
+    if(x1>=x2){ el.innerHTML=''; return; }
+    var ye=cand.priceToCoordinate(f.entry);
+    function rect(v,cls,label){
+      if(v==null) return ''; var yv=cand.priceToCoordinate(v); if(ye==null||yv==null) return '';
+      return '<div class="z '+cls+'" style="left:'+x1+'px;width:'+(x2-x1)+'px;top:'+Math.min(ye,yv)+'px;height:'+Math.max(1,Math.abs(ye-yv))+'px"><span>'+label+'</span></div>';
+    }
+    function pc(v){ var d=(v-f.entry)/f.entry*100; return (d>0?'+':'')+d.toFixed(2)+'%'; }
+    el.innerHTML=rect(f.target,'tp',f.target==null?'':'цель '+px(f.target)+' ('+pc(f.target)+')'+(f.rr!=null?' · R:R '+f.rr:''))+
+                 rect(f.stop,'sl',f.stop==null?'':'стоп '+px(f.stop)+' ('+pc(f.stop)+')');
+  }
+  ZONE=zoneDraw;
+  CH.timeScale().subscribeVisibleLogicalRangeChange(function(){ if(ZONE===zoneDraw) zoneDraw(); });
   var fl=[];
   function pick(i){
     setMarks(i);
     fl.forEach(function(x){cand.removePriceLine(x);}); fl=[];
     [].forEach.call(side.querySelectorAll('.fc'),function(el,j){el.classList.toggle('on',j===i);});
-    var f=p.forms[i]; if(!f) return;
+    var f=p.forms[i]; FZ=(f && f.idx!=null)?f:null; zoneDraw(); if(!f) return;
     if(f.entry!=null) fl.push(cand.createPriceLine({price:f.entry,color:'#4c8dff',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:'вход'}));
     if(f.stop!=null) fl.push(cand.createPriceLine({price:f.stop,color:'#ef4f5a',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'стоп'}));
     if(f.target!=null) fl.push(cand.createPriceLine({price:f.target,color:'#1fbf75',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'цель'}));
@@ -638,6 +667,7 @@ function drawChart(kl){
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
   if(p.forms.length) pick(0); else setMarks(-1);
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
+  setTimeout(zoneDraw,0);
   liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
 }document.getElementById('tb').addEventListener('click',function(e){
   var fv=e.target.closest('[data-fav]'), hd=e.target.closest('[data-hide]');
