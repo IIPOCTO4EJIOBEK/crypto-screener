@@ -167,10 +167,15 @@ class Feed:
         """Раз в полминуты — живы ли плотности снимка (kl/dens_state.json)."""
         from tools.live import dens_watch
         src = self.out.parent / "densities.html"
+        seen, last = 0.0, 0.0
         while True:
-            await asyncio.sleep(DENS_EVERY)
+            await asyncio.sleep(5)
             if not src.exists():
                 continue
+            mtime = src.stat().st_mtime        # новый снимок сверяем сразу
+            if mtime == seen and time.monotonic() - last < DENS_EVERY:
+                continue
+            seen, last = mtime, time.monotonic()
             try:
                 st = await asyncio.to_thread(dens_watch.check, src, self.touched)
                 st["at"] = int(time.time() * 1000)
