@@ -250,7 +250,7 @@ class Feed:
     async def run(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         from tools.live.alerts import Alerts
-        self.alerts = Alerts(self.out)
+        self.alerts = Alerts(self.out, candles=lambda sym, tf: list(self.hist.get((sym, tf)) or []))
         asyncio.get_running_loop().create_task(self.flusher())
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())

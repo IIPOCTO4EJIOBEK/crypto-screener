@@ -93,6 +93,9 @@ def fetch(symbols: list[str], workers: int = 8) -> dict[str, dict]:
         if t.get("symbol") in res:
             res[t["symbol"]]["tpm_avg"] = round(int(t.get("count") or 0) / 1440)
             res[t["symbol"]]["price"] = float(t.get("lastPrice") or 0) or None
+            res[t["symbol"]]["ch24h"] = round(float(t.get("priceChangePercent") or 0), 2)
+            res[t["symbol"]]["qv24"] = round(float(t.get("quoteVolume") or 0))
+            res[t["symbol"]]["trades24"] = int(t.get("count") or 0)
     prem = _safe(lambda: _get("/fapi/v1/premiumIndex")) or []
     for p in prem:
         if p.get("symbol") in res:
