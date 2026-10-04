@@ -50,10 +50,25 @@ class Position:
     last_check_ms: int = 0
     trend: str = ""                     # тренд монеты по скринеру на входе
     mark: float = 0.0                    # последняя цена — для капитала
+    risk0: float = 0.0                   # начальный риск: R считается от него, даже когда стоп сдвинут
+    breakeven_r: float = 0.0             # при +N R стоп переносится на вход (0 — выкл.)
+    trail_r: float = 0.0                 # трейлинг: стоп в N R от лучшей цены (0 — выкл.)
+    best: float = 0.0                    # лучшая цена с момента входа (по закрытым свечам)
+    trail_pct: float = 0.0               # трейлинг: стоп в доле цены от лучшей (0 — выкл.)
+    stop_on_close: bool = False          # стоп по закрытию минутной свечи, а не по касанию
+    tp1_r: float = 0.0                   # первый тейк при +N R (0 — выкл.)
+    tp1_frac: float = 0.5                # какая доля позиции закрывается на первом тейке
+    tp1_done: bool = False
+    be_after_tp1: bool = False           # после первого тейка стоп — в безубыток
+    realized: float = 0.0                # P&L частичных выходов за вычетом их комиссий
+    qty0: float = 0.0                    # начальный объём
+    reasons: list = field(default_factory=list)   # почему скринер нашёл формацию
+    book: dict = field(default_factory=dict)      # стакан на входе: спред, перекос, плотность
+    signal_ts: int = 0                   # время сигнальной свечи формации
 
     @property
     def risk(self) -> float:
-        return abs(self.entry - self.stop)
+        return self.risk0 or abs(self.entry - self.stop)
 
     def r_of(self, price: float) -> float:
         move = price - self.entry if self.side == "long" else self.entry - price
@@ -62,14 +77,16 @@ class Position:
 
 @dataclass(frozen=True)
 class Exit:
-    reason: str      # stop | target | timeout
+    reason: str      # stop | trail | tp1 | target | timeout
     price: float
     ts: int
+    qty: float = 0.0  # 0 — вся позиция; иначе частичный выход на qty монет
 
 
 def signal_key(row: dict) -> str:
     """Один и тот же сигнал скринер показывает несколько кругов подряд."""
-    return f"{row['kind']}|{row['tf']}|{row['symbol']}|{row['direction']}|{row['entry']:.10g}"
+    key = f"{row['kind']}|{row['tf']}|{row['symbol']}|{row['direction']}|{row['entry']:.10g}"
+    return key + (f"|{row['key_suffix']}" if row.get("key_suffix") else "")
 
 
 def eligible(row: dict, *, policy: str, max_age: int = 1) -> str | None:
@@ -112,28 +129,98 @@ def entry_ok(side: str, fill: float, stop: float, target: float) -> str | None:
     return None
 
 
-def check_exit(pos: Position, candles: list[Candle], now_ms: int) -> Exit | None:
-    """Пройти закрытые минутные свечи после последней проверки.
+def move_stop(pos: Position, c: Candle) -> None:
+    """Сдвинуть стоп после закрытия свечи: безубыток и трейлинг.
 
-    Свеча считается, если открылась не раньше открытия позиции. Гэп за стоп
-    исполняется по открытию свечи (хуже стопа), а не по стопу.
+    Сдвиг — только по закрытой свече и только в сторону уменьшения риска;
+    новый стоп действует со следующей свечи. Внутри той же свечи порядок
+    максимума и минимума неизвестен, поэтому сдвигать стоп по ней и тут же
+    проверять его было бы заглядыванием.
     """
-    for c in candles:
-        if c.ts < pos.last_check_ms or c.ts + 60_000 > now_ms or c.ts < pos.opened_ms:
-            continue
-        if pos.side == "long":
-            if c.low <= pos.stop:
-                return Exit("stop", min(c.open, pos.stop), c.ts)
-            if c.high >= pos.target:
-                return Exit("target", pos.target, c.ts)
-        else:
-            if c.high >= pos.stop:
-                return Exit("stop", max(c.open, pos.stop), c.ts)
-            if c.low <= pos.target:
-                return Exit("target", pos.target, c.ts)
-    if now_ms >= pos.expires_ms:
-        return Exit("timeout", 0.0, now_ms)      # цена — по стакану в момент выхода
+    if not (pos.breakeven_r or pos.trail_r or pos.trail_pct):
+        return
+    long = pos.side == "long"
+    pos.best = max(pos.best or pos.entry, c.high) if long else min(pos.best or pos.entry, c.low)
+    gain = (pos.best - pos.entry) if long else (pos.entry - pos.best)
+    cands = []
+    if pos.breakeven_r and gain >= pos.breakeven_r * pos.risk:
+        cands.append(pos.entry)
+    if pos.trail_r and gain >= pos.trail_r * pos.risk:
+        d = pos.trail_r * pos.risk
+        cands.append(pos.best - d if long else pos.best + d)
+    if pos.trail_pct and gain > 0:
+        d = pos.best * pos.trail_pct
+        if gain >= d:                 # трейлинг включается, когда он уже не хуже входа
+            cands.append(pos.best - d if long else pos.best + d)
+    for s in cands:
+        if long and s > pos.stop:
+            pos.stop = s
+        elif not long and s < pos.stop:
+            pos.stop = s
+
+
+def _stop_hit(pos: Position, c: Candle) -> float | None:
+    """Цена выхода по стопу на этой свече или None.
+
+    По касанию: гэп за стоп — по открытию (хуже стопа). По закрытию
+    (`stop_on_close`): только если свеча закрылась за стопом, выход по закрытию.
+    """
+    long = pos.side == "long"
+    if pos.stop_on_close:
+        beyond = c.close <= pos.stop if long else c.close >= pos.stop
+        return c.close if beyond else None
+    if long and c.low <= pos.stop:
+        return min(c.open, pos.stop)
+    if not long and c.high >= pos.stop:
+        return max(c.open, pos.stop)
     return None
+
+
+def _reached(pos: Position, c: Candle, level: float) -> bool:
+    return c.high >= level if pos.side == "long" else c.low <= level
+
+
+def check_exits(pos: Position, candles: list[Candle], now_ms: int,
+                bar_ms: int = 60_000) -> list[Exit]:
+    """Пройти закрытые минутные свечи после последней проверки; выходы по порядку.
+
+    Частичный выход (первый тейк) — Exit с qty > 0, позиция уменьшается на месте;
+    полный — qty = 0, после него проверка заканчивается. Внутри свечи стоп
+    проверяется раньше тейков (худший случай). Стоп, сдвинутый безубытком или
+    трейлингом, даёт причину «trail».
+    """
+    out: list[Exit] = []
+    long = pos.side == "long"
+    for c in candles:
+        if c.ts < pos.last_check_ms or c.ts + bar_ms > now_ms or c.ts < pos.opened_ms:
+            continue
+        moved = pos.risk0 and abs(abs(pos.stop - pos.entry) - pos.risk0) > 1e-12
+        px = _stop_hit(pos, c)
+        if px is not None:
+            out.append(Exit("trail" if moved else "stop", px, c.ts))
+            return out
+        if pos.tp1_r and not pos.tp1_done:
+            lvl = pos.entry + pos.tp1_r * pos.risk if long else pos.entry - pos.tp1_r * pos.risk
+            if _reached(pos, c, lvl):
+                q = pos.qty * pos.tp1_frac
+                out.append(Exit("tp1", lvl, c.ts, q))
+                pos.qty -= q
+                pos.tp1_done = True
+                if pos.be_after_tp1:
+                    pos.stop = max(pos.stop, pos.entry) if long else min(pos.stop, pos.entry)
+        if pos.target and _reached(pos, c, pos.target):
+            out.append(Exit("target", pos.target, c.ts))
+            return out
+        move_stop(pos, c)
+    if now_ms >= pos.expires_ms:
+        out.append(Exit("timeout", 0.0, now_ms))      # цена — по стакану в момент выхода
+    return out
+
+
+def check_exit(pos: Position, candles: list[Candle], now_ms: int) -> Exit | None:
+    """Полный выход, если он есть (старый вид — для простых позиций без частичных тейков)."""
+    ex = [e for e in check_exits(pos, candles, now_ms) if not e.qty]
+    return ex[0] if ex else None
 
 
 def expires(opened_ms: int, tf: str) -> int:
@@ -149,6 +236,10 @@ class BotState:
     seen: dict[str, int] = field(default_factory=dict)         # key → когда видели
     start_ts: int = 0
     last_equity_ms: int = 0
+    day: int = 0                     # сутки МСК, к которым относится day_pnl
+    day_pnl: float = 0.0             # реализованный результат за эти сутки
+    cooldown: dict[str, int] = field(default_factory=dict)   # монета → до какого момента пауза
+    streak: int = 0                  # убыточных сделок подряд
 
     def pos(self) -> list[Position]:
         return [Position(**p) for p in self.positions.values()]
@@ -221,6 +312,29 @@ class Config:
     max_age: int = 1               # свечей с момента события формации
     max_drawdown: float = 0.35
     equity_every_ms: int = 15 * 60_000
+    breakeven_r: float = 0.0       # перенос стопа в безубыток при +N R (0 — выкл.)
+    trail_r: float = 0.0           # трейлинг-стоп в N R от лучшей цены (0 — выкл.)
+    daily_loss: float = 0.0        # лимит убытка за сутки МСК, доля капитала (0 — выкл.)
+    cooldown_min: int = 0          # пауза по монете после стопа, минут (0 — выкл.)
+    max_side: int = 0              # не больше N позиций в одну сторону (0 — без лимита)
+    trail_pct: float = 0.0         # трейлинг в доле цены от лучшей (0 — выкл.)
+    stop_on_close: bool = False    # стоп по закрытию минутной свечи
+    tp1_r: float = 0.0             # первый тейк при +N R (0 — выкл.)
+    tp1_frac: float = 0.5          # доля позиции на первом тейке
+    be_after_tp1: bool = False     # после первого тейка стоп в безубыток
+    no_target: bool = False        # без цели формации: выход только стопом/трейлингом/временем
+    pause_after: int = 0           # пауза входов после N убыточных сделок подряд (0 — выкл.)
+    pause_min: int = 60
+    funding: bool = False          # учитывать фандинг в P&L при закрытии
+
+
+SIDE_RU = {"long": "ЛОНГ", "short": "ШОРТ"}
+REASON_RU = {"stop": "стоп", "trail": "сдвинутый стоп", "target": "цель", "timeout": "время"}
+MSK_SHIFT_MS = 3 * 3600_000
+
+
+def msk_day(ms: int) -> int:
+    return (ms + MSK_SHIFT_MS) // 86_400_000
 
 
 CLOSE = {"long": "sell", "short": "buy"}
@@ -235,7 +349,20 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
     rows — строки скринера (как в `tools/live/screen.py --json`), в порядке
     ранжирования. candles(symbol, since_ms) — минутные свечи перпетуала.
     """
-    out = {"opened": 0, "closed": 0, "skipped": 0}
+    out = {"opened": 0, "closed": 0, "skipped": 0, "events": []}
+    today = msk_day(now_ms)
+    if st.day != today:
+        st.day, st.day_pnl = today, 0.0
+
+    # 0. команда «закрыть всё» (файл CLOSEALL — из Telegram или руками):
+    # выход по рынку по стакану в этом же круге
+    closeall = ledger.root / "CLOSEALL"
+    if closeall.exists():
+        for p in st.pos():
+            p.expires_ms = 0
+            st.put(p)
+        closeall.unlink()
+        ledger.log("closeall", positions=len(st.positions))
 
     # 1. выходы
     for p in st.pos():
@@ -244,11 +371,27 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         except Exception as exc:                            # noqa: BLE001
             ledger.log("error", where="candles", symbol=p.symbol, error=str(exc)[:200])
             continue
-        ex = check_exit(p, cs, now_ms)
+        exits = check_exits(p, cs, now_ms)
         closed = [c for c in cs if c.ts + 60_000 <= now_ms]
         if closed:
             p.mark = closed[-1].close
             p.last_check_ms = closed[-1].ts + 60_000
+        ex = None
+        for e in exits:
+            if e.qty:                                   # частичный тейк — по уровню
+                part = (e.price - p.entry) * e.qty * (1 if p.side == "long" else -1)
+                fee = e.qty * e.price * broker.fee
+                st.cash += part - fee
+                st.day_pnl += part - fee
+                p.realized += part - fee
+                ledger.log("partial", key=p.key, symbol=p.symbol, side=p.side, qty=e.qty,
+                           price=e.price, reason=e.reason, pnl=part, fee=fee,
+                           stop=p.stop, left=p.qty)
+                out["events"].append(
+                    f"ТЕЙК {SIDE_RU[p.side]} {p.symbol}: {e.qty:.6g} по {e.price:.6g}, "
+                    f"{part - fee:+.2f} USDT" + (", стоп в безубыток" if p.be_after_tp1 else ""))
+            else:
+                ex = e
         if ex is None:
             st.put(p)
             continue
@@ -263,16 +406,39 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         else:
             # стоп и цель — по уровню (стоп при гэпе — по открытию свечи), комиссия тейкера
             price, fee, slip = ex.price, p.qty * ex.price * broker.fee, None
+        funding = 0.0
+        if cfg.funding:
+            try:
+                rate = broker.funding(p.symbol, p.opened_ms, ex.ts)
+                funding = (1 if p.side == "long" else -1) * p.qty * p.entry * rate
+            except Exception as exc:                        # noqa: BLE001
+                ledger.log("error", where="funding", symbol=p.symbol, error=str(exc)[:200])
         pnl = _pnl(p, price)
-        st.cash += pnl - fee
+        st.cash += pnl - fee - funding
+        total = p.realized + pnl - fee - funding - p.fee_in
+        st.day_pnl += pnl - fee - funding - p.fee_in
         st.drop(p.key)
         out["closed"] += 1
+        if ex.reason == "stop" and cfg.cooldown_min:
+            st.cooldown[p.symbol] = now_ms + cfg.cooldown_min * 60_000
+        st.streak = st.streak + 1 if total < 0 else 0
+        if cfg.pause_after and st.streak >= cfg.pause_after:
+            st.cooldown["__all__"] = now_ms + cfg.pause_min * 60_000
+            st.streak = 0
+            ledger.log("pause", until=st.cooldown["__all__"], reason="серия убыточных сделок")
+            out["events"].append(f"Пауза входов на {cfg.pause_min} мин: {cfg.pause_after} убыточных сделок подряд")
+        q0 = p.qty0 or p.qty
+        r_net = total / (q0 * p.risk) if p.risk and q0 else 0.0
+        out["events"].append(
+            f"ВЫХОД {SIDE_RU[p.side]} {p.symbol} {p.title} {p.tf}: {REASON_RU.get(ex.reason, ex.reason)}, "
+            f"{price:.6g}, {r_net:+.2f} R, {total:+.2f} USDT")
         ledger.log("close", key=p.key, symbol=p.symbol, formation=p.kind, title=p.title,
-                   tf=p.tf, side=p.side, qty=p.qty, entry=p.entry, exit=price,
+                   tf=p.tf, side=p.side, qty=q0, entry=p.entry, exit=price,
                    reason=ex.reason, exit_ts=ex.ts, opened_ms=p.opened_ms,
-                   r=p.r_of(price), r_net=(pnl - fee - p.fee_in) / (p.qty * p.risk)
-                   if p.risk else 0.0, pnl=pnl, fee=fee + p.fee_in, slippage_bp=slip,
-                   measured_r=p.measured_r, measured_n=p.measured_n, trend=p.trend)
+                   r=p.r_of(price), r_net=r_net, pnl=total + fee + funding + p.fee_in,
+                   fee=fee + p.fee_in, funding=funding, partial=p.realized,
+                   slippage_bp=slip, measured_r=p.measured_r, measured_n=p.measured_n,
+                   trend=p.trend)
 
     # 2. капитал и стоп по просадке
     eq = st.equity()
@@ -285,7 +451,15 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         ledger.log("equity", equity=eq, cash=st.cash, open=len(st.positions))
 
     # 3. входы
-    if not ledger.halted:
+    day_stop = bool(cfg.daily_loss) and st.day_pnl <= -cfg.daily_loss * max(eq, 0.0)
+    if day_stop and st.cooldown.get("__day__") != today:
+        st.cooldown["__day__"] = today
+        ledger.log("day_stop", day_pnl=st.day_pnl, equity=eq)
+        out["events"].append(f"Дневной лимит убытка: {st.day_pnl:+.2f} USDT, входы до конца суток МСК остановлены")
+    st.cooldown = {k: v for k, v in st.cooldown.items() if k == "__day__" or v > now_ms}
+    open_cool = {k for k in st.cooldown if not k.startswith("__")}
+    paused = st.cooldown.get("__all__", 0) > now_ms or (ledger.root / "PAUSE").exists()
+    if not ledger.halted and not day_stop and not paused:
         open_syms = {p.symbol for p in st.pos()}
         for row in rows:
             if not row.get("triggered"):
@@ -296,14 +470,20 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             if len(st.positions) >= cfg.max_open:
                 break                          # места нет; сигнал ещё свежий — посмотрим в следующий круг
             st.seen[key] = now_ms
-            why = eligible(row, policy=cfg.policy, max_age=cfg.max_age)
+            manual = bool(row.get("manual"))     # ручной / вебхук: решение трейдера
+            why = eligible(row, policy="all" if manual else cfg.policy, max_age=cfg.max_age)
             if why == "сигнал не свежий":
                 continue                       # старые — молча, их много
             side = row["direction"]
             tr = trend_of(trend, row["symbol"], row["tf"], cfg.trend if cfg.trend != "off" else "tf")
-            why = why or trend_block(side, tr, cfg.trend)
+            why = why or (None if manual else trend_block(side, tr, cfg.trend))
             if not why and row["symbol"] in open_syms:
                 why = "по монете уже есть позиция"
+            if not why and row["symbol"] in open_cool:
+                why = "пауза по монете после стопа"
+            if not why and cfg.max_side and sum(
+                    1 for q in st.pos() if q.side == side) >= cfg.max_side:
+                why = f"уже {cfg.max_side} позиций в эту сторону"
             mid = None
             if not why:
                 try:
@@ -331,7 +511,17 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                          expires_ms=expires(now_ms, row["tf"]), fee_in=fill.fee,
                          signal_entry=row["entry"], measured_r=row.get("exp_net"),
                          measured_n=int(m.get("n") or 0), last_check_ms=now_ms,
-                         trend=tr, mark=fill.price)
+                         trend=tr, mark=fill.price, risk0=abs(fill.price - row["stop"]),
+                         breakeven_r=cfg.breakeven_r, trail_r=cfg.trail_r, best=fill.price,
+                         trail_pct=cfg.trail_pct, stop_on_close=cfg.stop_on_close,
+                         tp1_r=cfg.tp1_r, tp1_frac=cfg.tp1_frac,
+                         be_after_tp1=cfg.be_after_tp1, qty0=fill.qty,
+                         reasons=list(row.get("reasons") or []),
+                         book={k: row.get(k) for k in ("spread_bps", "imbalance", "band_usdt", "mid")
+                               if row.get(k) is not None},
+                         signal_ts=int(row.get("ts") or 0))
+            if cfg.no_target:
+                p.target = 0.0
             st.cash -= fill.fee
             st.put(p)
             open_syms.add(p.symbol)
@@ -340,8 +530,15 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                        tf=p.tf, side=side, qty=p.qty, entry=p.entry, stop=p.stop,
                        target=p.target, signal_entry=p.signal_entry, fee=fill.fee,
                        slippage_bp=fill.slippage_bp, measured_r=p.measured_r,
-                       measured_n=p.measured_n, trend=tr, expires_ms=p.expires_ms)
-            if fill.price and entry_ok(side, fill.price, p.stop, p.target):
+                       measured_n=p.measured_n, trend=tr, expires_ms=p.expires_ms,
+                       reasons=p.reasons, book=p.book, risk0=p.risk0,
+                       tp1=(p.entry + (1 if side == "long" else -1) * p.tp1_r * p.risk0)
+                       if p.tp1_r else None)
+            out["events"].append(
+                f"ВХОД {SIDE_RU[side]} {p.symbol} {p.title} {p.tf}: {p.entry:.6g}, "
+                f"стоп {p.stop:.6g}, цель {p.target:.6g}"
+                + (f", измерено {p.measured_r:+.2f} R" if p.measured_r is not None else ""))
+            if fill.price and entry_ok(side, fill.price, row["stop"], row["target"]):
                 # проскальзывание вынесло цену за стоп или цель — выйти сразу
                 st.positions[key]["expires_ms"] = now_ms
 

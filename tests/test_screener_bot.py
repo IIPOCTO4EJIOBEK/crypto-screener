@@ -137,3 +137,192 @@ def test_состояние_и_страница(tmp_path):
     html = screener_page.build(ledger, st2, policy="all", trend="off", cfg=Config(),
                                now_ms=T0, signals=1)
     assert "AAAUSDT" in html and "Живой результат" in html
+
+
+# --------------------------------------------------------------------------
+# ведение позиции: тейки, безубыток, трейлинг, стоп по закрытию, лимиты
+# --------------------------------------------------------------------------
+def test_частичный_тейк_и_безубыток(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(tp1_r=1.0, tp1_frac=0.5, be_after_tp1=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    # свеча до +1R (102): половина закрыта, стоп на входе
+    data["c"] = [c(T0 + MIN, 100, 102.5, 99.5, 102)]
+    run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)
+    p = st.pos()[0]
+    assert p.qty == pytest.approx(1.0) and p.stop == pytest.approx(100.0)
+    # откат к входу — выход по сдвинутому стопу, сделка в плюсе за счёт тейка
+    data["c"] = [c(T0 + 2 * MIN, 101, 101, 99.9, 100)]
+    res = run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    assert res["closed"] == 1
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "trail" and cl["r_net"] > 0.4
+
+
+def test_трейлинг_в_r(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(trail_r=1.0, no_target=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    assert st.pos()[0].target == 0.0
+    data["c"] = [c(T0 + MIN, 100, 106, 100, 105)]          # лучшая 106 → стоп 104
+    run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)
+    assert st.pos()[0].stop == pytest.approx(104.0)
+    data["c"] = [c(T0 + 2 * MIN, 105, 105, 103, 103.5)]
+    run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "trail" and cl["exit"] == pytest.approx(104.0)
+
+
+def test_стоп_по_закрытию(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(stop_on_close=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 99)]             # шпилька ниже стопа, закрытие выше
+    assert run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)["closed"] == 0
+    data["c"] = [c(T0 + 2 * MIN, 99, 99, 97, 97.5)]
+    run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "stop" and cl["exit"] == 97.5
+
+
+def test_дневной_лимит_и_пауза_по_монете(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(daily_loss=0.003, cooldown_min=30)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 97)]             # стоп: −2×2 = −4 USDT
+    res = run(st, broker, ledger, data, [row(entry=99.5)], T0 + 2 * MIN, cfg)
+    assert res["closed"] == 1 and res["opened"] == 0          # −4 > 0.3 % от 996 — лимит дня
+    assert any(r["kind"] == "day_stop" for r in ledger.journal())
+    assert "AAAUSDT" in st.cooldown
+
+
+def test_пауза_после_серии_убытков(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    cfg = Config(pause_after=1, pause_min=60)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 97)]
+    res = run(st, broker, ledger, data, [row(symbol="BBBUSDT")], T0 + 2 * MIN, cfg)
+    assert res["opened"] == 0 and st.cooldown["__all__"] > T0 + 2 * MIN
+
+
+def test_лимит_позиций_в_одну_сторону(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    res = run(st, broker, ledger, data, [row(), row(symbol="BBBUSDT")], T0, Config(max_side=1))
+    assert res["opened"] == 1 and res["skipped"] == 1
+
+
+def test_уведомления_о_сделках(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    res = run(st, broker, ledger, data, [row()], T0)
+    assert res["events"] and res["events"][0].startswith("ВХОД ЛОНГ AAAUSDT")
+
+
+def test_закрыть_всё_и_пауза_файлами(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    run(st, broker, ledger, data, [row()], T0)
+    (tmp_path / "PAUSE").write_text("x")
+    (tmp_path / "CLOSEALL").write_text("x")
+    res = run(st, broker, ledger, data, [row(symbol="BBBUSDT")], T0 + MIN)
+    assert res["closed"] == 1 and res["opened"] == 0 and not st.positions
+    assert not (tmp_path / "CLOSEALL").exists()
+
+
+def test_команды_telegram(tmp_path):
+    from tools.trade import tg_control
+    bot = tmp_path / "screener-all"
+    bot.mkdir()
+    save_state(bot / "state.json", BotState(cash=1000.0, peak=1000.0, start_equity=1000.0))
+    updates = {"result": [
+        {"update_id": 5, "message": {"chat": {"id": 42}, "text": "/pause"}},
+        {"update_id": 6, "message": {"chat": {"id": 99}, "text": "/closeall"}},  # чужой
+        {"update_id": 7, "message": {"chat": {"id": 42}, "text": "/status"}},
+    ]}
+    cmds = tg_control.poll("t", "42", tmp_path / "off", get=lambda u, p: updates)
+    assert cmds == ["/pause", "/status"]
+    assert (tmp_path / "off").read_text() == "8"
+    out = tg_control.handle(cmds, tmp_path)
+    assert (bot / "PAUSE").exists() and not (bot / "CLOSEALL").exists()
+    assert "screener-all" in out[1]
+    tg_control.handle(["/resume"], tmp_path)
+    assert not (bot / "PAUSE").exists()
+
+
+def test_исследование_правил_выхода():
+    """Повтор сделки правилом «как сейчас» совпадает с walk; трейлинг доводит тренд."""
+    from types import SimpleNamespace
+
+    from src.backtest.walk import Trade
+    from tools.exit_study import RULES, Rule, replay
+    bar = 300_000
+    cs = [Candle(T0 + i * bar, 100 + i, 101 + i, 99.5 + i, 100.5 + i, 1, 1, 1)
+          for i in range(30)]
+    f = SimpleNamespace(kind="flag", symbol="A", targets=[104.0], direction="long")
+    tr = Trade(f, "target", 2.0, 4, entry=100.0, stop=98.0, side="long",
+               entry_ms=cs[0].ts)
+    assert replay(tr, cs, "5m", RULES[0]) == pytest.approx(2.0)
+    r = replay(tr, cs, "5m", Rule("t", trail_r=1.5, no_target=True), horizon=20)
+    assert r > 5                                   # рост до конца окна — трейлинг не выбит
+
+
+def test_bot_json_для_страницы_скринера(tmp_path):
+    import json
+    book, broker, ledger, st, data = setup(tmp_path)
+    run(st, broker, ledger, data, [row(reasons=["флагшток +3 %", "пробой"], band_usdt=5e5,
+                                       spread_bps=1.2)], T0, Config(tp1_r=1.0))
+    screener_page.write(ledger, st, tmp_path / "bot.html", policy="all", trend="off",
+                        cfg=Config(tp1_r=1.0), now_ms=T0, signals=1)
+    d = json.loads((tmp_path / "bot.json").read_text())
+    o = d["open"][0]
+    assert o["symbol"] == "AAAUSDT" and o["reasons"] == ["флагшток +3 %", "пробой"]
+    assert o["book"]["band_usdt"] == 5e5
+    assert o["levels"]["tp1"] == pytest.approx(102.0) and o["levels"]["stop_now"] == 98.0
+
+
+# --------------------------------------------------------------------------
+# внешние сигналы: ручная сделка и вебхук
+# --------------------------------------------------------------------------
+def test_ручной_сигнал_мимо_фильтра_тренда(tmp_path):
+    from src.trade import inbox
+    book, broker, ledger, st, data = setup(tmp_path)
+    inbox.put(tmp_path, {"symbol": "BINANCE:AAAUSDT.P", "side": "buy", "stop_pct": 2,
+                         "note": "пробой"})
+    inbox.put(tmp_path, {"symbol": "AAAUSDT", "side": "short"})          # без стопа
+    rows, bad = inbox.take(tmp_path, lambda s: 100.0)
+    assert len(rows) == 1 and bad and "стоп" in bad[0][1]
+    r = rows[0]
+    assert r["stop"] == pytest.approx(98.0) and r["target"] == pytest.approx(104.0)
+    trend = {"coins": {"AAAUSDT": {"1h": "short", "15m": "short", "overall": "short"}}}
+    res = run(st, broker, ledger, data, rows, T0, Config(trend="overall", policy="measured"),
+              trend)
+    assert res["opened"] == 1 and st.pos()[0].reasons == ["пробой"]
+    assert not list((tmp_path / "inbox").glob("*.json"))
+
+
+def test_вебхук_секрет_и_очередь(tmp_path):
+    import io
+    import json as _json
+
+    from tools.trade.webhook import make_handler
+    bot = tmp_path / "screener-managed"
+    bot.mkdir()
+    (bot / "state.json").write_text("{}")
+    H = make_handler("s" * 20, tmp_path)
+
+    def call(body: dict, token: str | None = None, path="/hook"):
+        raw = _json.dumps(body).encode()
+        h = H.__new__(H)
+        h.path = path
+        h.headers = {"Content-Length": str(len(raw)), **({"X-Token": token} if token else {})}
+        h.rfile = io.BytesIO(raw)
+        h.wfile = io.BytesIO()
+        sent = {}
+        h.send_response = lambda c: sent.setdefault("code", c)
+        h.send_header = lambda *a: None
+        h.end_headers = lambda: None
+        h.do_POST()
+        return sent["code"]
+
+    assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1}, "wrong") == 403
+    assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1, "token": "s" * 20}) == 200
+    assert call({"symbol": "BTCUSDT"}, "s" * 20, "/hook?bot=nope") == 404
+    assert len(list((bot / "inbox").glob("*.json"))) == 1
