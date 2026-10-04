@@ -176,7 +176,8 @@ def _reached(pos: Position, c: Candle, level: float) -> bool:
     return c.high >= level if pos.side == "long" else c.low <= level
 
 
-def check_exits(pos: Position, candles: list[Candle], now_ms: int) -> list[Exit]:
+def check_exits(pos: Position, candles: list[Candle], now_ms: int,
+                bar_ms: int = 60_000) -> list[Exit]:
     """Пройти закрытые минутные свечи после последней проверки; выходы по порядку.
 
     Частичный выход (первый тейк) — Exit с qty > 0, позиция уменьшается на месте;
@@ -187,7 +188,7 @@ def check_exits(pos: Position, candles: list[Candle], now_ms: int) -> list[Exit]
     out: list[Exit] = []
     long = pos.side == "long"
     for c in candles:
-        if c.ts < pos.last_check_ms or c.ts + 60_000 > now_ms or c.ts < pos.opened_ms:
+        if c.ts < pos.last_check_ms or c.ts + bar_ms > now_ms or c.ts < pos.opened_ms:
             continue
         moved = pos.risk0 and abs(abs(pos.stop - pos.entry) - pos.risk0) > 1e-12
         px = _stop_hit(pos, c)

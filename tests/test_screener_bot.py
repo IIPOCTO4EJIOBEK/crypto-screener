@@ -245,3 +245,20 @@ def test_команды_telegram(tmp_path):
     assert "screener-all" in out[1]
     tg_control.handle(["/resume"], tmp_path)
     assert not (bot / "PAUSE").exists()
+
+
+def test_исследование_правил_выхода():
+    """Повтор сделки правилом «как сейчас» совпадает с walk; трейлинг доводит тренд."""
+    from types import SimpleNamespace
+
+    from src.backtest.walk import Trade
+    from tools.exit_study import RULES, Rule, replay
+    bar = 300_000
+    cs = [Candle(T0 + i * bar, 100 + i, 101 + i, 99.5 + i, 100.5 + i, 1, 1, 1)
+          for i in range(30)]
+    f = SimpleNamespace(kind="flag", symbol="A", targets=[104.0], direction="long")
+    tr = Trade(f, "target", 2.0, 4, entry=100.0, stop=98.0, side="long",
+               entry_ms=cs[0].ts)
+    assert replay(tr, cs, "5m", RULES[0]) == pytest.approx(2.0)
+    r = replay(tr, cs, "5m", Rule("t", trail_r=1.5, no_target=True), horizon=20)
+    assert r > 5                                   # рост до конца окна — трейлинг не выбит
