@@ -657,6 +657,7 @@ function autoLines(cs,piv){
         if(t==='L' ? c<v-tol : c>v+tol) ok=false;
       }
       if(!ok) continue;
+      if(Math.abs(A.p+sl*(n-1-A.i)-cs[n-1][4])>atr*12) continue;   // ушла далеко от цены — для торговли бесполезна
       ps.forEach(function(q){ if(q.i>=A.i && Math.abs(q.p-(A.p+sl*(q.i-A.i)))<=tol) touch++; });
       var now=A.p+sl*(n-1-A.i);
       out.push({t:t,a:A,sl:sl,touch:touch,now:now,dist:Math.abs(now-cs[n-1][4])/atr,score:touch*2-Math.abs(now-cs[n-1][4])/atr*0.3+B.i/n});
