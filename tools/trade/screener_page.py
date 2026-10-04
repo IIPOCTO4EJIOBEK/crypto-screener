@@ -264,10 +264,74 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 """
 
 
+def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
+            now_ms: int, signals: int = 0, trend_err: str | None = None) -> dict:
+    """Данные страницы для внешней вёрстки (страница скринера рисует по ним графики).
+
+    По каждой сделке — монета, таймфрейм, формация и почему она найдена,
+    уровни (вход, стоп начальный и текущий, первый тейк, цель), стакан на
+    входе (спред, перекос, плотность в полосе 10 б.п.) и итог. Свечи здесь
+    не лежат: их берут из базы скринера или с биржи по symbol/tf и времени.
+    """
+    j = ledger.journal()
+    opens = {r["key"]: r for r in j if r["kind"] == "open"}
+    partials = defaultdict(list)
+    for r in j:
+        if r["kind"] == "partial":
+            partials[r["key"]].append({"ts": r["ts"], "price": r["price"], "qty": r["qty"],
+                                       "reason": r["reason"]})
+
+    def levels(o: dict) -> dict:
+        return {"entry": o.get("entry"), "stop": o.get("stop"), "target": o.get("target"),
+                "tp1": o.get("tp1"), "signal_entry": o.get("signal_entry")}
+
+    open_rows = []
+    for p in st.pos():
+        o = opens.get(p.key, {})
+        open_rows.append({
+            "key": p.key, "symbol": p.symbol, "tf": p.tf, "side": p.side,
+            "formation": p.kind, "title": p.title, "reasons": p.reasons, "book": p.book,
+            "trend": p.trend, "opened_ms": p.opened_ms, "expires_ms": p.expires_ms,
+            "qty": p.qty, "qty0": p.qty0 or p.qty, "levels": {**levels(o), "entry": p.entry,
+                                                          "stop_now": p.stop,
+                                                          "target": p.target or None},
+            "mark": p.mark, "r_now": p.r_of(p.mark or p.entry),
+            "measured_r": p.measured_r, "measured_n": p.measured_n,
+            "partials": partials.get(p.key, [])})
+    closed_rows = []
+    for r in [r for r in j if r["kind"] == "close"][-200:]:
+        o = opens.get(r["key"], {})
+        closed_rows.append({
+            "key": r["key"], "symbol": r["symbol"], "tf": r["tf"], "side": r["side"],
+            "formation": r.get("formation"), "title": r.get("title"),
+            "reasons": o.get("reasons", []), "book": o.get("book", {}), "trend": r.get("trend"),
+            "opened_ms": r.get("opened_ms"), "closed_ms": r.get("exit_ts") or r["ts"],
+            "levels": levels(o), "exit": r["exit"], "exit_reason": r["reason"],
+            "r_net": r["r_net"], "pnl_usdt": _net(r), "measured_r": r.get("measured_r"),
+            "partials": partials.get(r["key"], [])})
+    eq = st.equity()
+    return {
+        "bot": ledger.root.name, "mode": "paper", "market": "binance_futures",
+        "updated_ms": now_ms, "policy": policy, "trend_filter": trend,
+        "rules": settings(cfg), "halted": ledger.halted,
+        "paused": (ledger.root / "PAUSE").exists(),
+        "equity": eq, "start_equity": st.start_equity, "peak": st.peak,
+        "day_pnl": st.day_pnl, "signals_last_round": signals, "trend_error": trend_err,
+        "equity_curve": [[r["ts"], r["equity"]] for r in j if r["kind"] == "equity"][-2000:],
+        "open": open_rows, "closed": closed_rows,
+    }
+
+
 def write(ledger: Ledger, st: BotState, out: Path, **kw) -> Path:
+    """bot.html и рядом bot.json (те же данные для внешней страницы)."""
+    import json
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(build(ledger, st, **kw), encoding="utf-8")
     tmp.replace(out)
+    js = out.with_suffix(".json")
+    tmp = out.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(to_json(ledger, st, **kw), ensure_ascii=False), encoding="utf-8")
+    tmp.replace(js)
     return out
