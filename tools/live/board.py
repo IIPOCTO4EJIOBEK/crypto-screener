@@ -178,7 +178,19 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
     dens_by = {c["symbol"]: c for c in dens.get("coins", [])}
 
     forms: dict[str, list] = {}
+    all_forms: list[dict] = []
     for p in struct.get("pairs", []):
+        for f in p.get("formations", []):
+            m = f.get("measured") or {}
+            all_forms.append({
+                "symbol": p["symbol"], "coin": p["symbol"].removesuffix("USDT"),
+                "tf": p["tf"], "title": f.get("title") or f["kind"], "kind": f["kind"],
+                "dir": f.get("direction"), "entry": f.get("entry"), "stop": f.get("stop"),
+                "target": f.get("target"), "rr": f.get("rr"), "risk": f.get("risk_pct"),
+                "age": f.get("age_candles"), "exp": m.get("exp_net"), "n": m.get("n"),
+                "sig": bool(m.get("significant")), "price": p.get("price"),
+                "regime": (p.get("regime") or {}).get("label"),
+            })
         for f in p.get("formations", []):
             if f.get("age_candles", 99) > FRESH:
                 continue
@@ -236,6 +248,15 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
         "rows": rows,
         "trends": trends,
         "charts": charts(struct),
+        "forms": all_forms,
+        "dens": [{"symbol": c["symbol"], "coin": c["symbol"].removesuffix("USDT"),
+                  "side": d["side"], "price": d["price"], "dist": d.get("distance_pct"),
+                  "notional": d.get("notional"), "k": d.get("k_median"),
+                  "absorb": d.get("absorb_seconds"), "absorb_text": d.get("absorb_text"),
+                  "t5": ((d.get("touches") or {}).get("5m") or {}).get("n"),
+                  "t1h": ((d.get("touches") or {}).get("1h") or {}).get("n"),
+                  "mid": c.get("mid")}
+                 for c in dens.get("coins", []) for d in c.get("densities", [])],
     }
 
 
@@ -250,7 +271,12 @@ def main(argv: list[str] | None = None) -> int:
     data = build(a.db, out.parent, Path(a.universe) if a.universe else None)
     chart_data = data.pop("charts")
     tmpc = out.parent / "charts.json.tmp"
-    tmpc.write_text(json.dumps({"built_unix": data["meta"]["built_unix"], "pairs": chart_data},
+    dens_by_sym: dict[str, list] = {}
+    for d in data["dens"]:
+        dens_by_sym.setdefault(d["symbol"], []).append(
+            {"side": d["side"], "price": d["price"], "notional": d["notional"]})
+    tmpc.write_text(json.dumps({"built_unix": data["meta"]["built_unix"], "pairs": chart_data,
+                                "dens": dens_by_sym},
                                separators=(",", ":")), encoding="utf-8")
     tmpc.replace(out.parent / "charts.json")
     page = Path(a.template).read_text(encoding="utf-8").replace(
