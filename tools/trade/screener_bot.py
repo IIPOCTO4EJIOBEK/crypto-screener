@@ -235,7 +235,15 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
     if a.trend != "off" and trend is None:
         # без свежего тренда фильтр не пропустит ничего; выходы всё равно проверяются
         rows = []
-    res = cycle(rows, st, broker=PaperBroker("future"), ledger=ledger,
+    broker = PaperBroker("future")
+    # ручные сделки и вебхук: идут первыми, мимо фильтра тренда
+    from src.trade import inbox
+    manual, bad = inbox.take(ledger.root, broker.mid)
+    for name, why in bad:
+        ledger.log("skip", key=name, symbol="?", formation="inbox", tf="-", side="-",
+                   reason=f"внешний сигнал не принят: {why}", trend="")
+    rows = manual + list(rows)
+    res = cycle(rows, st, broker=broker, ledger=ledger,
                 candles=candles_1m, now_ms=now_ms, cfg=cfg, trend=trend)
     save_state(ledger.state_path, st)
     if a.notify and res["events"]:
