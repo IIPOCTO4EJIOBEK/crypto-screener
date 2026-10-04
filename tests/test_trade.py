@@ -94,6 +94,12 @@ def test_потолок_веса_оставляет_остаток_в_кэше()
     assert orders[0].notional == pytest.approx(250)
 
 
+def test_покупки_оставляют_запас_под_комиссию():
+    orders = plan({"A": 0.5, "B": 0.5}, equity=1000, cash=1000, positions={},
+                  prices={"A": 100.0, "B": 50.0}, limits=Limits())
+    assert sum(o.notional for o in orders) == pytest.approx(997)
+
+
 def test_стоп_по_просадке():
     assert breached(640, 1000, Limits(max_drawdown=0.35))
     assert not breached(660, 1000, Limits(max_drawdown=0.35))
@@ -116,7 +122,7 @@ def test_шаг_покупает_и_не_повторяет_ребаланс(tmp
     now = START + 40 * DAY_MS
     r1 = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now)
     assert r1.rebalanced and list(r1.state.positions) == ["A"]
-    assert r1.state.cash == pytest.approx(0, abs=10)     # всё в A, минус комиссия
+    assert 0 <= r1.state.cash < 10                       # всё в A, кэш не уходит в минус
     r2 = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now + 60_000)
     assert not r2.rebalanced and r2.fills == []
 

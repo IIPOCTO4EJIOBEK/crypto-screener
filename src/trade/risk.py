@@ -23,6 +23,7 @@ class Limits:
     max_coin_weight: float = 1.0     # верхняя граница веса одной монеты (1.0 — как в бэктесте)
     max_gross: float = 1.0           # доля капитала в рынке (1.0 — как в бэктесте, плеча нет)
     min_order: float = 10.0          # заявки меньше этой суммы в USDT не ставятся (минимум Binance)
+    reserve: float = 0.003           # доля денег под комиссию и спред: иначе кэш после покупок уходит в минус
 
 
 @dataclass(frozen=True)
@@ -77,10 +78,10 @@ def plan(weights: dict[str, float], *, equity: float, cash: float,
             sells.append(Order(sym, "sell", -delta, notional))
         else:
             buys.append(Order(sym, "buy", delta, notional))
-    budget = cash + sum(o.notional for o in sells)
+    budget = (cash + sum(o.notional for o in sells)) * (1.0 - limits.reserve)
     need = sum(o.notional for o in buys)
     if need > budget > 0:
-        k = budget / need * 0.995       # запас на комиссию
+        k = budget / need
         buys = [Order(o.symbol, o.side, o.qty * k, o.notional * k) for o in buys
                 if o.notional * k >= limits.min_order]
     elif budget <= 0:
