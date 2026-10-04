@@ -23,7 +23,56 @@ POLICY_TEXT = {
     "all": "все свежие сработавшие сигналы скринера",
     "measured": "только сигналы, у типа которых измеренная ожидаемость в плюсе (30+ сделок)",
 }
-REASON = {"stop": "стоп", "target": "цель", "timeout": "время"}
+REASON = {"stop": "стоп", "trail": "сдвинутый стоп", "target": "цель", "timeout": "время"}
+
+
+def _net(r: dict) -> float:
+    """Чистый результат сделки в USDT: с частичными тейками, комиссиями и фандингом."""
+    return r["pnl"] - r["fee"] - (r.get("funding") or 0.0)
+
+
+def _group(closed: list[dict], key) -> list[str]:
+    g = defaultdict(list)
+    for r in closed:
+        g[key(r)].append(r)
+    out = []
+    for k, v in sorted(g.items(), key=lambda kv: -sum(_net(r) for r in kv[1])):
+        rs = [r["r_net"] for r in v]
+        net = sum(_net(r) for r in v)
+        out.append(f"<tr><td>{e(k)}</td><td class=num>{len(v)}</td>"
+                   f"<td class=num>{sum(1 for x in rs if x > 0)}/{len(rs)}</td>"
+                   f"<td class=num>{sum(rs) / len(rs):+.2f}</td>"
+                   f"<td class='num {'long' if net > 0 else 'short'}'>{net:+.2f}</td></tr>")
+    return out
+
+
+def settings(cfg: Config) -> list[str]:
+    """Включённые правила ведения позиции — словами, для блока «Что делает бот»."""
+    out = []
+    if cfg.tp1_r:
+        out.append(f"первый тейк: {cfg.tp1_frac:.0%} позиции на +{cfg.tp1_r:g} R"
+                   + (", после него стоп в безубыток" if cfg.be_after_tp1 else ""))
+    if cfg.breakeven_r:
+        out.append(f"безубыток: стоп на вход при +{cfg.breakeven_r:g} R")
+    if cfg.trail_r:
+        out.append(f"трейлинг: стоп в {cfg.trail_r:g} R от лучшей цены")
+    if cfg.trail_pct:
+        out.append(f"трейлинг: стоп в {cfg.trail_pct:.2%} от лучшей цены")
+    if cfg.stop_on_close:
+        out.append("стоп по закрытию минутной свечи, а не по касанию")
+    if cfg.no_target:
+        out.append("без цели формации: выход стопом, трейлингом или по времени")
+    if cfg.daily_loss:
+        out.append(f"дневной лимит убытка {cfg.daily_loss:.1%} капитала")
+    if cfg.cooldown_min:
+        out.append(f"пауза по монете {cfg.cooldown_min} мин после стопа")
+    if cfg.pause_after:
+        out.append(f"пауза всех входов на {cfg.pause_min} мин после {cfg.pause_after} убыточных подряд")
+    if cfg.max_side:
+        out.append(f"не больше {cfg.max_side} позиций в одну сторону")
+    if cfg.funding:
+        out.append("фандинг учитывается в результате")
+    return out
 
 
 def _r(x) -> str:
@@ -42,6 +91,11 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 
     rs = [r["r_net"] for r in closed]
     wins = sum(1 for r in rs if r > 0)
+    nets = [_net(r) for r in closed]
+    gross_win = sum(x for x in nets if x > 0)
+    gross_loss = -sum(x for x in nets if x < 0)
+    pf = gross_win / gross_loss if gross_loss > 0 else None
+    funding = sum(r.get("funding") or 0 for r in closed)
     fees = sum(r.get("fee") or 0 for r in closed) + sum(p.fee_in for p in st.pos())
     slips = [r["slippage_bp"] for r in j if r["kind"] in ("open", "close")
              and r.get("slippage_bp") is not None]
@@ -53,11 +107,17 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
         ("сделок закрыто", f"{len(closed)}"),
         ("в плюсе", f"{wins}/{len(rs)}" if rs else "—"),
         ("средний R после издержек", _r(sum(rs) / len(rs) if rs else None)),
+        ("profit factor", f"{pf:.2f}" if pf is not None else "—"),
+        ("лучшая / худшая сделка, R", f"{max(rs):+.2f} / {min(rs):+.2f}" if rs else "—"),
+        ("результат за сутки МСК, USDT", f"{st.day_pnl:+.2f}"),
+        ("фандинг, USDT", f"{-funding:+.2f}"),
         ("комиссии, USDT", f"{fees:.2f}"),
         ("проскальзывание входа, б.п.", f"{sum(slips) / len(slips):.1f}" if slips else "—"),
         ("открыто сейчас", f"{len(st.positions)} из {cfg.max_open}"),
         ("сигналов в последнем круге", f"{signals}"),
     ]
+    if st.streak:
+        stats.append(("убыточных подряд", f"{st.streak}"))
     stat_html = "".join(f"<tr><td>{e(k)}</td><td class=num>{e(v)}</td></tr>" for k, v in stats)
 
     # сверка по типам формаций
@@ -100,7 +160,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<td class=num>{r['entry']:.6g}</td><td class=num>{r['exit']:.6g}</td>"
             f"<td>{e(REASON.get(r['reason'], r['reason']))}</td>"
             f"<td class='num {'long' if r['r_net'] > 0 else 'short'}'>{r['r_net']:+.2f}</td>"
-            f"<td class=num>{r['pnl'] - r['fee']:+.2f}</td><td>{e(r.get('trend') or '—')}</td></tr>")
+            f"<td class=num>{_net(r):+.2f}</td><td>{e(r.get('trend') or '—')}</td></tr>")
 
     skip_count = defaultdict(int)
     for r in skips:
@@ -141,6 +201,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 <h1>Бот по сигналам скринера · фьючерсы · лонг и шорт</h1>
 <div class="meta">режим: бумажный · обновлено {t(now_ms)} МСК</div>
 {f'<div class="box warn">ОСТАНОВЛЕН: {e(halted)}</div>' if halted else ''}
+{'<div class="box warn">Новые входы на паузе (команда /pause).</div>' if (ledger.root / "PAUSE").exists() else ''}
 
 <h2>Что делает бот</h2>
 <div class="box">
@@ -151,6 +212,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 Риск на сделку — {cfg.risk_pct:.0%} капитала, позиций не больше {cfg.max_open},
 плеча нет. При просадке {cfg.max_drawdown:.0%} от пика новые входы прекращаются.
 <ul>
+{''.join(f"<li>{e(x)}</li>" for x in settings(cfg))}
 <li>Заявки на биржу не уходят. Комиссия 0.05 % за сторону; стоп и цель исполняются по уровню
 (стоп при гэпе — хуже, по открытию свечи).</li>
 <li>Честно: при проверке на архиве с реальным исполнением ни одна формация с нормальной
@@ -172,6 +234,14 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 </table></div>
 <p class="sub">R — результат в единицах риска (расстояние от входа до стопа) после комиссий.
 «Измеренный» — то, что скринер показывает по типу формации на архиве; пусто — замера нет или сделок меньше 30.</p>
+
+<h2>По монетам и сторонам</h2>
+<div class="grid">
+<div class="wrap"><table><thead><tr><th>монета</th><th>сделок</th><th>в плюсе</th><th>средний R</th><th>USDT</th></tr></thead>
+<tbody>{''.join(_group(closed, lambda r: r["symbol"])) or '<tr><td colspan=5 class=sub>сделок ещё нет</td></tr>'}</tbody></table></div>
+<div class="wrap"><table><thead><tr><th>сторона / причина</th><th>сделок</th><th>в плюсе</th><th>средний R</th><th>USDT</th></tr></thead>
+<tbody>{''.join(_group(closed, lambda r: ('лонг' if r['side'] == 'long' else 'шорт'))) + ''.join(_group(closed, lambda r: 'выход: ' + REASON.get(r['reason'], r['reason']))) or '<tr><td colspan=5 class=sub>сделок ещё нет</td></tr>'}</tbody></table></div>
+</div>
 
 <h2>Открытые позиции</h2>
 <div class="wrap"><table>
