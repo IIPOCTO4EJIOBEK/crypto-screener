@@ -28,11 +28,13 @@ TFS = ("5m", "15m", "1h")
 
 def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
             costs: Costs, conn, step: int | None = None,
-            progress=None, require_fill: bool = False) -> int:
+            progress=None, require_fill: bool = True) -> int:
     """Прогнать архив и записать измерение. Возвращает число строк.
 
     require_fill — правило входа (см. walk.simulate): сделка есть, только
-    если цена дошла до входа. По умолчанию старое правило.
+    если цена дошла до входа. Здесь оно по умолчанию включено: по этим числам
+    скринер и боты ранжируют живые сигналы, а старое правило завышало формации
+    с входом не по закрытию (docs/research/20). Старое — флагом --old-entry-rule.
     """
     trades = table(list(symbols), tfs, days=days, costs=costs, step=step,
                    progress=progress, require_fill=require_fill)
@@ -104,7 +106,11 @@ def main() -> None:
     p.add_argument("--no-funding", action="store_true", help="не учитывать фандинг")
     p.add_argument("--require-fill", action="store_true",
                    help="засчитывать сделку, только если цена дошла до входа "
-                        "(docs/research/20)")
+                        "(по умолчанию и так включено; флаг оставлен для "
+                        "совместимости)")
+    p.add_argument("--old-entry-rule", action="store_true",
+                   help="старое правило: вход сразу, без проверки исполнения "
+                        "(только для воспроизведения прежних замеров)")
     a = p.parse_args()
 
     costs = Costs(taker_fee=a.fee, slippage=a.slippage,
@@ -120,7 +126,7 @@ def main() -> None:
     conn = db.connect(a.db)
     written = measure(a.symbols, tuple(a.tfs), days=a.days, costs=costs,
                       conn=conn, step=a.step, progress=progress,
-                      require_fill=a.require_fill)
+                      require_fill=not a.old_entry_rule)
     _print_rows([dict(r) for r in db.load_formation_stats(conn).values()])
     print(f"\nзаписано строк: {written} → {a.db or db.DEFAULT_DB_PATH}")
 
