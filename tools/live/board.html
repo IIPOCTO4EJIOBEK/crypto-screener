@@ -761,7 +761,7 @@ function drawChart(kl){
   function zoneDraw(){
     var el=document.getElementById('fzone');
     if(!el){ el=document.createElement('div'); el.id='fzone'; box.appendChild(el); }
-    if(!FZ || !CH || FZ.entry==null || FZ.stop==null || fdead(FZ,LASTPX)){ el.innerHTML=''; return; }
+    if(!FZ || !CH || FZ.entry==null || FZ.stop==null || fdead(FZ,LASTPX) || (FZ.rr!=null&&FZ.rr<1)){ el.innerHTML=''; return; }
     var f=FZ, x1=CH.timeScale().timeToCoordinate(T(f.idx)), x2=box.clientWidth-CH.priceScale('right').width();
     if(x1==null || x1<0) x1=0;
     if(x1>=x2){ el.innerHTML=''; return; }
