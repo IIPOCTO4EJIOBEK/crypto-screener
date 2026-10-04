@@ -87,13 +87,13 @@ def candles_1m(symbol: str, since_ms: int) -> list:
     return md.binance_futures_ohlcv(symbol, "1m", limit=max(3, min(n, 1500)))
 
 
-def data_dir(a) -> Path:
+def data_dir(a, base: Path = ROOT / "data" / "trade") -> Path:
     if a.data:
         return Path(a.data)
     if a.name:
-        return ROOT / "data" / "trade" / f"screener-{a.name}"
+        return Path(base) / f"screener-{a.name}"
     name = "screener-" + a.policy + ("" if a.trend == "off" else f"-trend-{a.trend}")
-    return ROOT / "data" / "trade" / name
+    return Path(base) / name
 
 
 def cmd_status(ledger: Ledger, st) -> None:
@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     if argv or not PROFILES.exists():
         return run_one(argv)
-    profiles = json.loads(PROFILES.read_text())
+    profiles = json.loads(PROFILES.read_text(encoding="utf-8"))
     try:                                        # команды из Telegram — до круга
         from tools.trade import tg_control
         from tools.trade.run import load_env
@@ -260,6 +260,9 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         screener_page.write(ledger, st, ledger.root / "bot.html", **kw)
         if a.page_out:
             screener_page.write(ledger, st, Path(a.page_out), **kw)
+        if not a.data:                    # общая страница всех ботов, по вкладке на бота
+            from tools.trade import page
+            page.write_all(ledger.root.parent)
     except Exception as exc:                                   # noqa: BLE001
         print(f"страница не собрана: {exc}", file=sys.stderr)
     return 0

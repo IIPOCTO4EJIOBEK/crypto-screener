@@ -71,7 +71,7 @@ def take(root: Path, mid_of) -> tuple[list[dict], list[tuple[str, str]]]:
         return rows, bad
     for f in sorted(box.glob("*.json")):
         try:
-            msg = json.loads(f.read_text())
+            msg = json.loads(f.read_text(encoding="utf-8"))
             mid = mid_of(str(msg.get("symbol") or msg.get("ticker") or "").upper()
                          .replace(".P", "").split(":")[-1])
             row, why = parse(msg, mid)
@@ -92,7 +92,7 @@ def put(root: Path, msg: dict) -> Path:
     box.mkdir(parents=True, exist_ok=True)
     name = f"{int(time.time() * 1000)}-{abs(hash(json.dumps(msg, sort_keys=True))) % 10**6}"
     tmp = box / f"{name}.tmp"
-    tmp.write_text(json.dumps(msg, ensure_ascii=False))
+    tmp.write_text(json.dumps(msg, ensure_ascii=False), encoding="utf-8")
     out = box / f"{name}.json"
     tmp.replace(out)
     return out

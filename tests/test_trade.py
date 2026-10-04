@@ -196,7 +196,7 @@ def test_страница_бота_собирается_из_журнала(tmp_
     prices["A"] = 150.0
     step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now + DAY_MS)
     out = page.write(ledger, tmp_path / "bot.html")
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "<polyline" in text and "покупка" in text and ">A<" in text
     assert page.market_return(ledger.journal() and
                               [r for r in ledger.journal() if r["kind"] == "equity"]) \
@@ -220,6 +220,35 @@ def test_общая_страница_ботов_по_вкладкам(tmp_path):
     # без profiles.json — один бот по умолчанию
     (tmp_path / "profiles.json").unlink()
     assert page.build_all(tmp_path, page.load_profiles(tmp_path)).count('role="tab"') == 1
+
+
+def test_общая_страница_показывает_ботов_по_скринеру(tmp_path):
+    from tools.trade import page
+
+    (tmp_path / "profiles.json").write_text("[[]]")
+    (tmp_path / "screener-profiles.json").write_text(
+        '[["--name", "managed", "--trend", "tf"], ["--trend", "overall"]]')
+    bot = Ledger(tmp_path / "screener-managed")
+    bot.log("equity", equity=1000.0, cash=1000.0, open=0)
+    bot.log("equity", equity=1050.0, cash=1050.0, open=0)
+    (bot.root / "bot.html").write_text("<html></html>", encoding="utf-8")
+
+    text = page.write_all(tmp_path, now_ms=START).read_text(encoding="utf-8")
+    assert text.count('role="tab"') == 3
+    assert "По скринеру · managed" in text and "1050.00 USDT · +5.00 %" in text
+    assert 'src="screener-managed/bot.html"' in text
+    # бот без запусков: подпись есть, окна нет, каталог не создан
+    assert "По скринеру · all-trend-overall" in text
+    assert not (tmp_path / "screener-all-trend-overall").exists()
+    assert "ботов 3" in text
+
+
+def test_общая_страница_без_профилей(tmp_path):
+    from tools.trade import page
+
+    (tmp_path / "profiles.json").write_text("[]")
+    text = page.write_all(tmp_path).read_text(encoding="utf-8")
+    assert "профилей нет" in text and 'role="tab"' not in text
 
 
 def test_фандинг_на_фьючерсах_списывается_с_прошлого_шага(tmp_path):

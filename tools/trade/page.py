@@ -7,6 +7,11 @@
     python -m tools.trade.page                      # data/trade/paper-spot/bot.html
     python -m tools.trade.page --out /path/bot.html
     python -m tools.trade.page --all                # data/trade/bots.html: все боты, по вкладке
+
+Общая страница `bots.html` собирает в одном месте всех ботов из
+`profiles.json` (тренд-фильтр) и `screener-profiles.json` (боты по скринеру).
+Вкладка тренд-бота рисуется здесь же, вкладка бота по скринеру показывает его
+собственную `bot.html` во встроенном окне.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -286,6 +292,10 @@ STYLE = """
   .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--good); }
   .tabs .sub { display:block; }
   .tab[hidden] { display:none; }
+  @media (max-width:800px) { .tabs { flex-wrap:nowrap; overflow-x:auto; }
+                             .tabs button { flex:0 0 auto; } }
+  iframe.bot { width:100%; height:85vh; border:1px solid var(--line); background:var(--bg); }
+  a { color:var(--good); }
 """
 
 
@@ -320,10 +330,8 @@ def profile_kw(args: list[str]) -> dict:
     return dict(mode=a.mode, market=a.market, side=a.side, holding=a.holding, lookback=a.lookback)
 
 
-def tab_label(ledger: Ledger, *, market: str, side: str, holding: int, lookback: int, **_) -> tuple[str, str]:
-    name = ("Фьючерсы" if market == "future" else "Спот") + f" {lookback}/{holding}"
-    if side == "longshort":
-        name += " · лонг+шорт"
+def tab_label(ledger: Ledger, name: str) -> tuple[str, str]:
+    """Подпись вкладки: имя бота и под ним капитал с доходностью от старта."""
     eq = [r for r in ledger.journal() if r["kind"] == "equity"]
     if not eq:
         return name, "ещё не запускался"
@@ -331,38 +339,89 @@ def tab_label(ledger: Ledger, *, market: str, side: str, holding: int, lookback:
     return name, f"{last:.2f} USDT · {pct(last / first - 1.0 if first else None)}"
 
 
-def build_all(data: Path, profiles: list[list[str]]) -> str:
-    """Одна страница со всеми ботами из профилей, по вкладке на бота."""
-    buttons, tabs = [], []
-    for i, args in enumerate(profiles):
-        kw = profile_kw(args)
-        ledger = Ledger(ledger_root(data, kw["mode"], kw["market"], kw["side"]))
-        tid = ledger.root.name
-        name, sub = tab_label(ledger, **kw)
-        buttons.append(f'<button role="tab" data-tab="{e(tid)}" aria-selected="{"true" if i == 0 else "false"}">'
-                       f'{e(name)}<span class="sub">{e(sub)}</span></button>')
-        tabs.append(f'<div class="tab" id="{e(tid)}"{"" if i == 0 else " hidden"}>{section(ledger, **kw)}</div>')
-    script = """<script>
+def trend_name(*, market: str, side: str, holding: int, lookback: int, **_) -> str:
+    name = ("Фьючерсы" if market == "future" else "Спот") + f" {lookback}/{holding}"
+    return name + (" · лонг+шорт" if side == "longshort" else "")
+
+
+def screener_root(data: Path, args: list[str]) -> Path:
+    """Каталог бота по скринеру — по тем же правилам, что у tools.trade.screener_bot."""
+    from tools.trade.screener_bot import data_dir
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--policy", default="all")
+    ap.add_argument("--trend", default="off")
+    ap.add_argument("--name")
+    ap.add_argument("--data")
+    a, _ = ap.parse_known_args(args)
+    return data_dir(a, base=data)
+
+
+def screener_tab(data: Path, root: Path) -> str:
+    """Своя страница бота по скринеру во встроенном окне (путь — от bots.html)."""
+    page = root / "bot.html"
+    if not page.exists():
+        return ('<div class="box sub">бот ещё не запускался — страница появится '
+                'после первого круга</div>')
+    try:
+        src = Path(os.path.relpath(page, data)).as_posix()
+    except ValueError:                    # другой диск на Windows
+        src = page.resolve().as_uri()
+    return (f'<iframe class="bot" src="{e(src)}" loading="lazy" title="{e(root.name)}"></iframe>'
+            f'<div class="sub"><a href="{e(src)}">открыть отдельно</a></div>')
+
+
+TABS_JS = """<script>
 (function () {
   var btns = document.querySelectorAll('.tabs button');
   function show(id) {
     var found = false;
-    btns.forEach(function (b) { var on = b.dataset.tab === id; found = found || on;
+    btns.forEach(function (b) { found = found || b.dataset.tab === id; });
+    if (!found) return false;
+    btns.forEach(function (b) { var on = b.dataset.tab === id;
       b.setAttribute('aria-selected', on); document.getElementById(b.dataset.tab).hidden = !on; });
-    return found;
+    return true;
   }
   btns.forEach(function (b) { b.addEventListener('click', function () {
     show(b.dataset.tab); history.replaceState(null, '', '#' + b.dataset.tab); }); });
-  if (location.hash) show(location.hash.slice(1));
+  if (location.hash) show(decodeURIComponent(location.hash.slice(1)));
 })();
 </script>"""
-    inner = f'<div class="tabs" role="tablist">{"".join(buttons)}</div>{"".join(tabs)}{script}'
-    return shell("Торговые боты", inner)
 
 
-def load_profiles(data: Path) -> list[list[str]]:
-    path = Path(data) / "profiles.json"
-    return json.loads(path.read_text()) if path.exists() else [[]]
+def build_all(data: Path, profiles: list[list[str]],
+              screener: list[list[str]] | None = None, *, now_ms: int | None = None) -> str:
+    """Одна страница со всеми ботами из профилей, по вкладке на бота."""
+    data = Path(data)
+    items = []                            # (id, имя, подпись, содержимое)
+    for args in profiles:
+        kw = profile_kw(args)
+        ledger = Ledger(ledger_root(data, kw["mode"], kw["market"], kw["side"]))
+        name, sub = tab_label(ledger, trend_name(**kw))
+        items.append((ledger.root.name, name, sub, section(ledger, **kw)))
+    for args in screener or []:
+        root = screener_root(data, args)
+        name = "По скринеру · " + root.name.removeprefix("screener-")
+        # Ledger создаёт каталог — для бота, который ещё не запускался, не трогаем диск
+        name, sub = tab_label(Ledger(root), name) if root.exists() else (name, "ещё не запускался")
+        items.append((root.name, name, sub, screener_tab(data, root)))
+    if not items:
+        return shell("Торговые боты", '<h1>Торговые боты</h1><div class="box sub">'
+                     'профилей нет: data/trade/profiles.json и screener-profiles.json</div>')
+    buttons = "".join(
+        f'<button role="tab" data-tab="{e(tid)}" aria-selected="{"true" if i == 0 else "false"}">'
+        f'{e(name)}<span class="sub">{e(sub)}</span></button>'
+        for i, (tid, name, sub, _) in enumerate(items))
+    tabs = "".join(
+        f'<div class="tab" id="{e(tid)}"{"" if i == 0 else " hidden"} role="tabpanel">{body}</div>'
+        for i, (tid, _, _, body) in enumerate(items))
+    stamp = f'<div class="meta">ботов {len(items)} · собрано {t(now_ms)} МСК</div>' if now_ms else ""
+    return shell("Торговые боты", f'<h1>Торговые боты</h1>{stamp}'
+                 f'<div class="tabs" role="tablist">{buttons}</div>{tabs}{TABS_JS}')
+
+
+def load_profiles(data: Path, name: str = "profiles.json", default=([],)) -> list[list[str]]:
+    path = Path(data) / name
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else list(default)
 
 
 def to_json(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
@@ -375,7 +434,7 @@ def to_json(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
     Свечи для графиков берутся по symbol с биржи или из базы скринера.
     """
     j = ledger.journal()
-    state = json.loads(ledger.state_path.read_text()) if ledger.state_path.exists() else {}
+    state = json.loads(ledger.state_path.read_text(encoding="utf-8")) if ledger.state_path.exists() else {}
     sig = next((r for r in reversed(j) if r["kind"] == "signal"), None)
     eqs = [r for r in j if r["kind"] == "equity"]
     prices = (eqs[-1].get("prices") or {}) if eqs else {}
@@ -417,9 +476,13 @@ def write(ledger: Ledger, out: Path, **kw) -> Path:
     return out
 
 
-def write_all(data: Path, out: Path | None = None) -> Path:
+def write_all(data: Path, out: Path | None = None, now_ms: int | None = None) -> Path:
+    """data/trade/bots.html: тренд-боты из profiles.json и боты по скринеру."""
     data = Path(data)
-    return _write(out or data / "bots.html", build_all(data, load_profiles(data)))
+    text = build_all(data, load_profiles(data),
+                     load_profiles(data, "screener-profiles.json", default=()),
+                     now_ms=now_ms or int(datetime.now(timezone.utc).timestamp() * 1000))
+    return _write(out or data / "bots.html", text)
 
 
 def main(argv: list[str] | None = None) -> int:

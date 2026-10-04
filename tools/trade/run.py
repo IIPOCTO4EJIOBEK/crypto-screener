@@ -44,7 +44,7 @@ def load_env(path: Path = ROOT / ".env") -> None:
     """Прочитать .env в окружение, не перезаписывая уже заданное."""
     if not path.exists():
         return
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -247,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv or not PROFILES.exists():
         return run_one(argv)
     rc = 0
-    for args in json.loads(PROFILES.read_text()):
+    for args in json.loads(PROFILES.read_text(encoding="utf-8")):
         print(f"--- профиль: {' '.join(args) or 'по умолчанию'}")
         try:
             rc |= run_one(list(args))

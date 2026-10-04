@@ -81,4 +81,5 @@ if $PY -c "import requests; requests.head('https://data.binance.vision', timeout
 else
   echo "data.binance.vision недоступен — проверку правил выхода пропускаю"
 fi
+[ -f data/trade/bots.html ] && echo "все боты на одной странице: $(pwd)/data/trade/bots.html"
 echo "ГОТОВО. Всё бумажное, заявки на биржу не уходят."

@@ -44,7 +44,7 @@ class Ledger:
 
     def load(self, mode: str, capital: float) -> State:
         if self.state_path.exists():
-            data = json.loads(self.state_path.read_text())
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
             return State(**data)
         now = int(time.time() * 1000)
         return State(mode=mode, cash=capital, peak=capital,
@@ -52,23 +52,23 @@ class Ledger:
 
     def save(self, state: State) -> None:
         tmp = self.state_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(asdict(state), ensure_ascii=False, indent=2))
+        tmp.write_text(json.dumps(asdict(state), ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, self.state_path)
 
     def log(self, kind: str, **data) -> dict:
         row = {"ts": int(time.time() * 1000), "kind": kind, **data}
-        with self.journal_path.open("a") as f:
+        with self.journal_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         return row
 
     def journal(self) -> list[dict]:
         if not self.journal_path.exists():
             return []
-        return [json.loads(l) for l in self.journal_path.read_text().splitlines() if l]
+        return [json.loads(l) for l in self.journal_path.read_text(encoding="utf-8").splitlines() if l]
 
     @property
     def halted(self) -> str | None:
-        return self.halt_path.read_text() if self.halt_path.exists() else None
+        return self.halt_path.read_text(encoding="utf-8") if self.halt_path.exists() else None
 
     def halt(self, reason: str) -> None:
-        self.halt_path.write_text(reason)
+        self.halt_path.write_text(reason, encoding="utf-8")

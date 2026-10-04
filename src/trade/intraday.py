@@ -263,14 +263,14 @@ def _pnl(p: Position, price: float) -> float:
 
 def load_state(path: Path, capital: float, now_ms: int) -> BotState:
     if Path(path).exists():
-        return BotState(**json.loads(Path(path).read_text()))
+        return BotState(**json.loads(Path(path).read_text(encoding="utf-8")))
     return BotState(cash=capital, peak=capital, start_equity=capital, start_ts=now_ms)
 
 
 def save_state(path: Path, st: BotState) -> None:
     path = Path(path)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(asdict(st), ensure_ascii=False, indent=1))
+    tmp.write_text(json.dumps(asdict(st), ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, path)
 
 
