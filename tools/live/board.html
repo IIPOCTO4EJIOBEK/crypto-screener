@@ -76,6 +76,8 @@ svg.sp{display:block}
 #fzone .rm.r3{border-top:1px solid #f0b429}
 #fzone .rm span{right:6px;left:auto;top:-9px;color:#c7cdd8;font-size:10px}
 #fzone .rm.r3 span{color:#f0b429}
+#fzone .rm.ph{border-top:1px solid #1fbf75}
+#fzone .rm.ph span{color:#1fbf75;font-weight:600}
 #chint{position:absolute;left:10px;top:8px;z-index:3;color:var(--mute);font-size:12px;pointer-events:none}
 @media (max-width:800px){#cside{display:none}}
 tbody tr{cursor:pointer}
@@ -755,13 +757,41 @@ function drawChart(kl){
       return {time:T(f.idx),position:up?'belowBar':'aboveBar',color:up?'#1fbf75':'#ef4f5a',shape:up?'arrowUp':'arrowDown',text:i===sel?f.title:'',size:i===sel?1.6:1};
     }).filter(Boolean).concat(WM).sort(function(a,b){return a.time-b.time;}));
   }
+  // Отмена по свечам (только закрытые свечи после сигнала):
+  //  * вход не случился за одну свечу после сигнала — сетап устарел;
+  //  * после входа свеча закрылась за стопом — тень за стоп не отменяет, закрытие отменяет.
+  var sigIdx=function(f){ var t=pc[Math.max(0,Math.min(pc.length-1,f.idx))][0]; for(var i=cs.length-1;i>=0;i--) if(cs[i][0]<=t) return i; return 0; };
+  function fcancel(f){
+    if(f.idx==null || f.entry==null) return null;
+    var i0=sigIdx(f), up=f.dir!=='short', filled=false;
+    for(var i=i0+1;i<cs.length-1;i++){
+      var c=cs[i];
+      if(!filled){
+        if(c[3]<=f.entry && c[2]>=f.entry) filled=true;
+        else if(i>i0+1) return 'отмена по свече: вход не случился за одну свечу';
+      }
+      if(filled && f.stop!=null && (up ? c[4]<f.stop : c[4]>f.stop)) return 'отмена по свече: закрытие за стопом';
+    }
+    return null;
+  }
+  // Перехай (для шорта — перелой): ближайший прошлый экстремум зигзага за входом — там обычно берут прибыль
+  function perehai(f){
+    if(f.entry==null) return null;
+    var up=f.dir!=='short', best=null;
+    piv.slice(0,-1).forEach(function(q){
+      if(up && q.t==='H' && q.p>f.entry && (!best || q.p<best.p)) best=q;
+      if(!up && q.t==='L' && q.p<f.entry && (!best || q.p>best.p)) best=q;
+    });
+    return best;
+  }
+  function fstate(f){ return fdead(f,LASTPX!=null?LASTPX:cs[cs.length-1][4]) || fcancel(f) || (f.rr!=null&&f.rr<1?'R:R ниже 1 — не торгуем':null); }
   // зона сделки выбранной формации: от свечи сигнала вправо, зелёная до цели,
   // красная до стопа — как инструмент «позиция» в TradingView
   var FZ=null;
   function zoneDraw(){
     var el=document.getElementById('fzone');
     if(!el){ el=document.createElement('div'); el.id='fzone'; box.appendChild(el); }
-    if(!FZ || !CH || FZ.entry==null || FZ.stop==null || fdead(FZ,LASTPX) || (FZ.rr!=null&&FZ.rr<1)){ el.innerHTML=''; return; }
+    if(!FZ || !CH || FZ.entry==null || FZ.stop==null || fstate(FZ)){ el.innerHTML=''; return; }
     var f=FZ, x1=CH.timeScale().timeToCoordinate(T(f.idx)), x2=box.clientWidth-CH.priceScale('right').width();
     if(x1==null || x1<0) x1=0;
     if(x1>=x2){ el.innerHTML=''; return; }
@@ -778,6 +808,9 @@ function drawChart(kl){
       if(yv==null||yv<0||yv>box.clientHeight) return;
       marks+='<div class="rm'+(n===3?' r3':'')+'" style="left:'+x1+'px;width:'+(x2-x1)+'px;top:'+yv+'px"><span>'+n+'R · '+px(v)+' ('+pc(v)+')</span></div>';
     });
+    var ph=perehai(f);
+    if(ph){ var yp=cand.priceToCoordinate(ph.p), rph=(ph.p-f.entry)/R;
+      if(yp!=null&&yp>=0&&yp<=box.clientHeight) marks+='<div class="rm ph" style="left:'+x1+'px;width:'+(x2-x1)+'px;top:'+yp+'px"><span>'+(f.dir==='short'?'перелой':'перехай')+' · '+px(ph.p)+' ('+pc(ph.p)+', '+rph.toFixed(1)+'R)</span></div>'; }
     var nowR=LASTPX!=null?(LASTPX-f.entry)/(f.entry-f.stop):null;
     var nowT=nowR==null?'':' · сейчас '+(nowR>0?'+':'')+nowR.toFixed(2)+'R';
     el.innerHTML=rect(f.target,'tp',f.target==null?'':'цель '+px(f.target)+' ('+pc(f.target)+')'+(f.rr!=null?' · R:R '+f.rr:'')+nowT)+
@@ -796,9 +829,10 @@ function drawChart(kl){
     if(f.target!=null) fl.push(cand.createPriceLine({price:f.target,color:'#1fbf75',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'цель'}));
   }
   side.innerHTML='<h4>Формации на '+esc(C.tf)+' ('+p.forms.length+')</h4>'+(p.forms.length?p.forms.map(function(f,i){
-    var dead=fdead(f,cs[cs.length-1][4]) || (f.rr!=null&&f.rr<1?'R:R ниже 1 — не торгуем':null);
+    var dead=fstate(f), ph=perehai(f);
     return '<div class="fc" data-i="'+i+'"'+(dead?' style="opacity:.55"':'')+'><div class="t '+(f.dir==='short'?'down':'up')+'">'+esc(f.title)+(f.dir==='short'?' ↓':' ↑')+(dead?' <span class="mute">· '+dead+'</span>':'')+'</div>'+
       '<div class="k">вход '+px(f.entry)+' · стоп '+px(f.stop)+' · цель '+px(f.target)+(f.rr!=null?' · R:R '+f.rr:'')+'</div>'+
+      (ph&&f.stop!=null?'<div class="k">'+(f.dir==='short'?'перелой':'перехай')+' '+px(ph.p)+' — '+((ph.p-f.entry)/(f.entry-f.stop)).toFixed(1)+'R</div>':'')+
       (f.exp!=null?'<div class="k">замер: '+(f.exp>0?'+':'')+f.exp+'R'+(f.sig?' (значимо)':'')+'</div>':'')+
       '<ul>'+(f.reasons||[]).map(function(r){return '<li>'+esc(r)+'</li>';}).join('')+'</ul>'+
       (f.invalid?'<div class="k">отмена: '+esc(f.invalid)+'</div>':'')+'</div>';
@@ -806,8 +840,7 @@ function drawChart(kl){
   wavesHtml(wv,fb,cs)+
   '<h4 style="margin-top:14px">Уровни</h4>'+p.levels.map(function(l){return '<div class="k">'+(l.kind==='support'?'поддержка':'сопротивление')+' '+px(l.price)+(l.touches?', касаний '+l.touches:'')+'</div>';}).join('');
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
-  var first=p.forms.findIndex(function(f){ return !fdead(f,cs[cs.length-1][4]) && (f.rr==null||f.rr>=1); });
-  if(first<0) first=p.forms.findIndex(function(f){ return !fdead(f,cs[cs.length-1][4]); });
+  var first=p.forms.findIndex(function(f){ return !fstate(f); });
   if(p.forms.length) pick(first<0?0:first); else setMarks(-1);
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
   LASTPX=cs[cs.length-1][4]; setTimeout(zoneDraw,0);
