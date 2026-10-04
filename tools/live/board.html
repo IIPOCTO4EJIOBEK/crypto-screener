@@ -241,6 +241,15 @@ function hl(x,lbl,small){
   var t=lbl+' <span class="'+(x.hi<=0.3?'near':'')+'">↑'+x.hi.toFixed(1)+'%</span> <span class="'+(x.lo<=0.3?'near':'')+'">↓'+x.lo.toFixed(1)+'%</span>';
   return small?'<small>'+t+'</small>':t;
 }
+// Формация отыграна: цена уже за стопом или за целью. Структуры пересобираются
+// раз в несколько минут, поэтому проверяем по свежей цене прямо на странице.
+function fdead(f,p){
+  if(p==null||f.stop==null) return null;
+  var up=f.dir!=='short';
+  if(up ? p<=f.stop : p>=f.stop) return 'стоп пройден';
+  if(f.target!=null && (up ? p>=f.target : p<=f.target)) return 'цель взята';
+  return null;
+}
 function sideOf(r){ return S.tf==='overall' ? r.overall : ((r.trend[S.tf]||{}).side || 'flat'); }
 function val(r,k){
   if(k==='overall') return {long:1,flat:0,short:-1}[r.overall];
@@ -275,11 +284,12 @@ function render(){
     var tfs = '<span class="tf">'+['15m','1h','4h'].map(function(t){return tag((r.trend[t]||{}).side,true);}).join('')+'</span>';
     var dens = r.dens_pct==null ? '<span class="mute">—</span>' :
       '<span class="dens'+(r.dens_pct<=0.5?' near':'')+'">'+r.dens_pct.toFixed(2)+'%</span> <span class="mute">'+money(r.dens_usd)+' $</span>';
-    var fs = r.forms.slice(0,3).map(function(f){
+    var live = r.forms.filter(function(f){ return !fdead(f,r.price); });
+    var fs = live.slice(0,3).map(function(f){
       var arrow = f.dir==='long'?' ↑':f.dir==='short'?' ↓':'';
       var tip = f.title+' на '+f.tf+(f.exp!=null?', замер '+(f.exp>0?'+':'')+f.exp+'R'+(f.sig?' (значимо)':''):'')+', свечей назад: '+f.age;
       return '<span class="f '+(f.dir||'')+(f.sig?' sig':'')+'" data-tf="'+esc(f.tf)+'" title="'+esc(tip)+'">'+esc(f.tf)+' '+esc(f.title)+arrow+'</span>';
-    }).join('') + (r.forms.length>3?'<span class="mute"> +'+(r.forms.length-3)+'</span>':'');
+    }).join('') + (live.length>3?'<span class="mute"> +'+(live.length-3)+'</span>':'');
     return '<tr data-sym="'+esc(r.symbol)+'">'+
       '<td class="l coin"><span class="star'+(S.fav.indexOf(r.symbol)>=0?' on':'')+'" data-fav="'+esc(r.symbol)+'" title="в избранное">★</span><span class="hide" data-hide="'+esc(r.symbol)+'" title="'+(S.hide.indexOf(r.symbol)>=0?'вернуть в список':'скрыть монету')+'">✕</span>'+esc(r.coin)+'</td>'+
       '<td>'+px(r.price)+'</td><td>'+pct(r.ch1h)+'</td><td>'+pct(r.ch24h)+'</td>'+
@@ -363,7 +373,7 @@ function renderForms(){
   document.getElementById('ftb').innerHTML=rows.map(function(x){
     var r=TR[x.symbol];
     return '<tr data-sym="'+esc(x.symbol)+'" data-tf="'+esc(x.tf)+'"><td class="l coin">'+esc(x.coin)+'</td><td class="l">'+esc(x.tf)+'</td>'+
-      '<td class="l"><span class="f '+(x.dir||'')+(x.sig?' sig':'')+'">'+esc(x.title)+'</span></td><td class="l">'+tag(x.dir==='short'?'short':'long')+'</td>'+
+      '<td class="l"><span class="f '+(x.dir||'')+(x.sig?' sig':'')+'">'+esc(x.title)+'</span>'+(fdead(x,(r||{}).price)?' <span class="mute">'+fdead(x,r.price)+'</span>':'')+'</td><td class="l">'+tag(x.dir==='short'?'short':'long')+'</td>'+
       '<td class="l">'+(r?tag(r.overall):'—')+'</td><td>'+px(x.entry)+'</td><td>'+px(x.stop)+'</td><td>'+px(x.target)+'</td>'+
       '<td>'+(x.risk==null?'—':x.risk.toFixed(2)+'%')+'</td><td>'+(x.rr==null?'—':x.rr.toFixed(2))+'</td>'+
       '<td>'+(x.exp==null?'<span class="mute">—</span>':'<span class="'+(x.exp>0?'up':'down')+'">'+(x.exp>0?'+':'')+x.exp.toFixed(3)+'</span>'+(x.sig?' ✓':''))+'</td>'+
@@ -443,6 +453,7 @@ function tradeList(){
   var best={};
   (D.forms||[]).forEach(function(f){
     if(!f.triggered || f.age>1 || ['5m','15m','1h'].indexOf(f.tf)<0) return;
+    if(fdead(f,(TR[f.symbol]||{}).price)) return;
     if(f.kind==='trendline_bounce' || f.entry==null || f.stop==null) return;
     if(f.dir!==tfTrend(f.symbol,f.tf)) return;
     var key=f.symbol+'|'+f.tf+'|'+f.dir, rank=(f.sig&&f.exp>0?2:f.exp>0?1:0)*100+(f.exp||0)-(f.age||0)*0.01;
@@ -673,7 +684,8 @@ function drawChart(kl){
     if(f.target!=null) fl.push(cand.createPriceLine({price:f.target,color:'#1fbf75',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'цель'}));
   }
   side.innerHTML='<h4>Формации на '+esc(C.tf)+' ('+p.forms.length+')</h4>'+(p.forms.length?p.forms.map(function(f,i){
-    return '<div class="fc" data-i="'+i+'"><div class="t '+(f.dir==='short'?'down':'up')+'">'+esc(f.title)+(f.dir==='short'?' ↓':' ↑')+'</div>'+
+    var dead=fdead(f,cs[cs.length-1][4]);
+    return '<div class="fc" data-i="'+i+'"'+(dead?' style="opacity:.55"':'')+'><div class="t '+(f.dir==='short'?'down':'up')+'">'+esc(f.title)+(f.dir==='short'?' ↓':' ↑')+(dead?' <span class="mute">· '+dead+'</span>':'')+'</div>'+
       '<div class="k">вход '+px(f.entry)+' · стоп '+px(f.stop)+' · цель '+px(f.target)+(f.rr!=null?' · R:R '+f.rr:'')+'</div>'+
       (f.exp!=null?'<div class="k">замер: '+(f.exp>0?'+':'')+f.exp+'R'+(f.sig?' (значимо)':'')+'</div>':'')+
       '<ul>'+(f.reasons||[]).map(function(r){return '<li>'+esc(r)+'</li>';}).join('')+'</ul>'+
@@ -681,7 +693,8 @@ function drawChart(kl){
   }).join(''):'<div class="mute">формаций нет</div>')+
   '<h4 style="margin-top:14px">Уровни</h4>'+p.levels.map(function(l){return '<div class="k">'+(l.kind==='support'?'поддержка':'сопротивление')+' '+px(l.price)+(l.touches?', касаний '+l.touches:'')+'</div>';}).join('');
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
-  if(p.forms.length) pick(0); else setMarks(-1);
+  var first=p.forms.findIndex(function(f){ return !fdead(f,cs[cs.length-1][4]); });
+  if(p.forms.length) pick(first<0?0:first); else setMarks(-1);
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
   setTimeout(zoneDraw,0);
   liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
@@ -720,7 +733,7 @@ fetch('kl/stats.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():
   if(!j||!j.coins||Date.now()-j.at>600000) return;
   function near(p,hi,lo){ return p&&hi!=null&&lo!=null?{hi:(hi-p)/p*100,lo:(p-lo)/p*100}:null; }
   D.rows.forEach(function(r){ var st=j.coins[r.symbol]; if(!st) return;
-    ['tpm','tpm_avg','funding','oi','oi1h','oi24h','ls','cvd1h'].forEach(function(k){ if(st[k]!=null) r[k]=st[k]; });
+    ['tpm','tpm_avg','funding','oi','oi1h','oi24h','ls','cvd1h','price'].forEach(function(k){ if(st[k]!=null) r[k]=st[k]; });
     r.day=near(r.price,st.day_hi,st.day_lo)||r.day; r.week=near(r.price,st.week_hi,st.week_lo)||r.week;
   });
   render();

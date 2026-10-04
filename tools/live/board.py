@@ -285,6 +285,7 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
                 "kind": f["kind"], "dir": f.get("direction"),
                 "rr": f.get("rr"), "age": f.get("age_candles"),
                 "exp": m.get("exp_net"), "sig": bool(m.get("significant")),
+                "stop": f.get("stop"), "target": f.get("target"),
             })
 
     conn = db.connect(db_path)
