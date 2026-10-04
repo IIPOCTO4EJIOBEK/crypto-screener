@@ -77,7 +77,8 @@ def _months(first: date, last: date) -> tuple[str, str]:
 def measure(symbol: str, tf: str, *, days: int = WINDOW_DAYS,
             end: date | None = None, costs: Costs | None = None,
             history: int = 300, step: int | None = None,
-            horizon: int = 40) -> tuple[list[Trade], int, int]:
+            horizon: int = 40, require_fill: bool = False
+            ) -> tuple[list[Trade], int, int]:
     """Сделки по формациям за окно. Возвращает (сделки, дней загружено,
     месяцев фандинга не загружено).
 
@@ -104,20 +105,25 @@ def measure(symbol: str, tf: str, *, days: int = WINDOW_DAYS,
     last_day = date.fromtimestamp(cs[-1].ts / 1000)
     series = archive.load_funding(symbol, *_months(first, last_day))
     trades = walk(cs, tf, symbol, "binance", history=history, step=step,
-                  horizon=horizon, btc=btc, costs=costs, funding=series.rows)
+                  horizon=horizon, btc=btc, costs=costs, funding=series.rows,
+                  require_fill=require_fill)
     return trades, series.loaded, series.skipped
 
 
 def table(symbols: list[str], tfs: tuple[str, ...] = ("5m", "15m", "1h"),
           *, days: int = WINDOW_DAYS, costs: Costs | None = None,
           end: date | None = None, step: int | None = None,
-          progress=None) -> list[Trade]:
-    """Сделки по всем парам «монета × таймфрейм» одним списком."""
+          progress=None, require_fill: bool = False) -> list[Trade]:
+    """Сделки по всем парам «монета × таймфрейм» одним списком.
+
+    require_fill — правило входа (см. walk.simulate); по умолчанию старое.
+    """
     out: list[Trade] = []
     for sym in symbols:
         for tf in tfs:
             trades, loaded, missed = measure(sym, tf, days=days, end=end,
-                                             costs=costs, step=step)
+                                             costs=costs, step=step,
+                                             require_fill=require_fill)
             out.extend(trades)
             if progress:
                 progress(sym, tf, len(trades), loaded, missed)

@@ -28,10 +28,16 @@ TFS = ("5m", "15m", "1h")
 
 def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
             costs: Costs, conn, step: int | None = None,
-            progress=None) -> int:
-    """Прогнать архив и записать измерение. Возвращает число строк."""
+            progress=None, require_fill: bool = True) -> int:
+    """Прогнать архив и записать измерение. Возвращает число строк.
+
+    require_fill — правило входа (см. walk.simulate): сделка есть, только
+    если цена дошла до входа. Здесь оно по умолчанию включено: по этим числам
+    скринер и боты ранжируют живые сигналы, а старое правило завышало формации
+    с входом не по закрытию (docs/research/20). Старое — флагом --old-entry-rule.
+    """
     trades = table(list(symbols), tfs, days=days, costs=costs, step=step,
-                   progress=progress)
+                   progress=progress, require_fill=require_fill)
     # report() даёт разрезы; первый — по (формация, ТФ), это и есть ключ строки
     stats = report(trades)[0]
     scope = ",".join(symbols)
@@ -41,14 +47,16 @@ def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
                  exp_gross=round(s.expectancy, 4),
                  exp_net=round(s.expectancy_net, 4),
                  cost=round(s.cost, 4),
-                 sd=round(s.sd, 4)) for s in stats]
+                 sd=round(s.sd, 4), se=round(s.se, 6), n_eff=s.n_eff,
+                 p_boot=s.p_boot) for s in stats]
     written = db.upsert_formation_stats(conn, rows, tfs)
     return written
 
 
 def _print_rows(rows: list[dict]) -> None:
-    print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'цель %':>7} "
-          f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'значимо':>8}")
+    print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'n_eff':>6} {'цель %':>7} "
+          f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'p бутстр':>8} "
+          f"{'значимо':>8}")
     order = sorted(rows, key=lambda r: -r["exp_net"])
     # Один вызов на таблицу: метки строк и итог обязаны считаться по одному
     # набору сравнений, иначе итог говорит «значимых 11», а строки — другое.
@@ -56,9 +64,12 @@ def _print_rows(rows: list[dict]) -> None:
     for r, ok in zip(order, v.flags):
         p = _p(r)
         mark = "—" if ok is None else ("да" if ok else "нет")
-        print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r['win_rate']:7.1f} "
+        pb = r.get("p_boot")
+        print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r.get('n_eff') or 0:6} "
+              f"{r['win_rate']:7.1f} "
               f"{r['exp_gross']:+8.3f} {r['cost']:9.3f} {r['exp_net']:+8.3f} "
-              f"{('—' if p is None else f'{p:7.4f}'):>7} {mark:>8}")
+              f"{('—' if p is None else f'{p:7.4f}'):>7} "
+              f"{('—' if pb is None else f'{pb:8.4f}'):>8} {mark:>8}")
     n_sig_plus = sum(1 for r, ok in zip(order, v.flags)
                      if ok and r["exp_net"] > 0)
     print(f"\nсравнений {v.n_tested}, из них с плюсом {v.n_positive}; "
@@ -66,11 +77,17 @@ def _print_rows(rows: list[dict]) -> None:
           f"{v.n_significant} — из них с плюсом {n_sig_plus}.")
     print(f"«—» в столбце значимости — строка в счёт не вошла: сделок меньше "
           f"{MIN_TRADES} или нет разброса R по сделкам.")
+    print("p учитывает перекрытие сделок: ошибка среднего — по кластерам "
+          "пересекающихся сделок, степеней свободы n_eff − 1.")
+    if v.n_naive:
+        print(f"ВНИМАНИЕ: у {v.n_naive} строк нет n_eff (измерены до правки) — "
+              f"их p посчитаны как для независимых сделок и занижены.")
 
 
 def _p(row: dict) -> float | None:
-    """p-value среднего R строки; None, если считать не из чего."""
-    return significance.p_value(row["exp_net"], row.get("sd") or 0.0, row["n"])
+    """p-value среднего R строки с поправкой на перекрытие сделок; None, если
+    считать не из чего."""
+    return significance.row_p(row)
 
 
 def main() -> None:
@@ -87,6 +104,13 @@ def main() -> None:
     p.add_argument("--slippage", type=float, default=Costs().slippage,
                    help="проскальзывание за сторону")
     p.add_argument("--no-funding", action="store_true", help="не учитывать фандинг")
+    p.add_argument("--require-fill", action="store_true",
+                   help="засчитывать сделку, только если цена дошла до входа "
+                        "(по умолчанию и так включено; флаг оставлен для "
+                        "совместимости)")
+    p.add_argument("--old-entry-rule", action="store_true",
+                   help="старое правило: вход сразу, без проверки исполнения "
+                        "(только для воспроизведения прежних замеров)")
     a = p.parse_args()
 
     costs = Costs(taker_fee=a.fee, slippage=a.slippage,
@@ -101,7 +125,8 @@ def main() -> None:
 
     conn = db.connect(a.db)
     written = measure(a.symbols, tuple(a.tfs), days=a.days, costs=costs,
-                      conn=conn, step=a.step, progress=progress)
+                      conn=conn, step=a.step, progress=progress,
+                      require_fill=not a.old_entry_rule)
     _print_rows([dict(r) for r in db.load_formation_stats(conn).values()])
     print(f"\nзаписано строк: {written} → {a.db or db.DEFAULT_DB_PATH}")
 
