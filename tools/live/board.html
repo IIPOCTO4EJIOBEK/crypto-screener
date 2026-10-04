@@ -197,12 +197,13 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   <span class="seg" id="dside"><button data-v="all">Обе</button><button data-v="bid">Покупка (bid)</button><button data-v="ask">Продажа (ask)</button></span>
   <select id="ddist"><option value="99">любое расстояние</option><option value="0.5">до 0,5%</option><option value="1">до 1%</option><option value="2">до 2%</option></select>
   <select id="dmin"><option value="0">любой размер</option><option value="1e5">от 100 тыс $</option><option value="5e5">от 500 тыс $</option><option value="1e6">от 1 млн $</option></select>
+  <label class="chk"><input type="checkbox" id="dgone"> показывать съеденные и снятые</label>
 </div>
 <div class="summary" id="dsum"></div>
 <div class="wrap"><table>
   <thead><tr>
     <th class="l" data-k="coin">Монета</th><th class="l" data-k="side">Сторона</th><th data-k="price">Цена</th><th data-k="adist">До цены</th>
-    <th data-k="notional">Размер $</th><th data-k="k">× к медиане</th><th data-k="absorb">Разъедят за</th><th data-k="t5">Касаний 5м</th><th data-k="t1h">Касаний 1ч</th>
+    <th data-k="notional">Размер $</th><th data-k="k">× к медиане</th><th data-k="absorb">Разъедят за</th><th data-k="t5">Касаний 5м</th><th data-k="t1h">Касаний 1ч</th><th class="l" data-k="st" title="Сверка со стаканом раз в полминуты">Сейчас</th>
   </tr></thead><tbody id="dtb"></tbody></table></div>
 </section>
 <footer id="foot"></footer>
@@ -381,30 +382,45 @@ var fa=document.getElementById('fage'); fa.value=F.age; fa.onchange=function(){F
 ['fsig','ftrend'].forEach(function(id){var c=document.getElementById(id),key=id.slice(1);c.checked=!!F[key];c.onchange=function(){F[key]=c.checked;save();renderForms();};});
 
 /* ---------- плотности ---------- */
-var P=S.P=Object.assign({q:'',side:'all',dist:'99',min:'0',k:'adist',sdir:1},S.P||{});
+var P=S.P=Object.assign({q:'',side:'all',dist:'99',min:'0',k:'adist',sdir:1,gone:false},S.P||{});
+/* жизненный цикл: процесс свечей сверяет плотности со стаканом (kl/dens_state.json) */
+var DST={at:0,items:{}}, STL={live:'стоит',eaten:'съедена',pulled:'снята',unknown:'не видно в стакане'};
+function dkey(sym,side,price){ return sym+'|'+side+'|'+Math.round(price*1e8); }
+function dstate(sym,side,price){ return (DST.items[dkey(sym,side,price)]||{}).s||null; }
+function dgone(sym,side,price){ var st=dstate(sym,side,price); return st==='eaten'||st==='pulled'; }
 (D.dens||[]).forEach(function(d){ d.adist=d.dist==null?null:Math.abs(d.dist); });
+function dbadge(d){
+  var it=DST.items[dkey(d.symbol,d.side,d.price)]; if(!it) return '<span class="mute">—</span>';
+  var cls={live:'up',eaten:'near',pulled:'down',unknown:'mute'}[it.s]||'mute';
+  return '<span class="'+cls+'">'+STL[it.s]+'</span>'+(it.s==='live'&&it.left!=null&&d.notional&&it.left<d.notional*0.9?' <span class="mute">'+money(it.left)+' $</span>':'');
+}
 function renderDens(){
   var rows=(D.dens||[]).filter(function(d){
     if(P.q && d.coin.toLowerCase().indexOf(P.q.toLowerCase())<0) return false;
     if(P.side!=='all' && d.side!==P.side) return false;
     if(d.adist!=null && d.adist>+P.dist) return false;
     if((d.notional||0)<+P.min) return false;
+    if(!P.gone && dgone(d.symbol,d.side,d.price)) return false;
     return true;
   });
-  sortRows(rows,P.k,P.sdir,function(d,k){return k==='coin'?d.coin:d[k];});
+  sortRows(rows,P.k,P.sdir,function(d,k){return k==='coin'?d.coin:k==='st'?(dstate(d.symbol,d.side,d.price)||''):d[k];});
   document.getElementById('dtb').innerHTML=rows.slice(0,600).map(function(d){
     return '<tr data-sym="'+esc(d.symbol)+'"><td class="l coin">'+esc(d.coin)+'</td><td class="l">'+(d.side==='bid'?'<span class="up">покупка</span>':'<span class="down">продажа</span>')+'</td>'+
       '<td>'+px(d.price)+'</td><td><span class="'+(d.adist<=0.5?'near':'')+'">'+(d.adist==null?'—':d.adist.toFixed(2)+'%')+'</span></td>'+
       '<td>'+money(d.notional)+'</td><td>'+(d.k==null?'—':d.k.toFixed(0)+'×')+'</td><td>'+esc(d.absorb_text||'—')+'</td>'+
-      '<td>'+(d.t5==null?'—':d.t5)+'</td><td>'+(d.t1h==null?'—':d.t1h)+'</td></tr>';
-  }).join('')||'<tr><td colspan="9" class="l mute">Под фильтр ничего не попало</td></tr>';
-  document.getElementById('dsum').innerHTML='Показано <b>'+Math.min(rows.length,600)+'</b> из '+rows.length+' подходящих · всего плотностей '+(D.dens||[]).length+' · «разъедят за» — сколько секунд нужно рынку при обычном объёме, чтобы съесть заявку';
+      '<td>'+(d.t5==null?'—':d.t5)+'</td><td>'+(d.t1h==null?'—':d.t1h)+'</td><td class="l">'+dbadge(d)+'</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="l mute">Под фильтр ничего не попало</td></tr>';
+  var c=DST.counts||{}, ago=DST.at?Math.round((Date.now()-DST.at)/1000):null;
+  document.getElementById('dsum').innerHTML='Показано <b>'+Math.min(rows.length,600)+'</b> из '+rows.length+' подходящих · всего плотностей '+(D.dens||[]).length+
+    (ago!=null?' · сверка со стаканом '+ago+' с назад: стоят '+(c.live||0)+', съедены '+(c.eaten||0)+', сняты '+(c.pulled||0):' · сверки со стаканом пока нет')+
+    ' · «разъедят за» — сколько секунд нужно рынку при обычном объёме, чтобы съесть заявку';
   markSort('#v-dens',{k:P.k});
 }
 var Ps={get k(){return P.k;},set k(v){P.k=v;},get dir(){return P.sdir;},set dir(v){P.sdir=v;}};
 bindSort('#v-dens',Ps,renderDens);
 var dq=document.getElementById('dq'); dq.value=P.q; dq.oninput=function(){P.q=dq.value;save();renderDens();};
 segBind('dside',P,'side',renderDens);
+(function(){ var c=document.getElementById('dgone'); c.checked=!!P.gone; c.onchange=function(){P.gone=c.checked;save();renderDens();}; })();
 ['ddist','dmin'].forEach(function(id){var e=document.getElementById(id),key=id==='ddist'?'dist':'min';e.value=P[key];e.onchange=function(){P[key]=e.value;save();renderDens();};});
 
 /* ---------- вкладки ---------- */
@@ -606,7 +622,7 @@ function drawChart(kl){
       title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')});
   });
   // плотности из стакана: оранжевые линии с размером
-  (CHDENS[C.sym]||[]).slice().sort(function(a,b){return b.notional-a.notional;}).slice(0,6).forEach(function(d){
+  (CHDENS[C.sym]||[]).filter(function(d){ return !dgone(C.sym,d.side,d.price); }).sort(function(a,b){return b.notional-a.notional;}).slice(0,6).forEach(function(d){
     cand.createPriceLine({price:d.price,color:'#f0b429',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:(d.side==='bid'?'плотн. bid ':'плотн. ask ')+money(d.notional)});
   });
   // наклонные: отрезок от первой точки до последней свечи
@@ -682,6 +698,23 @@ document.getElementById('cx').onclick=closeChart;
 document.addEventListener('keydown',function(e){ if(e.key!=='Escape') return; if(rulShown()) rulHide(); else closeChart(); });
 var paused=false;
 render();
+// плотности: убрать съеденные и снятые, ближайшую пересчитать от текущей цены
+function loadDens(){
+  fetch('kl/dens_state.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j||!j.items||Date.now()-j.at>300000) return;
+    DST=j;
+    var by={}; (D.dens||[]).forEach(function(d){ if(!dgone(d.symbol,d.side,d.price)) (by[d.symbol]=by[d.symbol]||[]).push(d); });
+    D.rows.forEach(function(r){
+      var best=null, bd=1e9;
+      (by[r.symbol]||[]).forEach(function(d){ var x=Math.abs(d.price-r.price)/r.price*100; if(x<bd){bd=x;best=d;} });
+      if(best){ var it=DST.items[dkey(r.symbol,best.side,best.price)]||{};
+        r.dens_pct=bd; r.dens_usd=it.left||best.notional; r.dens_px=best.price; r.dens_side=best.side; }
+      else { r.dens_pct=null; r.dens_usd=null; r.dens_px=null; r.dens_side=null; }
+    });
+    render(); if(document.getElementById('v-dens').classList.contains('on')) renderDens();
+  }).catch(function(){});
+}
+loadDens(); setInterval(loadDens,30000);
 // метрики свежее страницы: процесс свечей пишет их раз в минуту
 fetch('kl/stats.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
   if(!j||!j.coins||Date.now()-j.at>600000) return;

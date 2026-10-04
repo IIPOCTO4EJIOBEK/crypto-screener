@@ -8,7 +8,9 @@
   пишется на старте и при закрытии свечи;
 * `kl/<SYM>.live.json` — текущая свеча каждого ТФ, не чаще раза в секунду;
 * `kl/stats.json` — funding, OI, long/short, сделки в минуту, CVD, дневной и
-  недельный хай/лой (`tools.live.market_stats`), раз в минуту.
+  недельный хай/лой (`tools.live.market_stats`), раз в минуту;
+* `kl/dens_state.json` — живы ли плотности последнего снимка: стоят, съедены
+  или сняты (`tools.live.dens_watch`), раз в полминуты.
 
 Свечи каждого ТФ — родные `kline_<tf>` биржи (REST на старте, дальше
 WebSocket), а не пересборка из 5m. Состав монет берётся из файла среза
@@ -45,6 +47,7 @@ TFS = ("5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
 STATS_EVERY = 60.0          # пауза между проходами рыночных метрик, с
+DENS_EVERY = 30.0           # пауза между сверками плотностей со стаканом, с
 
 
 def _write(path: Path, obj) -> None:
@@ -152,6 +155,29 @@ class Feed:
                     print(f"klines: метрики не собраны: {type(e).__name__} {e}")
             await asyncio.sleep(STATS_EVERY)
 
+    def touched(self, sym: str, side: str, price: float, since: float) -> bool:
+        """Доходила ли цена до price с момента since (по 5м свечам в памяти)."""
+        t0 = int(since * 1000) - 300_000
+        for c in self.hist.get((sym, "5m")) or []:
+            if c[0] >= t0 and ((side == "ask" and c[2] >= price) or (side == "bid" and c[3] <= price)):
+                return True
+        return False
+
+    async def dens_loop(self) -> None:
+        """Раз в полминуты — живы ли плотности снимка (kl/dens_state.json)."""
+        from tools.live import dens_watch
+        src = self.out.parent / "densities.html"
+        while True:
+            await asyncio.sleep(DENS_EVERY)
+            if not src.exists():
+                continue
+            try:
+                st = await asyncio.to_thread(dens_watch.check, src, self.touched)
+                st["at"] = int(time.time() * 1000)
+                _write(self.out / "dens_state.json", st)
+            except Exception as e:                  # noqa: BLE001
+                print(f"klines: плотности не сверены: {type(e).__name__} {e}")
+
     async def session(self, http: aiohttp.ClientSession) -> None:
         """Одно подключение: WS на весь состав + догрузка истории."""
         syms = self.syms
@@ -197,6 +223,7 @@ class Feed:
         asyncio.get_running_loop().create_task(self.flusher())
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())
+        asyncio.get_running_loop().create_task(self.dens_loop())
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as http:
             while True:
