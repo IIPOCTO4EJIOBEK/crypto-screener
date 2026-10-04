@@ -215,7 +215,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   </tr></thead><tbody id="dtb"></tbody></table></div>
 </section>
 <footer id="foot"></footer>
-<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="seg" id="cint" title="Как часто обновлять свечи"><button data-v="1">1с</button><button data-v="3">3с</button><button data-v="5">5с</button></span><span class="seg" id="copt" title="Разметка на графике"><button data-v="waves">Волны</button><button data-v="fib">Фибо</button></span><span class="mute" id="creg"></span><span class="mute" id="cmeta"></span><span class="mute" id="clive"><i class="live"></i>—</span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, правая кнопка — линейка, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
+<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="seg" id="cint" title="Как часто обновлять свечи"><button data-v="1">1с</button><button data-v="3">3с</button><button data-v="5">5с</button></span><span class="seg" id="copt" title="Разметка на графике"><button data-v="lines">Линии</button><button data-v="waves">Волны</button><button data-v="fib">Фибо</button></span><span class="mute" id="creg"></span><span class="mute" id="cmeta"></span><span class="mute" id="clive"><i class="live"></i>—</span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, правая кнопка — линейка, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
 <script src="vendor/lightweight-charts-4.2.0.js"></script>
 
 <script id="data" type="application/json">__DATA__</script>
@@ -592,7 +592,7 @@ function liveStart(sym,tf,cand,vol,dig,lastT){
   poll(); LV.timer=setInterval(poll,LV.sec*1000);
 }
 /* ---------- волны и Фибоначчи по живым свечам ---------- */
-var OPT={waves:true,fib:true};
+var OPT={lines:true,waves:true,fib:true};
 try { Object.assign(OPT, JSON.parse(localStorage.getItem('board-opt')||'{}')); } catch(e) {}
 [].forEach.call(document.querySelectorAll('#copt button'),function(b){
   b.classList.toggle('on',!!OPT[b.dataset.v]);
@@ -640,6 +640,50 @@ function waves(piv){
   return null;
 }
 var FIB_R=[0.236,0.382,0.5,0.618,0.786], FIB_E=[1.272,1.618];
+// Наклонные по точкам разворота: через два минимума (поддержка) или два максимума
+// (сопротивление). Линия живая, пока ни одна свеча после первой точки не закрылась
+// за ней дальше допуска; сила — сколько разворотов легло на линию.
+function autoLines(cs,piv){
+  var n=cs.length; if(n<30||piv.length<3) return [];
+  var k=Math.min(100,n-1), atr=0; for(var i=n-k;i<n;i++) atr+=cs[i][2]-cs[i][3]; atr/=k;
+  var tol=atr*0.35, out=[];
+  ['L','H'].forEach(function(t){
+    var ps=piv.filter(function(q){ return q.t===t && !q.open; }).slice(-8);
+    for(var a=0;a<ps.length;a++) for(var b=a+1;b<ps.length;b++){
+      var A=ps[a], B=ps[b]; if(B.i-A.i<5) continue;
+      var sl=(B.p-A.p)/(B.i-A.i), ok=true, touch=0;
+      for(var i=A.i;i<n-1&&ok;i++){
+        var v=A.p+sl*(i-A.i), c=cs[i][4];
+        if(t==='L' ? c<v-tol : c>v+tol) ok=false;
+      }
+      if(!ok) continue;
+      ps.forEach(function(q){ if(q.i>=A.i && Math.abs(q.p-(A.p+sl*(q.i-A.i)))<=tol) touch++; });
+      var now=A.p+sl*(n-1-A.i);
+      out.push({t:t,a:A,sl:sl,touch:touch,now:now,dist:Math.abs(now-cs[n-1][4])/atr,score:touch*2-Math.abs(now-cs[n-1][4])/atr*0.3+B.i/n});
+    }
+  });
+  var pick=[];
+  ['L','H'].forEach(function(t){
+    out.filter(function(x){return x.t===t;}).sort(function(x,y){return y.score-x.score;}).forEach(function(x){
+      if(pick.filter(function(y){return y.t===t;}).length>=3) return;
+      if(pick.some(function(y){ return y.t===t && Math.abs(y.now-x.now)<tol*2 && Math.abs(y.sl-x.sl)*20<atr; })) return;  // почти та же линия
+      pick.push(x);
+    });
+  });
+  return pick;
+}
+// Горизонтальные уровни: цены, где разворачивались не меньше двух раз
+function autoLevels(cs,piv){
+  var n=cs.length; if(n<30) return [];
+  var k=Math.min(100,n-1), atr=0; for(var i=n-k;i<n;i++) atr+=cs[i][2]-cs[i][3]; atr/=k;
+  var tol=atr*0.6, cl=[];
+  piv.filter(function(q){return !q.open;}).forEach(function(q){
+    var c=cl.find(function(x){ return Math.abs(x.p-q.p)<=tol; });
+    if(c){ c.p=(c.p*c.n+q.p)/(c.n+1); c.n++; } else cl.push({p:q.p,n:1});
+  });
+  var px0=cs[n-1][4];
+  return cl.filter(function(x){return x.n>=2;}).sort(function(x,y){return Math.abs(x.p-px0)-Math.abs(y.p-px0);}).slice(0,4);
+}
 function isRound(p){ var t=String(+(+p).toPrecision(10)).replace('-','').replace('.','').replace(/^0+/,'').replace(/0+$/,''); return t.length<=2; }
 
 /* ---------- линейка: зажать правую кнопку мыши и тянуть ---------- */
@@ -671,6 +715,18 @@ function rulDraw(b){
   window.addEventListener('mouseup',function(e){ if(e.button===2) RUL.on=false; });
   window.addEventListener('resize',function(){ if(ZONE) setTimeout(ZONE,50); });
 })();
+function linesHtml(AL,ALV,cs){
+  if(!OPT.lines) return '';
+  var p0=cs[cs.length-1][4], h='<h4 style="margin-top:14px">Наклонные и уровни</h4>';
+  if(!AL.length && !ALV.length) return h+'<div class="k">Явных линий по разворотам нет.</div>';
+  AL.forEach(function(x){
+    var d=(x.now-p0)/p0*100;
+    h+='<div class="k">'+(x.t==='L'?'<span class="up">наклонная поддержка</span>':'<span class="down">наклонное сопротивление</span>')+
+       ' сейчас '+px(x.now)+' ('+(d>0?'+':'')+d.toFixed(2)+'% от цены), касаний '+x.touch+', '+(x.sl>0?'растёт':'падает')+'</div>';
+  });
+  ALV.forEach(function(l){ var d=(l.p-p0)/p0*100; h+='<div class="k">уровень '+px(l.p)+' ('+(d>0?'+':'')+d.toFixed(2)+'%), разворотов '+l.n+'</div>'; });
+  return h;
+}
 function wavesHtml(wv,fb,cs){
   var h='<h4 style="margin-top:14px">Волны и Фибоначчи</h4>';
   if(wv){
@@ -750,6 +806,20 @@ function drawChart(kl){
         ls.setData([{time:t0,value:x.p},{time:t1,value:x.p}]);
       });
     }
+  }
+  // свои наклонные и уровни по разворотам — на любой монете и любом ТФ
+  var AL=[], ALV=[];
+  if(OPT.lines){
+    AL=autoLines(cs,piv); ALV=autoLevels(cs,piv);
+    var tEnd=TT(cs.length-1);
+    AL.forEach(function(x){
+      var ls=CH.addLineSeries({color:x.t==='L'?'#ff7a1a':'#ff5ca8',lineWidth:x.touch>=3?2:1,lastValueVisible:true,priceLineVisible:false,crosshairMarkerVisible:false,
+        title:(x.t==='L'?'накл. подд.':'накл. сопр.')+(x.touch>=3?' '+x.touch+'×':'')});
+      var t0=TT(x.a.i); if(t0<tEnd) ls.setData([{time:t0,value:x.a.p},{time:tEnd,value:x.now}]);
+    });
+    ALV.forEach(function(l){
+      cand.createPriceLine({price:l.p,color:'rgba(230,233,239,.85)',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'уровень '+l.n+'×'});
+    });
   }
   // формации: маркеры на свечах; вход/стоп/цель — только у выбранной
   // подпись только у выбранной формации, у остальных стрелка — без наложения текста
@@ -840,7 +910,7 @@ function drawChart(kl){
       '<ul>'+(f.reasons||[]).map(function(r){return '<li>'+esc(r)+'</li>';}).join('')+'</ul>'+
       (f.invalid?'<div class="k">отмена: '+esc(f.invalid)+'</div>':'')+'</div>';
   }).join(''):'<div class="mute">формаций нет</div>')+
-  wavesHtml(wv,fb,cs)+
+  linesHtml(AL,ALV,cs)+wavesHtml(wv,fb,cs)+
   '<h4 style="margin-top:14px">Уровни</h4>'+p.levels.map(function(l){return '<div class="k">'+(l.kind==='support'?'поддержка':'сопротивление')+' '+px(l.price)+(l.touches?', касаний '+l.touches:'')+'</div>';}).join('');
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
   var first=-1;
