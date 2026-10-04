@@ -24,6 +24,9 @@ header nav a:hover,header nav a.on{color:var(--txt)}
 .summary b{color:var(--txt)}
 .wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;min-width:1060px}
+#v-coins table{min-width:1700px}
+.two{line-height:1.2}.two small{display:block;color:var(--mute);font-size:11px}
+.star,.hide{cursor:pointer;color:#4a5263;margin-right:5px;font-weight:400}.star.on{color:var(--warn)}.hide:hover,.star:hover{color:var(--txt)}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
 th{position:sticky;top:0;background:var(--panel);color:var(--mute);font-weight:600;font-size:12px;cursor:pointer;user-select:none}
 th.l,td.l{text-align:left}
@@ -130,6 +133,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   </select>
   <label class="chk"><input type="checkbox" id="hasdens"> плотность до 1%</label>
   <label class="chk"><input type="checkbox" id="hasform"> есть формация</label>
+  <span class="seg" id="lst" title="★ — избранное, ✕ — скрыть монету; хранится в этом браузере"><button data-v="all">Все</button><button data-v="fav">★ Избранное</button><button data-v="hidden">Скрытые</button></span>
 </div>
 <div class="summary" id="summary"></div>
 
@@ -142,6 +146,15 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
     <th data-k="ch24h">24ч %</th>
     <th data-k="volume">Оборот 24ч</th>
     <th data-k="natr">NATR 1ч</th>
+    <th data-k="rvol" title="Оборот последней закрытой 15м свечи к среднему за сутки">Объём ×</th>
+    <th data-k="tpm" title="Сделок в минуту за последние 5 минут и во сколько раз это больше среднего за сутки">Сделок/мин</th>
+    <th data-k="dhl" title="Сколько процентов до хая (↑) и лоя (↓) дня и недели">До хая / лоя</th>
+    <th data-k="funding" title="Текущая ставка финансирования за 8 ч">Funding</th>
+    <th data-k="oi1h" title="Изменение открытого интереса за 1 ч и за сутки">OI 1ч · 24ч</th>
+    <th data-k="ls" title="Доля счетов в лонге к доле в шорте (Binance)">L/S</th>
+    <th data-k="cvd1h" title="Покупки по рынку минус продажи по рынку за час, USDT">CVD 1ч</th>
+    <th data-k="corr" title="Корреляция часовых доходностей с BTC за 2 суток">Корр. BTC</th>
+    <th data-k="adx" title="ADX 14 на 1ч: сила тренда без учёта стороны; выше 25 — тренд">ADX 1ч</th>
     <th class="l" data-k="overall">Тренд</th>
     <th class="l" data-k="tfs">15м · 1ч · 4ч</th>
     <th data-k="dens_pct">Плотность</th>
@@ -194,7 +207,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
 <script>
 (function(){
 var D = JSON.parse(document.getElementById('data').textContent);
-var S = {q:'', side:'all', tf:'overall', vol:0, hasdens:false, hasform:false, k:'volume', dir:-1};
+var S = {q:'', side:'all', tf:'overall', vol:0, hasdens:false, hasform:false, k:'volume', dir:-1, lst:'all', fav:[], hide:[]};
 try { Object.assign(S, JSON.parse(localStorage.getItem('board') || '{}')); } catch(e) {}
 function save(){ try { localStorage.setItem('board', JSON.stringify(S)); } catch(e) {} }
 
@@ -205,12 +218,21 @@ function px(v){ if(v==null) return '—'; var a=Math.abs(v); var d = a>=1000?1:a
 function pct(v){ if(v==null) return '<span class="mute">—</span>'; var c=v>0?'up':v<0?'down':'mute'; return '<span class="'+c+'">'+(v>0?'+':'')+v.toFixed(2)+'%</span>'; }
 function money(v){ if(v==null) return '—'; if(v>=1e9) return (v/1e9).toFixed(2)+' млрд'; if(v>=1e6) return (v/1e6).toFixed(0)+' млн'; if(v>=1e3) return (v/1e3).toFixed(0)+' тыс'; return v.toFixed(0); }
 function tag(s, short){ s = s || 'flat'; return '<span class="tag '+s+'">'+(short?SIDE1[s]:SIDE[s])+'</span>'; }
-function spark(xs){
+function spark(xs,dp,ds){
   if(!xs || xs.length<2) return '';
-  var w=110,h=28,mn=Math.min.apply(null,xs),mx=Math.max.apply(null,xs),r=(mx-mn)||1;
+  var w=110,h=28,mn=Math.min.apply(null,xs),mx=Math.max.apply(null,xs);
+  if(dp!=null){ mn=Math.min(mn,dp); mx=Math.max(mx,dp); }
+  var r=(mx-mn)||1;
   var pts=xs.map(function(v,i){return (i*(w/(xs.length-1))).toFixed(1)+','+(h-2-(v-mn)/r*(h-4)).toFixed(1);}).join(' ');
   var col = xs[xs.length-1]>=xs[0] ? 'var(--up)' : 'var(--down)';
-  return '<svg class="sp" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><polyline fill="none" stroke="'+col+'" stroke-width="1.4" points="'+pts+'"/></svg>';
+  var dy=dp==null?0:(h-2-(dp-mn)/r*(h-4)).toFixed(1);
+  var dl = dp==null ? '' : '<line x1="0" x2="'+w+'" y1="'+dy+'" y2="'+dy+'" stroke="var(--warn)" stroke-width="1" stroke-dasharray="3 2"><title>плотность '+(ds==='bid'?'на покупку':'на продажу')+' '+px(dp)+'</title></line>';
+  return '<svg class="sp" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">'+dl+'<polyline fill="none" stroke="'+col+'" stroke-width="1.4" points="'+pts+'"/></svg>';
+}
+function hl(x,lbl,small){
+  if(!x||x.hi==null) return small?'<small>—</small>':'<span class="mute">—</span>';
+  var t=lbl+' <span class="'+(x.hi<=0.3?'near':'')+'">↑'+x.hi.toFixed(1)+'%</span> <span class="'+(x.lo<=0.3?'near':'')+'">↓'+x.lo.toFixed(1)+'%</span>';
+  return small?'<small>'+t+'</small>':t;
 }
 function sideOf(r){ return S.tf==='overall' ? r.overall : ((r.trend[S.tf]||{}).side || 'flat'); }
 function val(r,k){
@@ -218,6 +240,8 @@ function val(r,k){
   if(k==='tfs') return ['15m','1h','4h'].reduce(function(a,t){var s=(r.trend[t]||{}).side;return a+(s==='long'?1:s==='short'?-1:0);},0);
   if(k==='nform') return r.forms.length;
   if(k==='coin') return r.coin;
+  if(k==='dhl') return r.day&&r.day.hi!=null?Math.min(r.day.hi,r.day.lo):null;
+  if(k==='tpm') return r.tpm!=null&&r.tpm_avg?r.tpm/r.tpm_avg:null;
   return r[k];
 }
 
@@ -228,6 +252,10 @@ function render(){
     if(S.vol && (r.volume||0) < S.vol) return false;
     if(S.hasdens && !(r.dens_pct!=null && r.dens_pct<=1)) return false;
     if(S.hasform && !r.forms.length) return false;
+    var hid=S.hide.indexOf(r.symbol)>=0;
+    if(S.lst==='hidden') return hid;
+    if(hid) return false;
+    if(S.lst==='fav' && S.fav.indexOf(r.symbol)<0) return false;
     return true;
   });
   rows.sort(function(a,b){
@@ -246,13 +274,22 @@ function render(){
       return '<span class="f '+(f.dir||'')+(f.sig?' sig':'')+'" data-tf="'+esc(f.tf)+'" title="'+esc(tip)+'">'+esc(f.tf)+' '+esc(f.title)+arrow+'</span>';
     }).join('') + (r.forms.length>3?'<span class="mute"> +'+(r.forms.length-3)+'</span>':'');
     return '<tr data-sym="'+esc(r.symbol)+'">'+
-      '<td class="l coin">'+esc(r.coin)+'</td>'+
+      '<td class="l coin"><span class="star'+(S.fav.indexOf(r.symbol)>=0?' on':'')+'" data-fav="'+esc(r.symbol)+'" title="в избранное">★</span><span class="hide" data-hide="'+esc(r.symbol)+'" title="'+(S.hide.indexOf(r.symbol)>=0?'вернуть в список':'скрыть монету')+'">✕</span>'+esc(r.coin)+'</td>'+
       '<td>'+px(r.price)+'</td><td>'+pct(r.ch1h)+'</td><td>'+pct(r.ch24h)+'</td>'+
       '<td>'+money(r.volume)+'</td><td>'+(r.natr==null?'—':r.natr.toFixed(2)+'%')+'</td>'+
+      '<td>'+(r.rvol==null?'<span class="mute">—</span>':'<span class="'+(r.rvol>=3?'near':r.rvol>=1.5?'up':'')+'">'+r.rvol.toFixed(1)+'×</span>')+'</td>'+
+      '<td class="two">'+(r.tpm==null?'<span class="mute">—</span>':r.tpm.toLocaleString('ru-RU')+(r.tpm_avg?'<small class="'+(r.tpm/r.tpm_avg>=2?'near':'')+'">'+(r.tpm/r.tpm_avg).toFixed(1)+'× к среднему</small>':''))+'</td>'+
+      '<td class="two">'+hl(r.day,'дн')+hl(r.week,'нед',1)+'</td>'+
+      '<td>'+(r.funding==null?'<span class="mute">—</span>':'<span class="'+(r.funding>=0.05?'down':r.funding<=-0.05?'up':'')+'">'+(r.funding>0?'+':'')+r.funding.toFixed(4)+'%</span>')+'</td>'+
+      '<td class="two">'+pct(r.oi1h)+'<small>'+(r.oi24h==null?'—':(r.oi24h>0?'+':'')+r.oi24h.toFixed(1)+'% · '+money(r.oi)+' $')+'</small></td>'+
+      '<td>'+(r.ls==null?'<span class="mute">—</span>':'<span class="'+(r.ls>=2?'down':r.ls<=0.7?'up':'')+'">'+r.ls.toFixed(2)+'</span>')+'</td>'+
+      '<td>'+(r.cvd1h==null?'<span class="mute">—</span>':'<span class="'+(r.cvd1h>0?'up':r.cvd1h<0?'down':'')+'">'+(r.cvd1h>0?'+':r.cvd1h<0?'−':'')+money(Math.abs(r.cvd1h))+'</span>')+'</td>'+
+      '<td>'+(r.corr==null?'<span class="mute">—</span>':r.corr.toFixed(2))+'</td>'+
+      '<td>'+(r.adx==null?'<span class="mute">—</span>':'<span class="'+(r.adx>=25?'near':'mute')+'">'+r.adx.toFixed(0)+'</span>')+'</td>'+
       '<td class="l">'+tag(r.overall)+'</td><td class="l">'+tfs+'</td>'+
-      '<td>'+dens+'</td><td class="l">'+spark(r.spark)+'</td><td class="l">'+(fs||'<span class="mute">—</span>')+'</td></tr>';
+      '<td>'+dens+'</td><td class="l">'+spark(r.spark,r.dens_px,r.dens_side)+'</td><td class="l">'+(fs||'<span class="mute">—</span>')+'</td></tr>';
   }).join('');
-  document.getElementById('tb').innerHTML = html || '<tr><td colspan="11" class="l mute">Под фильтр ничего не попало</td></tr>';
+  document.getElementById('tb').innerHTML = html || '<tr><td colspan="20" class="l mute">Под фильтр ничего не попало</td></tr>';
   var cnt={long:0,short:0,flat:0}; D.rows.forEach(function(r){cnt[r.overall]++;});
   document.getElementById('summary').innerHTML =
     'Показано <b>'+rows.length+'</b> из '+D.rows.length+' · общий тренд: <span class="up">лонг <b>'+cnt.long+'</b></span> · <span class="down">шорт <b>'+cnt.short+'</b></span> · флэт <b>'+cnt.flat+'</b>';
@@ -270,6 +307,10 @@ var q=document.getElementById('q'); q.value=S.q; q.oninput=function(){S.q=q.valu
 });
 var tfsel=document.getElementById('tfsel'); tfsel.value=S.tf; tfsel.onchange=function(){S.tf=tfsel.value;save();render();};
 var vol=document.getElementById('vol'); vol.value=String(S.vol||0); vol.onchange=function(){S.vol=+vol.value;save();render();};
+[].forEach.call(document.querySelectorAll('#lst button'),function(b){
+  b.classList.toggle('on',b.dataset.v===S.lst);
+  b.onclick=function(){S.lst=b.dataset.v;save();[].forEach.call(document.querySelectorAll('#lst button'),function(x){x.classList.toggle('on',x===b);});render();};
+});
 ['hasdens','hasform'].forEach(function(id){var c=document.getElementById(id);c.checked=!!S[id];c.onchange=function(){S[id]=c.checked;save();render();};});
 [].forEach.call(document.querySelectorAll('#v-coins th'), function(th){
   if(th.dataset.k==='none') return;
@@ -599,6 +640,9 @@ function drawChart(kl){
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
   liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
 }document.getElementById('tb').addEventListener('click',function(e){
+  var fv=e.target.closest('[data-fav]'), hd=e.target.closest('[data-hide]');
+  if(fv||hd){ var sym=(fv||hd).dataset[fv?'fav':'hide'], list=S[fv?'fav':'hide'], i=list.indexOf(sym);
+    if(i>=0) list.splice(i,1); else list.push(sym); save(); render(); return; }
   var tr=e.target.closest('tr[data-sym]'); if(!tr) return;
   var chip=e.target.closest('.f[data-tf]');
   openChart(tr.dataset.sym, chip?chip.dataset.tf:null);
@@ -608,6 +652,16 @@ document.getElementById('cx').onclick=closeChart;
 document.addEventListener('keydown',function(e){ if(e.key!=='Escape') return; if(rulShown()) rulHide(); else closeChart(); });
 var paused=false;
 render();
+// метрики свежее страницы: процесс свечей пишет их раз в минуту
+fetch('kl/stats.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+  if(!j||!j.coins||Date.now()-j.at>600000) return;
+  function near(p,hi,lo){ return p&&hi!=null&&lo!=null?{hi:(hi-p)/p*100,lo:(p-lo)/p*100}:null; }
+  D.rows.forEach(function(r){ var st=j.coins[r.symbol]; if(!st) return;
+    ['tpm','tpm_avg','funding','oi','oi1h','oi24h','ls','cvd1h'].forEach(function(k){ if(st[k]!=null) r[k]=st[k]; });
+    r.day=near(r.price,st.day_hi,st.day_lo)||r.day; r.week=near(r.price,st.week_hi,st.week_lo)||r.week;
+  });
+  render();
+}).catch(function(){});
 setInterval(function(){ if(!paused) location.reload(); }, 60000);
 })();
 </script>

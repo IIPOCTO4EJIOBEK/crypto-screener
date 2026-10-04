@@ -131,6 +131,89 @@ def _natr(cands: list[tuple], n: int = 14) -> float | None:
     return round(sum(trs) / n / cands[-1][4] * 100, 2)
 
 
+def _rvol(m15: list[tuple], n: int = 96) -> float | None:
+    """Оборот последней закрытой 15м свечи к среднему за сутки до неё."""
+    closed = m15[:-1]
+    if len(closed) < 20:
+        return None
+    base = [c[5] for c in closed[-n - 1:-1] if c[5]]
+    avg = sum(base) / len(base) if base else 0
+    return round(closed[-1][5] / avg, 2) if avg else None
+
+
+def _rets(h1: list[tuple], n: int = 48) -> dict[int, float]:
+    out, closed = {}, h1[:-1][-n - 1:]
+    for a, b in zip(closed, closed[1:]):
+        if a[4]:
+            out[b[0]] = b[4] / a[4] - 1
+    return out
+
+
+def _corr(a: dict[int, float], b: dict[int, float]) -> float | None:
+    """Корреляция часовых доходностей по общим часам (Пирсон)."""
+    ks = [k for k in a if k in b]
+    if len(ks) < 24:
+        return None
+    xs, ys = [a[k] for k in ks], [b[k] for k in ks]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    sx = sum((x - mx) ** 2 for x in xs) ** 0.5
+    sy = sum((y - my) ** 2 for y in ys) ** 0.5
+    return round(sxy / (sx * sy), 2) if sx and sy else None
+
+
+def _adx(cands: list[tuple], n: int = 14) -> float | None:
+    """ADX Уайлдера по закрытым свечам: сила тренда без учёта стороны."""
+    cs = cands[:-1]
+    if len(cs) < 3 * n:
+        return None
+    tr_s = pdm_s = mdm_s = 0.0
+    dxs: list[float] = []
+    adx = None
+    for i in range(1, len(cs)):
+        h, l, pc = cs[i][2], cs[i][3], cs[i - 1][4]
+        up, dn = h - cs[i - 1][2], cs[i - 1][3] - l
+        tr = max(h, pc) - min(l, pc)
+        pdm = up if up > dn and up > 0 else 0.0
+        mdm = dn if dn > up and dn > 0 else 0.0
+        if i <= n:
+            tr_s, pdm_s, mdm_s = tr_s + tr, pdm_s + pdm, mdm_s + mdm
+            if i < n:
+                continue
+        else:
+            tr_s += tr - tr_s / n
+            pdm_s += pdm - pdm_s / n
+            mdm_s += mdm - mdm_s / n
+        if not tr_s:
+            continue
+        pdi, mdi = pdm_s / tr_s * 100, mdm_s / tr_s * 100
+        dx = abs(pdi - mdi) / (pdi + mdi) * 100 if pdi + mdi else 0.0
+        if adx is None:
+            dxs.append(dx)
+            if len(dxs) == n:
+                adx = sum(dxs) / n
+        else:
+            adx = (adx * (n - 1) + dx) / n
+    return round(adx, 1) if adx is not None else None
+
+
+def _stats(live_dir: Path, max_age: float = 900) -> dict:
+    """Рыночные метрики, которые держит процесс свечей (kl/stats.json)."""
+    path = live_dir / "kl" / "stats.json"
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:                               # noqa: BLE001
+        return {}
+    return d.get("coins", {}) if time.time() - d.get("at", 0) / 1000 < max_age else {}
+
+
+def _near(px: float, hi: float | None, lo: float | None) -> dict:
+    """Расстояние до хая и лоя в процентах от цены."""
+    if not px or hi is None or lo is None:
+        return {}
+    return {"hi": round((hi - px) / px * 100, 2), "lo": round((px - lo) / px * 100, 2)}
+
+
 def charts(struct: dict) -> dict:
     """Данные для графиков таблицы: свечи и разметка каждой пары из структур.
 
@@ -207,6 +290,8 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
     conn = db.connect(db_path)
     symbols = uni.get("symbols") or sorted(dens_by)
     rows, trends = [], {}
+    stats = _stats(live_dir)
+    btc = _rets(_candles(conn, "BTCUSDT", "1h"))
     for sym in symbols:
         m1, m15, h1 = (_candles(conn, sym, tf) for tf in ("1m", "15m", "1h"))
         if not h1:
@@ -221,6 +306,9 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
         ago24 = h1[-25][4] if len(h1) > 24 else None
         d = dens_by.get(sym) or {}
         spark = [round(c[4], 8) for c in h1[-48:]]
+        st = stats.get(sym) or {}
+        near = [x for x in (d.get("densities") or []) if x.get("distance_pct") is not None]
+        near = min(near, key=lambda x: abs(x["distance_pct"])) if near else {}
         rows.append({
             "symbol": sym, "coin": sym.removesuffix("USDT"),
             "price": price,
@@ -234,6 +322,15 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
             "imbalance": d.get("imbalance"),
             "forms": _dedupe(sorted(forms.get(sym, []), key=lambda f: (f["age"], f["tf"]))),
             "spark": spark,
+            "dens_px": near.get("price"), "dens_side": near.get("side"),
+            "rvol": _rvol(m15), "adx": _adx(h1),
+            "corr": 1.0 if sym == "BTCUSDT" else _corr(_rets(h1), btc),
+            "tpm": st.get("tpm"), "tpm_avg": st.get("tpm_avg"),
+            "day": _near(price, st.get("day_hi"), st.get("day_lo")),
+            "week": _near(price, st.get("week_hi"), st.get("week_lo")),
+            "funding": st.get("funding"), "oi": st.get("oi"),
+            "oi1h": st.get("oi1h"), "oi24h": st.get("oi24h"),
+            "ls": st.get("ls"), "cvd1h": st.get("cvd1h"),
         })
     conn.close()
     now = datetime.now().astimezone()

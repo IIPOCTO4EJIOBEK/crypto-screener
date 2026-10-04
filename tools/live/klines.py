@@ -6,7 +6,9 @@
 
 * `kl/<SYM>_<tf>.json` — история, до 499 свечей `[t, o, h, l, c, qv]`;
   пишется на старте и при закрытии свечи;
-* `kl/<SYM>.live.json` — текущая свеча каждого ТФ, не чаще раза в секунду.
+* `kl/<SYM>.live.json` — текущая свеча каждого ТФ, не чаще раза в секунду;
+* `kl/stats.json` — funding, OI, long/short, сделки в минуту, CVD, дневной и
+  недельный хай/лой (`tools.live.market_stats`), раз в минуту.
 
 Свечи каждого ТФ — родные `kline_<tf>` биржи (REST на старте, дальше
 WebSocket), а не пересборка из 5m. Состав монет берётся из файла среза
@@ -32,6 +34,8 @@ import aiohttp
 print = __import__('functools').partial(print, flush=True)   # stdout у сервиса — журнал
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 REST = "https://fapi.binance.com/fapi/v1/klines"
 # рыночные потоки фьючерсов живут под /market: старый адрес /stream соединение
 # принимает, но данных не шлёт
@@ -40,6 +44,7 @@ SILENT = 30.0               # столько секунд без сообщен�
 TFS = ("5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
+STATS_EVERY = 60.0          # пауза между проходами рыночных метрик, с
 
 
 def _write(path: Path, obj) -> None:
@@ -132,6 +137,21 @@ class Feed:
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: запись не удалась: {type(e).__name__} {e}")
 
+    async def stats_loop(self) -> None:
+        """Раз в минуту — funding, OI, long/short, сделки, хай/лой (kl/stats.json)."""
+        from tools.live import market_stats
+        while True:
+            syms = list(self.syms)
+            if syms:
+                try:
+                    coins = await asyncio.to_thread(market_stats.fetch, syms)
+                    took = coins.pop("_elapsed", None)
+                    _write(self.out / "stats.json", {"at": int(time.time() * 1000),
+                                                     "took": took, "coins": coins})
+                except Exception as e:              # noqa: BLE001
+                    print(f"klines: метрики не собраны: {type(e).__name__} {e}")
+            await asyncio.sleep(STATS_EVERY)
+
     async def session(self, http: aiohttp.ClientSession) -> None:
         """Одно подключение: WS на весь состав + догрузка истории."""
         syms = self.syms
@@ -175,6 +195,8 @@ class Feed:
     async def run(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         asyncio.get_running_loop().create_task(self.flusher())
+        self.syms = self.read_symbols()
+        asyncio.get_running_loop().create_task(self.stats_loop())
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as http:
             while True:
