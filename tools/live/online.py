@@ -85,7 +85,9 @@ DEFAULT_MIN_VOLUME = "100m"
 STRUCT_TFS = ("5m", "15m", "1h")
 PAGES = (("screen", "screener.html", None),
          ("structures", "structures.html", STRUCT_TFS),
-         ("densities", "densities.html", ()))
+         ("densities", "densities.html", ()),
+         # таблица монет читает уже собранные плотности и структуры — последней
+         ("board", "board.html", ()))
 
 # Что кладём в плоскую папку предпросмотра: страницы контура плюс уже
 # собранные страницы тренда (они обновляются измерением, не кругом).
