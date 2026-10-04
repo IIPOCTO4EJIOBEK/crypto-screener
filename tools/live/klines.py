@@ -29,9 +29,14 @@ from pathlib import Path
 
 import aiohttp
 
+print = __import__('functools').partial(print, flush=True)   # stdout у сервиса — журнал
+
 ROOT = Path(__file__).resolve().parents[2]
 REST = "https://fapi.binance.com/fapi/v1/klines"
-WS = "wss://fstream.binance.com/stream?streams="
+# рыночные потоки фьючерсов живут под /market: старый адрес /stream соединение
+# принимает, но данных не шлёт
+WS = "wss://fstream.binance.com/market/stream?streams="
+SILENT = 30.0               # столько секунд без сообщений — переподключение
 TFS = ("5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
@@ -139,14 +144,17 @@ class Feed:
                                       for s in syms for tf in self.tfs))
             print(f"klines: подключён, монет {len(syms)}, ТФ {','.join(self.tfs)}")
             sys.stdout.flush()
-            checked = time.monotonic()
+            checked = last = time.monotonic()
             try:
                 while True:
                     try:
                         msg = await ws.receive(timeout=5)
                     except asyncio.TimeoutError:
                         msg = None
+                        if time.monotonic() - last > SILENT:
+                            raise ConnectionError(f"биржа молчит {SILENT:g} с")
                     if msg is not None:
+                        last = time.monotonic()
                         if msg.type != aiohttp.WSMsgType.TEXT:
                             raise ConnectionError(f"ws: {msg.type.name}")
                         d = json.loads(msg.data).get("data") or {}
