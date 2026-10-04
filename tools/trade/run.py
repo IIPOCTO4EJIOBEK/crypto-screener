@@ -92,7 +92,8 @@ def publish_page(ledger: Ledger, a) -> None:
     """Пересобрать страницу бота; её сбой не должен ронять торговый шаг."""
     from tools.trade import page
     try:
-        kw = dict(mode=a.mode, market=a.market, holding=a.holding, lookback=a.lookback)
+        kw = dict(mode=a.mode, market=a.market, holding=a.holding, lookback=a.lookback,
+                  side=a.side)
         page.write(ledger, ledger.root / "bot.html", **kw)
         if a.page_out:
             page.write(ledger, Path(a.page_out), **kw)
@@ -142,6 +143,8 @@ def run_one(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-gross", type=float, default=1.0)
     ap.add_argument("--lookback", type=int, default=28)
     ap.add_argument("--holding", type=int, default=5)
+    ap.add_argument("--side", choices=["long", "longshort"], default="long",
+                    help="long — только лонг (правило бэктеста); longshort — лонг по росту, шорт по падению (только фьючерсы)")
     ap.add_argument("--force", action="store_true", help="ребаланс сейчас, не дожидаясь дня решения")
     ap.add_argument("--plan", action="store_true", help="показать сигнал и заявки, ничего не исполнять")
     ap.add_argument("--status", action="store_true")
@@ -152,7 +155,10 @@ def run_one(argv: list[str] | None = None) -> int:
                     help="куда ещё положить страницу бота (кроме каталога журнала)")
     a = ap.parse_args(argv)
 
-    root = Path(a.data) / (f"{a.mode}-{a.market}")
+    if a.side == "longshort" and a.market != "future":
+        print("шорт возможен только на фьючерсах: добавьте --market future", file=sys.stderr)
+        return 2
+    root = Path(a.data) / (f"{a.mode}-{a.market}" + ("" if a.side == "long" else f"-{a.side}"))
     ledger = Ledger(root)
     if a.status:
         cmd_status(ledger)
@@ -178,14 +184,16 @@ def run_one(argv: list[str] | None = None) -> int:
         d = decide(series, now_ms=now, lookback=a.lookback, holding=a.holding)
         state = ledger.load(a.mode, a.capital)
         paper = PaperBroker(a.market)
-        prices = {s: paper.mid(s) for s in sorted(set(d.longs) | set(state.positions))}
+        target = d.signed_weights(a.side)
+        prices = {s: paper.mid(s) for s in sorted(set(target) | set(state.positions))}
         eq = state.equity(prices)
         print(f"день сигнала {fmt_day(d.day_ts)}, день решения: {'да' if d.is_decision_day else 'нет'}")
         for s, m in sorted(d.momentum.items(), key=lambda x: -x[1]):
-            print(f"  {s:9} моментум {m:+.2%}  {'ЛОНГ' if s in d.longs else '—'}")
+            mark = 'ЛОНГ' if target.get(s, 0) > 0 else ('ШОРТ' if target.get(s, 0) < 0 else '—')
+            print(f"  {s:9} моментум {m:+.2%}  {mark}")
         for s, why in d.skipped.items():
             print(f"  {s:9} мимо: {why}")
-        for o in plan(d.weights, equity=eq, cash=state.cash, positions=state.positions,
+        for o in plan(target, equity=eq, cash=state.cash, positions=state.positions,
                       prices=prices, limits=limits):
             print(f"  заявка {o.side:4} {o.symbol:9} {o.qty:.6g} ≈ {o.notional:.2f} USDT")
         return 0
@@ -194,7 +202,8 @@ def run_one(argv: list[str] | None = None) -> int:
         broker = make_broker(a.mode, a.market)
         broker.prepare(symbols)
         res = step(series, broker=broker, ledger=ledger, limits=limits, now_ms=now,
-                   lookback=a.lookback, holding=a.holding, force=a.force, mode=a.mode)
+                   lookback=a.lookback, holding=a.holding, force=a.force, mode=a.mode,
+                   side=a.side)
     except Exception as e:   # падение шага не должно пройти молча
         text = f"[{a.mode}/{a.market}] шаг упал: {type(e).__name__}: {str(e)[:300]}"
         print(text, file=sys.stderr)
@@ -206,7 +215,8 @@ def run_one(argv: list[str] | None = None) -> int:
     d = res.decision
     lines = [f"[{a.mode}/{a.market}] день {fmt_day(d.day_ts)}: "
              f"капитал {res.equity:.2f} USDT ({res.equity / res.state.start_equity - 1:+.2%})",
-             "лонги: " + (", ".join(d.longs) or "нет, всё в кэше")]
+             "лонги: " + (", ".join(d.longs) or "нет")
+             + ("; шорты: " + (", ".join(d.shorts) or "нет") if a.side == "longshort" else "")]
     if res.rebalanced:
         lines.append("ребаланс: " + (", ".join(f"{f.side} {f.symbol} {f.qty:.6g} @ {f.price:g}"
                                                for f in res.fills) or "заявок не понадобилось"))

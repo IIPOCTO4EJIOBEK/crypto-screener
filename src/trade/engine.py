@@ -44,12 +44,12 @@ def _rebalance_due(state: State, decision: Decision, holding: int,
 def _execute(orders, broker, state: State, ledger: Ledger, res: StepResult) -> None:
     for o in orders:
         qty = o.qty
-        if o.side == "sell":
+        if o.reduce and o.side == "sell":
             have = broker.base_balance(o.symbol)
             if have is not None and have < qty:
                 res.problems.append(f"{o.symbol}: на счёте {have:g}, в журнале {qty:g} — продаю, что есть")
                 qty = have
-        else:
+        elif not o.reduce:
             free = broker.free_quote()
             if free is not None and o.notional > free:
                 res.problems.append(f"{o.symbol}: свободных USDT {free:.2f}, заявка уменьшена")
@@ -57,7 +57,7 @@ def _execute(orders, broker, state: State, ledger: Ledger, res: StepResult) -> N
         if qty <= 0:
             continue
         try:
-            fill = broker.execute(o.symbol, o.side, qty)
+            fill = broker.execute(o.symbol, o.side, qty, reduce=o.reduce)
         except Exception as e:   # заявку отклонили — остальные всё равно пробуем
             res.problems.append(f"{o.symbol} {o.side}: {type(e).__name__}: {str(e)[:200]}")
             ledger.log("error", symbol=o.symbol, side=o.side, qty=qty, error=str(e)[:500])
@@ -66,16 +66,18 @@ def _execute(orders, broker, state: State, ledger: Ledger, res: StepResult) -> N
             res.problems.append(f"{o.symbol} {o.side}: не исполнено (стакан мелкий или объём ниже шага)")
             continue
         state.cash += fill.cash_delta
-        q = state.positions.get(o.symbol, 0.0) + (fill.qty if o.side == "buy" else -fill.qty)
-        if o.side == "sell" and q < o.qty * 1e-9 + 1e-12:
+        before = state.positions.get(o.symbol, 0.0)
+        q = before + (fill.qty if o.side == "buy" else -fill.qty)
+        # закрытие обнуляет позицию точно: остаток от округления — не позиция
+        if o.reduce and abs(q) <= (abs(before) + fill.qty) * 1e-9 + 1e-12:
             q = 0.0
-        if q > 0:
+        if q:
             state.positions[o.symbol] = q
         else:
             state.positions.pop(o.symbol, None)
         res.fills.append(fill)
-        ledger.log("fill", **asdict(fill), slippage_bp=round(fill.slippage_bp, 2),
-                   live=broker.live)
+        ledger.log("fill", **asdict(fill), reduce=o.reduce,
+                   slippage_bp=round(fill.slippage_bp, 2), live=broker.live)
 
 
 def _charge_funding(state: State, broker, prices: dict[str, float], now_ms: int,
@@ -106,12 +108,13 @@ def _charge_funding(state: State, broker, prices: dict[str, float], now_ms: int,
 
 def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
          lookback: int = 28, holding: int = 5, force: bool = False,
-         mode: str = "paper") -> StepResult:
+         mode: str = "paper", side: str = "long") -> StepResult:
     state = ledger.load(mode, limits.capital)
     halted = ledger.halted
 
     decision = decide(series, now_ms=now_ms, lookback=lookback, holding=holding)
-    symbols = sorted(set(state.positions) | set(decision.longs))
+    target = decision.signed_weights(side)
+    symbols = sorted(set(state.positions) | set(target))
     prices = {}
     res = StepResult(state=state, equity=0.0, decision=decision, halted=halted)
     for s in symbols:
@@ -132,7 +135,8 @@ def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
     res.equity = equity
     ledger.log("signal", day_ts=decision.day_ts, decision_day=decision.is_decision_day,
                momentum={k: round(v, 5) for k, v in decision.momentum.items()},
-               longs=decision.longs, skipped=decision.skipped)
+               longs=decision.longs, skipped=decision.skipped, side=side,
+               shorts=decision.shorts if side == "longshort" else [])
 
     if not halted and breached(equity, state.peak, limits):
         halted = (f"стоп по просадке: капитал {equity:.2f} ниже пика {state.peak:.2f} "
@@ -144,7 +148,7 @@ def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
         ledger.log("halt", reason=halted)
         res.halted = halted
     elif not halted and _rebalance_due(state, decision, holding, force):
-        orders = plan(decision.weights, equity=equity, cash=state.cash,
+        orders = plan(target, equity=equity, cash=state.cash,
                       positions=state.positions, prices=prices, limits=limits)
         ledger.log("plan", orders=[asdict(o) for o in orders])
         _execute(orders, broker, state, ledger, res)

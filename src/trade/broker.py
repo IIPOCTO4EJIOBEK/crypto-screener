@@ -12,8 +12,8 @@
 их нет.
 
 Рынок по умолчанию — спот: длинная сторона без плеча, ликвидации нет, фандинг
-не платится. Перпетуал (`market="future"`) — с плечом 1 и продажей только на
-закрытие (reduceOnly), чтобы бот физически не мог открыть шорт.
+не платится. Перпетуал (`market="future"`) — с плечом 1; закрывающие заявки идут с
+reduceOnly. Шорт открывается только в режиме longshort (`--side longshort`).
 """
 
 from __future__ import annotations
@@ -100,7 +100,8 @@ class PaperBroker:
     def mid(self, symbol: str) -> float:
         return self._book(symbol, self.market).mid
 
-    def execute(self, symbol: str, side: str, qty: float) -> Fill | None:
+    def execute(self, symbol: str, side: str, qty: float,
+                reduce: bool = False) -> Fill | None:
         book = self._book(symbol, self.market)
         price = walk_book(book, side, qty)
         if price is None:
@@ -168,13 +169,16 @@ class ExchangeBroker:
         bal = self.ex.fetch_balance()
         return float((bal.get(symbol[: -len(self.quote)]) or {}).get("free") or 0.0)
 
-    def execute(self, symbol: str, side: str, qty: float) -> Fill | None:
+    def execute(self, symbol: str, side: str, qty: float,
+                reduce: bool = False) -> Fill | None:
         s = self._sym(symbol)
         amount = float(self.ex.amount_to_precision(s, qty))
         if amount <= 0:
             return None
         mid = self.mid(symbol)
-        params = {"reduceOnly": True} if self.market == "future" and side == "sell" else {}
+        if self.market == "spot" and side == "sell" and not reduce:
+            raise ValueError("шорт на споте невозможен")
+        params = {"reduceOnly": True} if self.market == "future" and reduce else {}
         o = self.ex.create_order(s, "market", side, amount, None, params)
         if not o.get("average") or o.get("filled") is None:
             o = self.ex.fetch_order(o["id"], s)

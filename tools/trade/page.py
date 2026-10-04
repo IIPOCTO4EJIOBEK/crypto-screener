@@ -87,7 +87,8 @@ def sparkline(values: list[float], w: int = 640, h: int = 120) -> str:
 
 
 def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
-          holding: int = 5, lookback: int = 28, now_ms: int | None = None) -> str:
+          holding: int = 5, lookback: int = 28, side: str = "long",
+          now_ms: int | None = None) -> str:
     rows = ledger.journal()
     eq = [r for r in rows if r["kind"] == "equity"]
     fills = [r for r in rows if r["kind"] == "fill"]
@@ -143,17 +144,23 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
             px = prices.get(s)
             val = q * px if px else None
             w = val / last["equity"] if val and last["equity"] else None
-            pos_rows.append(f"<tr><td>{e(s)}</td><td class=num>{q:.6g}</td>"
+            pos_rows.append(f"<tr><td class={'long' if q > 0 else 'short'}>{e(s)} {'лонг' if q > 0 else 'шорт'}</td><td class=num>{q:.6g}</td>"
                             f"<td class=num>{'—' if px is None else f'{px:g}'}</td>"
-                            f"<td class=num>{'—' if val is None else f'{val:.2f}'}</td>"
-                            f"<td class=num>{'—' if w is None else f'{w * 100:.1f} %'}</td></tr>")
+                            f"<td class=num>{'—' if val is None else f'{abs(val):.2f}'}</td>"
+                            f"<td class=num>{'—' if w is None else f'{abs(w) * 100:.1f} %'}</td></tr>")
 
     sig_rows = []
     if sig:
+        shorts = set(sig.get("shorts") or [])
         for s, m in sorted(sig["momentum"].items(), key=lambda x: -x[1]):
-            cls = "long" if s in sig["longs"] else "dim"
+            if s in sig["longs"]:
+                cls, what = "long", "лонг"
+            elif s in shorts:
+                cls, what = "short", "шорт"
+            else:
+                cls, what = "dim", "вне портфеля"
             sig_rows.append(f"<tr class={cls}><td>{e(s)}</td><td class=num>{m * 100:+.2f} %</td>"
-                            f"<td>{'в портфеле' if s in sig['longs'] else 'вне портфеля'}</td></tr>")
+                            f"<td>{what}</td></tr>")
         for s, why in (sig.get("skipped") or {}).items():
             sig_rows.append(f"<tr class=dim><td>{e(s)}</td><td class=num>—</td><td>{e(why)}</td></tr>")
 
@@ -172,6 +179,13 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
     bt_html = "".join(f"<tr><td>{e(k)}</td><td class=num>{e(v)}</td></tr>" for k, v in BACKTEST)
     fee_text = ("комиссия тейкера USDT-M 0.05 % и фандинг по фактическим начислениям"
                 if market == "future" else "комиссия спота 0.1 %")
+    side_text = ("Рост — лонг, падение — шорт, равными долями; сумма позиций по модулю "
+                 "не больше капитала, плеча нет. В бэктесте такой вариант дал Sharpe 1.22 "
+                 "и просадку −52 % на восьмёрке, но шорт сам по себе там был убыточен "
+                 "(−92 %): весь плюс — от лонгов, шорт снижает просадку на падениях."
+                 if side == "longshort" else
+                 "Монеты с ростом — в портфель равными долями, остальные — нет, деньги "
+                 "ждут в USDT. Шорта и плеча нет.")
     rebalance_text = ("каждый день" if holding == 1 else f"раз в {holding} дней")
     mode_name = {"paper": "бумажный", "testnet": "тестовая сеть", "live": "ЖИВОЙ СЧЁТ"}.get(mode, mode)
 
@@ -201,7 +215,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
   .wrap {{ overflow-x:auto; }}
   ul {{ margin:6px 0 0; padding-left:18px; }}
 </style></head><body>
-<h1>Торговый бот: тренд-фильтр {lookback}/{holding} · {'фьючерсы' if market == 'future' else 'спот'}</h1>
+<h1>Торговый бот: тренд-фильтр {lookback}/{holding} · {'фьючерсы' if market == 'future' else 'спот'}{' · лонг и шорт' if side == 'longshort' else ''}</h1>
 <div class="meta">режим: {e(mode_name)} · рынок: {e(market)} · обновлено {t(now_ms) if now_ms else '—'} МСК</div>
 {f'<div class="box warn">ОСТАНОВЛЕН: {e(halted)}</div>' if halted else ''}
 
@@ -209,8 +223,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 <div class="box">
 Каждый день в 03:05 МСК, после закрытия дневной свечи, бот берёт дневные свечи
 восьми монет (BTC, ETH, SOL, XRP, DOGE, ADA, LINK, AVAX) и считает моментум:
-насколько цена выросла за {lookback} дней. Монеты с ростом — в портфель равными
-долями, остальные — нет, деньги ждут в USDT. Шорта и плеча нет.
+насколько цена изменилась за {lookback} дней. {side_text}
 Портфель пересобирается {rebalance_text}.{' Рынок — бессрочные фьючерсы USDT-M Binance, плечо 1, только лонг: продажа идёт только на закрытие позиции.' if market == 'future' else ''} Если капитал упадёт ниже пика
 больше чем на 35 %, бот продаёт всё и останавливается до ручного решения.
 <ul>
@@ -285,11 +298,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mode", default="paper")
     ap.add_argument("--market", default="spot")
     ap.add_argument("--data", default=str(ROOT / "data" / "trade"))
+    ap.add_argument("--side", default="long")
+    ap.add_argument("--holding", type=int, default=5)
     ap.add_argument("--out")
     a = ap.parse_args(argv)
-    ledger = Ledger(Path(a.data) / f"{a.mode}-{a.market}")
+    ledger = Ledger(Path(a.data) / (f"{a.mode}-{a.market}" + ("" if a.side == "long" else f"-{a.side}")))
     out = Path(a.out) if a.out else ledger.root / "bot.html"
-    print(write(ledger, out, mode=a.mode, market=a.market))
+    print(write(ledger, out, mode=a.mode, market=a.market, side=a.side, holding=a.holding))
     return 0
 
 

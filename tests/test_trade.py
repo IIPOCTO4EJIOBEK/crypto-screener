@@ -176,8 +176,10 @@ def test_биржевой_брокер_учитывает_комиссию_в_м
     assert f.slippage_bp == pytest.approx(100.0)
 
     b.market = "future"
-    b.execute("BTCUSDT", "sell", 1.0)
+    b.execute("BTCUSDT", "sell", 1.0, reduce=True)
     assert b.ex.sent[0] == "BTC/USDT:USDT" and b.ex.sent[4] == {"reduceOnly": True}
+    b.execute("BTCUSDT", "sell", 1.0)                 # открытие шорта — без reduceOnly
+    assert b.ex.sent[4] == {}
 
 
 def test_страница_бота_собирается_из_журнала(tmp_path):
@@ -243,3 +245,42 @@ def test_профили_запускаются_по_очереди(monkeypatch, 
     seen.clear()
     cli.main(["--status"])                       # с аргументами профили не читаются
     assert seen == [["--status"]]
+
+
+def test_лонг_шорт_открывает_шорт_по_падению_и_переворачивает(tmp_path):
+    series = {"UP": ramp(40, 1.0), "DOWN": ramp(40, -1.0, 200.0)}
+    prices = {"UP": 140.0, "DOWN": 160.0}
+    broker = PaperBroker("future", fee=0.0, book=book_at(prices))
+    broker.funding = lambda *a: 0.0
+    ledger = Ledger(tmp_path)
+    now = START + 40 * DAY_MS
+    r = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000),
+             now_ms=now, side="longshort")
+    assert r.state.positions["UP"] > 0 and r.state.positions["DOWN"] < 0
+    assert r.equity == pytest.approx(1000)
+    gross = sum(abs(q) * prices[s] for s, q in r.state.positions.items())
+    assert gross <= 1000                                   # плеча нет
+    # шорт зарабатывает на падении
+    prices["DOWN"] = 150.0
+    r2 = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000),
+              now_ms=now + 60_000, side="longshort")
+    assert r2.equity > 1000
+    # тренд развернулся — шорт закрывается и становится лонгом
+    flipped = {"UP": ramp(45, 1.0), "DOWN": ramp(45, 1.0, 100.0)}
+    r3 = step(flipped, broker=broker, ledger=ledger, limits=Limits(capital=1000),
+              now_ms=now + 5 * DAY_MS, side="longshort", force=True)
+    assert r3.state.positions["DOWN"] > 0
+    closes = [f for f in ledger.journal() if f["kind"] == "fill" and f["reduce"]]
+    assert closes and closes[-1]["symbol"] == "DOWN" and closes[-1]["side"] == "buy"
+
+
+def test_стоп_закрывает_и_шорты():
+    orders = plan({}, equity=1000, cash=2000, positions={"A": -5.0}, prices={"A": 100.0},
+                  limits=Limits())
+    assert [(o.side, o.qty, o.reduce) for o in orders] == [("buy", 5.0, True)]
+
+
+def test_шорт_на_споте_запрещён(tmp_path, monkeypatch):
+    from tools.trade import run as cli
+    monkeypatch.setattr(cli, "load_env", lambda *a, **k: None)
+    assert cli.run_one(["--side", "longshort", "--data", str(tmp_path)]) == 2

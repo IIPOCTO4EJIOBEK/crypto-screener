@@ -35,6 +35,7 @@ class Decision:
     is_decision_day: bool
     momentum: dict[str, float]      # монеты, у которых моментум посчитан
     longs: list[str]                # монеты с моментумом > 0
+    shorts: list[str] = field(default_factory=list)          # монеты с моментумом < 0
     skipped: dict[str, str] = field(default_factory=dict)   # монета → почему мимо
 
     @property
@@ -44,6 +45,23 @@ class Decision:
             return {}
         w = 1.0 / len(self.longs)
         return {s: w for s in self.longs}
+
+    def signed_weights(self, side: str = "long") -> dict[str, float]:
+        """Целевые веса со знаком: + лонг, − шорт; сумма модулей — 1.
+
+        long — только рост (правило бэктеста по умолчанию); longshort — рост
+        в лонг, падение в шорт (в бэктесте: Sharpe 1.22, просадка −52 % на
+        восьмёрке; шорт сам по себе там убыточен).
+        """
+        if side == "long":
+            return self.weights
+        if side != "longshort":
+            raise ValueError(f"неизвестная сторона: {side}")
+        names = self.longs + self.shorts
+        if not names:
+            return {}
+        w = 1.0 / len(names)
+        return {**{s: w for s in self.longs}, **{s: -w for s in self.shorts}}
 
 
 def closed_bars(bars: list[Candle], now_ms: int) -> list[Candle]:
@@ -84,5 +102,6 @@ def decide(series: dict[str, list[Candle]], *, now_ms: int, lookback: int = 28,
             continue
         momentum[sym] = now.close / then.close - 1.0
     longs = sorted(s for s, m in momentum.items() if m > 0)
+    shorts = sorted(s for s, m in momentum.items() if m < 0)
     return Decision(day_ts=day, is_decision_day=is_decision_day(day, holding),
-                    momentum=momentum, longs=longs, skipped=skipped)
+                    momentum=momentum, longs=longs, shorts=shorts, skipped=skipped)
