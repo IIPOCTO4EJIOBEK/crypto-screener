@@ -25,7 +25,6 @@ import random
 import pytest
 
 from src.analysis import formations
-from src.analysis.formations import detect_trendline_event
 from src.backtest import walk as walk_mod
 from src.backtest.walk import walk
 from src.data.market import Candle

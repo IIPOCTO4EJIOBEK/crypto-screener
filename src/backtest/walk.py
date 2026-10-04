@@ -66,12 +66,27 @@ class Trade:
 
 
 def simulate(formation: Formation, candles: list[Candle], start: int,
-             horizon: int = HORIZON) -> Trade | None:
+             horizon: int = HORIZON, *, require_fill: bool = False
+             ) -> Trade | None:
     """Просчитать одну сделку по свечам после момента входа.
 
     start — индекс свечи, с которой считается результат: та свеча, которой
     детектор ещё не видел. Цена входа (formation.entry) — уровень закрытия
     сигнальной свечи, взять её можно было в этот момент.
+
+    require_fill=False — старое правило: сделка считается открытой по
+    formation.entry сразу со свечи start. Для формаций с входом по закрытию
+    это честно, но не для всех: `trendline_bounce` ставит вход по цене линии,
+    а сигнал требует закрытия свечи выше линии, то есть цена к этому моменту
+    от входа уже ушла. Старое правило засчитывало такой сделке цель, даже
+    если цена ко входу так и не вернулась.
+
+    require_fill=True — вход лимитным ордером по formation.entry: сделка
+    открывается только на свече, которая до этой цены дошла. Если цель
+    задета раньше исполнения, сделки не было (None). На свече исполнения
+    стоп засчитывается, а цель нет: порядок внутри свечи неизвестен, и
+    цель могла пройти до того, как ордер исполнился. Окно horizon считается
+    от start, ожидание исполнения в него входит.
     """
     entry, stop = formation.entry, formation.stop
     if entry <= 0 or stop <= 0 or entry == stop:
@@ -84,12 +99,13 @@ def simulate(formation: Formation, candles: list[Candle], start: int,
     long = formation.direction == "long"
 
     risk = abs(entry - stop)
+    filled_at = None if require_fill else start
 
     def make(outcome: str, r: float, bars: int) -> Trade:
         idx = min(start + bars - 1, len(candles) - 1)
         return Trade(formation, outcome, r, bars, entry=entry, stop=stop,
-                     side=formation.direction, entry_ms=candles[start].ts,
-                     exit_ms=candles[idx].ts)
+                     side=formation.direction,
+                     entry_ms=candles[filled_at].ts, exit_ms=candles[idx].ts)
 
     for k, c in enumerate(candles[start:start + horizon], start=1):
         if long:
@@ -98,11 +114,21 @@ def simulate(formation: Formation, candles: list[Candle], start: int,
         else:
             hit_stop = c.high >= stop
             hit_target = c.low <= target
+        if filled_at is None:
+            if (c.low <= entry) if long else (c.high >= entry):
+                filled_at = start + k - 1
+                hit_target = False   # см. докстринг: цель на свече исполнения
+            elif hit_target:
+                return None          # цель прошла без нас — сделки не было
+            else:
+                continue
         if hit_stop:      # стоп проверяется первым: см. оговорку выше
             return make("stop", -1.0, k)
         if hit_target:
             return make("target", abs(target - entry) / risk, k)
 
+    if filled_at is None:
+        return None       # ордер так и не исполнился
     last = candles[min(start + horizon, len(candles)) - 1]
     move = (last.close - entry) if long else (entry - last.close)
     return make("timeout", move / risk, horizon)
@@ -112,8 +138,12 @@ def walk(candles: list[Candle], tf: str, symbol: str, exchange: str,
          *, history: int = HISTORY, step: int = STEP,
          horizon: int = HORIZON, btc: list[Candle] | None = None,
          limit: int = 8, costs: Costs | None = None,
-         funding: list[FundingRate] | None = None) -> list[Trade]:
+         funding: list[FundingRate] | None = None,
+         require_fill: bool = False) -> list[Trade]:
     """Пройти историю срезами и собрать сделки по найденным формациям.
+
+    require_fill — правило входа, см. simulate. По умолчанию старое, чтобы
+    прежние измерения воспроизводились; новое включается явно.
 
     Если переданы costs, у каждой сделки считается r_net — результат за
     вычетом комиссии, проскальзывания и (при наличии расписания) фандинга.
@@ -146,7 +176,12 @@ def walk(candles: list[Candle], tf: str, symbol: str, exchange: str,
             # возрастом, знак разницы между монетами не устойчив, итог
             # измерения меняется на 0.006 R. Вход — цена закрытия сигнальной
             # свечи, то есть при age > 0 она устарела на 1-2 свечи.
-            tr = simulate(f, candles, i - 1, horizon)
+            tr = simulate(f, candles, i - 1, horizon,
+                          require_fill=require_fill)
+            if require_fill:
+                # неисполненный ордер — тоже исход: тот же сигнал в следующем
+                # срезе (с возрастом) не должен получить вторую попытку
+                seen.add(key)
             if tr is None:
                 continue
             seen.add(key)
