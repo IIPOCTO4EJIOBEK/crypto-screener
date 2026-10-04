@@ -33,6 +33,10 @@
     .venv/bin/python -m tools.live.refresh --db /tmp/tf-1d.db  --days 1095 --tfs 1d --step 5
     .venv/bin/python -m tools.live.refresh --db /tmp/tf-1d-step1.db --days 1095 --tfs 1d
 
+С 04.10.2026 refresh по умолчанию засчитывает сделку, только если цена дошла
+до входа (docs/research/20). Чтобы воспроизвести числа docs/research/18, к
+командам выше нужен флаг --old-entry-rule.
+
 Последняя пара — не два таймфрейма, а одна и та же история суток при разном
 шаге среза: --step 5 повторяет поведение до правки STEP_BY_TF, где у суток
 ключа не было и брался фолбэк 5. Разница видна в строке liquidity_sweep:
