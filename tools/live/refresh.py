@@ -28,10 +28,14 @@ TFS = ("5m", "15m", "1h")
 
 def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
             costs: Costs, conn, step: int | None = None,
-            progress=None) -> int:
-    """Прогнать архив и записать измерение. Возвращает число строк."""
+            progress=None, require_fill: bool = False) -> int:
+    """Прогнать архив и записать измерение. Возвращает число строк.
+
+    require_fill — правило входа (см. walk.simulate): сделка есть, только
+    если цена дошла до входа. По умолчанию старое правило.
+    """
     trades = table(list(symbols), tfs, days=days, costs=costs, step=step,
-                   progress=progress)
+                   progress=progress, require_fill=require_fill)
     # report() даёт разрезы; первый — по (формация, ТФ), это и есть ключ строки
     stats = report(trades)[0]
     scope = ",".join(symbols)
@@ -98,6 +102,9 @@ def main() -> None:
     p.add_argument("--slippage", type=float, default=Costs().slippage,
                    help="проскальзывание за сторону")
     p.add_argument("--no-funding", action="store_true", help="не учитывать фандинг")
+    p.add_argument("--require-fill", action="store_true",
+                   help="засчитывать сделку, только если цена дошла до входа "
+                        "(docs/research/20)")
     a = p.parse_args()
 
     costs = Costs(taker_fee=a.fee, slippage=a.slippage,
@@ -112,7 +119,8 @@ def main() -> None:
 
     conn = db.connect(a.db)
     written = measure(a.symbols, tuple(a.tfs), days=a.days, costs=costs,
-                      conn=conn, step=a.step, progress=progress)
+                      conn=conn, step=a.step, progress=progress,
+                      require_fill=a.require_fill)
     _print_rows([dict(r) for r in db.load_formation_stats(conn).values()])
     print(f"\nзаписано строк: {written} → {a.db or db.DEFAULT_DB_PATH}")
 
