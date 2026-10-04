@@ -41,14 +41,16 @@ def measure(symbols: list[str], tfs: tuple[str, ...], *, days: int,
                  exp_gross=round(s.expectancy, 4),
                  exp_net=round(s.expectancy_net, 4),
                  cost=round(s.cost, 4),
-                 sd=round(s.sd, 4)) for s in stats]
+                 sd=round(s.sd, 4), se=round(s.se, 6), n_eff=s.n_eff,
+                 p_boot=s.p_boot) for s in stats]
     written = db.upsert_formation_stats(conn, rows, tfs)
     return written
 
 
 def _print_rows(rows: list[dict]) -> None:
-    print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'цель %':>7} "
-          f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'значимо':>8}")
+    print(f"\n{'формация':24} {'ТФ':4} {'сделок':>7} {'n_eff':>6} {'цель %':>7} "
+          f"{'R':>8} {'издержки':>9} {'R net':>8} {'p':>7} {'p бутстр':>8} "
+          f"{'значимо':>8}")
     order = sorted(rows, key=lambda r: -r["exp_net"])
     # Один вызов на таблицу: метки строк и итог обязаны считаться по одному
     # набору сравнений, иначе итог говорит «значимых 11», а строки — другое.
@@ -56,9 +58,12 @@ def _print_rows(rows: list[dict]) -> None:
     for r, ok in zip(order, v.flags):
         p = _p(r)
         mark = "—" if ok is None else ("да" if ok else "нет")
-        print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r['win_rate']:7.1f} "
+        pb = r.get("p_boot")
+        print(f"{r['kind']:24} {r['tf']:4} {r['n']:7} {r.get('n_eff') or 0:6} "
+              f"{r['win_rate']:7.1f} "
               f"{r['exp_gross']:+8.3f} {r['cost']:9.3f} {r['exp_net']:+8.3f} "
-              f"{('—' if p is None else f'{p:7.4f}'):>7} {mark:>8}")
+              f"{('—' if p is None else f'{p:7.4f}'):>7} "
+              f"{('—' if pb is None else f'{pb:8.4f}'):>8} {mark:>8}")
     n_sig_plus = sum(1 for r, ok in zip(order, v.flags)
                      if ok and r["exp_net"] > 0)
     print(f"\nсравнений {v.n_tested}, из них с плюсом {v.n_positive}; "
@@ -66,11 +71,17 @@ def _print_rows(rows: list[dict]) -> None:
           f"{v.n_significant} — из них с плюсом {n_sig_plus}.")
     print(f"«—» в столбце значимости — строка в счёт не вошла: сделок меньше "
           f"{MIN_TRADES} или нет разброса R по сделкам.")
+    print("p учитывает перекрытие сделок: ошибка среднего — по кластерам "
+          "пересекающихся сделок, степеней свободы n_eff − 1.")
+    if v.n_naive:
+        print(f"ВНИМАНИЕ: у {v.n_naive} строк нет n_eff (измерены до правки) — "
+              f"их p посчитаны как для независимых сделок и занижены.")
 
 
 def _p(row: dict) -> float | None:
-    """p-value среднего R строки; None, если считать не из чего."""
-    return significance.p_value(row["exp_net"], row.get("sd") or 0.0, row["n"])
+    """p-value среднего R строки с поправкой на перекрытие сделок; None, если
+    считать не из чего."""
+    return significance.row_p(row)
 
 
 def main() -> None:

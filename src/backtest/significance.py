@@ -14,6 +14,20 @@
     значение 2.04 против 1.96), а именно на таких n у нас и стоят плюсовые
     строки.
 
+  Поправка на перекрытие сделок. Сделки одной строки не независимы: на
+    восьми монетах сразу и при удержании дольше шага среза они идут внахлёст,
+    и одно рыночное движение даёт пачку сделок с одинаковым исходом. Обычная
+    t-статистика считает такую пачку n независимыми наблюдениями и занижает
+    p на порядки (docs/research/19). Поэтому сделки склеиваются в кластеры —
+    связные группы пересекающихся по времени интервалов [вход, выход], по
+    всем монетам строки, — и стандартная ошибка среднего считается
+    кластерно-устойчивой (HAC-оценка в событийном времени: та же идея, что у
+    Newey-West, только корреляция допускается не на фиксированное число лагов,
+    а ровно между пересекающимися сделками). Степеней свободы — число
+    кластеров минус один, а не n − 1. Для сверки рядом считается блочный
+    бутстрэп с теми же кластерами в роли блоков. Число кластеров — это и есть
+    эффективный размер выборки n_eff.
+
   Поправка Бенджамини-Хохберга (FDR) — по всем p сразу. Контролирует долю
     ложных находок среди отобранных, а не вероятность хотя бы одной ошибки,
     как Бонферрони; при десятках сравнений Бонферрони слишком груба.
@@ -31,6 +45,7 @@
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 
 # Константа Эйлера-Маскерони — входит в оценку ожидаемого максимума Sharpe.
@@ -143,6 +158,121 @@ def p_value(mean: float, sd: float, n: int) -> float | None:
     return None if t is None else two_sided_p(t, n - 1)
 
 
+def overlap_clusters(spans: list[tuple[int, int]], gap_ms: int = 0) -> list[int]:
+    """Номера кластеров сделок: связные группы пересекающихся интервалов.
+
+    spans — (вход, выход) каждой сделки в миллисекундах, в любом порядке.
+    Две сделки в одном кластере, если их интервалы пересекаются или касаются
+    (выход одной на той же свече, что вход другой), — напрямую или через
+    цепочку других сделок. gap_ms расширяет склейку: сделки, разделённые
+    паузой не длиннее gap_ms, тоже считаются одним событием.
+
+    Возвращает список той же длины и в том же порядке, что и вход.
+    """
+    order = sorted(range(len(spans)), key=lambda i: spans[i][0])
+    out = [0] * len(spans)
+    cid, edge = -1, None
+    for i in order:
+        start, end = spans[i]
+        if edge is None or start > edge + gap_ms:
+            cid += 1
+            edge = end
+        else:
+            edge = max(edge, end)
+        out[i] = cid
+    return out
+
+
+def _cluster_sums(values: list[float], clusters: list[int]
+                  ) -> tuple[list[float], list[int]]:
+    sums: dict[int, float] = {}
+    sizes: dict[int, int] = {}
+    for v, c in zip(values, clusters):
+        sums[c] = sums.get(c, 0.0) + v
+        sizes[c] = sizes.get(c, 0) + 1
+    keys = sorted(sums)
+    return [sums[k] for k in keys], [sizes[k] for k in keys]
+
+
+def cluster_se(values: list[float], clusters: list[int]) -> float | None:
+    """Кластерно-устойчивая стандартная ошибка среднего.
+
+    Var(среднего) = G/(G−1) · Σ_c (Σ_{i∈c} (x_i − x̄))² / n², где G — число
+    кластеров. Множитель G/(G−1) — обычная поправка на малое число
+    кластеров. Если каждая сделка — свой кластер (перекрытий нет), оценка
+    в точности равна обычной sd/√n: G = n, и G/(G−1)·Σ(x−x̄)²/n² = sd²/n.
+
+    None, если кластеров меньше двух: дисперсию по одному событию не оценить.
+    """
+    n = len(values)
+    if n < 2 or len(clusters) != n:
+        return None
+    mean = sum(values) / n
+    sums, sizes = _cluster_sums(values, clusters)
+    g = len(sums)
+    if g < 2:
+        return None
+    var = sum((s - k * mean) ** 2 for s, k in zip(sums, sizes)) / (n * n)
+    var *= g / (g - 1)
+    return math.sqrt(var) if var > 0 else None
+
+
+def cluster_bootstrap_p(values: list[float], clusters: list[int],
+                        n_boot: int = 2000, seed: int = 0) -> float | None:
+    """Двустороннее p-value среднего по блочному бутстрэпу.
+
+    Блоки — кластеры пересекающихся сделок: они берутся с возвращением
+    целиком, поэтому зависимость внутри события сохраняется. Ряд сначала
+    сдвигается к нулевому среднему (так выглядит мир, где преимущества нет),
+    и p — доля выборок, где |среднее| не меньше наблюдённого. Разрешение
+    p — 1/(n_boot+1): меньше этого бутстрэп сказать не может.
+
+    seed фиксирован, чтобы одно измерение давало одно число при повторе.
+    """
+    n = len(values)
+    if n < 2 or len(clusters) != n:
+        return None
+    mean = sum(values) / n
+    sums, sizes = _cluster_sums(values, clusters)
+    g = len(sums)
+    if g < 2:
+        return None
+    resid = [s - k * mean for s, k in zip(sums, sizes)]
+    if all(abs(r) < 1e-15 for r in resid):
+        return None
+    rng = random.Random(seed)
+    idx = range(g)
+    hits = 0
+    for _ in range(n_boot):
+        pick = rng.choices(idx, k=g)
+        tot = sum(resid[j] for j in pick)
+        cnt = sum(sizes[j] for j in pick)
+        if abs(tot / cnt) >= abs(mean) - 1e-15:
+            hits += 1
+    return (hits + 1) / (n_boot + 1)
+
+
+def row_p(row: dict) -> float | None:
+    """p-value строки измерения с учётом перекрытия, если оно измерено.
+
+    Строка с полями se и n_eff (их пишет измерение с этой правкой) считается
+    по кластерной ошибке и n_eff − 1 степеням свободы. Строка без них — из
+    базы, созданной раньше, — по старой формуле sd/√n; такая p занижена, и
+    judge считает такие строки отдельно (Verdict.n_naive).
+    """
+    se, g = row.get("se"), row.get("n_eff")
+    if se and g:
+        if g < 2 or se <= 0:
+            return None
+        t = row["exp_net"] / se
+        return two_sided_p(t, int(g) - 1)
+    return p_value(row["exp_net"], row.get("sd") or 0.0, row["n"])
+
+
+def _naive(row: dict) -> bool:
+    return not (row.get("se") and row.get("n_eff"))
+
+
 @dataclass(frozen=True)
 class Verdict:
     """Итог поправки на перебор по всей таблице измерения.
@@ -160,6 +290,9 @@ class Verdict:
     alpha: float
     dsr: float | None      # Deflated Sharpe лучшей строки, 0..1
     flags: list[bool | None] = field(default_factory=list)
+    # сколько проверенных строк посчитано без поправки на перекрытие сделок —
+    # у них нет se и n_eff (база измерена до правки); их p занижены
+    n_naive: int = 0
 
 
 def _sharpe(mean: float, sd: float) -> float | None:
@@ -254,17 +387,19 @@ def judge(rows: list[dict], alpha: float = 0.05,
           min_n: int = 2) -> Verdict:
     """Свести таблицу измерения к одному вердикту с поправкой на перебор.
 
-    Строки — словари с полями exp_net, n и sd (разброс R по сделкам). В счёт
-    идут только строки не короче min_n и с разбросом: p-value по одной сделке
-    не определён, а по трём определяется так, что случайный плюс выглядит
-    находкой. Порог задаёт вызывающий — у скринера он свой (MIN_TRADES).
+    Строки — словари с полями exp_net, n и sd (разброс R по сделкам), а если
+    измерение их дало — se и n_eff (ошибка и эффективный размер с учётом
+    перекрытия сделок, см. row_p). В счёт идут только строки не короче min_n
+    и с разбросом: p-value по одной сделке не определён, а по трём
+    определяется так, что случайный плюс выглядит находкой. Порог задаёт
+    вызывающий — у скринера он свой (MIN_TRADES).
     """
     tested, pvals, idx = [], [], []
     for i, r in enumerate(rows):
         sd = r.get("sd")
         if not sd or r["n"] < min_n:
             continue
-        p = p_value(r["exp_net"], sd, r["n"])
+        p = row_p(r)
         if p is None:
             continue
         tested.append(r)
@@ -283,6 +418,9 @@ def judge(rows: list[dict], alpha: float = 0.05,
         if sharpes and best.get("sd"):
             mean_sharpe = sum(sharpes) / len(sharpes)
             var = sum((s - mean_sharpe) ** 2 for s in sharpes) / len(sharpes)
+            # длина выборки для DSR — независимые события, а не сделки
+            n_obs = int(best.get("n_eff") or best["n"])
             dsr = deflated_sharpe(_sharpe(best["exp_net"], best["sd"]),
-                                  best["n"], math.sqrt(var), len(tested))
-    return Verdict(len(tested), n_positive, sum(flags), alpha, dsr, marks)
+                                  n_obs, math.sqrt(var), len(tested))
+    return Verdict(len(tested), n_positive, sum(flags), alpha, dsr, marks,
+                   sum(1 for r in tested if _naive(r)))

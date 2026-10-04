@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS formation_stats (
     exp_net      REAL    NOT NULL,   -- средний R после издержек
     cost         REAL    NOT NULL,   -- средние издержки в R
     sd           REAL    NOT NULL DEFAULT 0,  -- разброс R по сделкам
+    se           REAL    NOT NULL DEFAULT 0,  -- ошибка среднего с учётом перекрытия
+    n_eff        INTEGER NOT NULL DEFAULT 0,  -- кластеров пересекающихся сделок
+    p_boot       REAL,                        -- p блочного бутстрэпа
     PRIMARY KEY (kind, tf)
 );
 """
@@ -192,7 +195,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
 # уже существующую таблицу не меняет, поэтому новую колонку надо добавлять
 # отдельно: иначе база, созданная раньше, молча останется без неё.
 _ADDED_COLUMNS = {
-    "formation_stats": (("sd", "REAL NOT NULL DEFAULT 0"),),
+    "formation_stats": (("sd", "REAL NOT NULL DEFAULT 0"),
+                        ("se", "REAL NOT NULL DEFAULT 0"),
+                        ("n_eff", "INTEGER NOT NULL DEFAULT 0"),
+                        ("p_boot", "REAL")),
 }
 
 
@@ -255,7 +261,7 @@ def insert_candles(conn: sqlite3.Connection, symbol: str, exchange: str,
 
 
 _STATS_COLS = ("kind", "tf", "measured_on", "symbol_scope", "n", "win_rate",
-               "exp_gross", "exp_net", "cost", "sd")
+               "exp_gross", "exp_net", "cost", "sd", "se", "n_eff", "p_boot")
 _STATS_SQL = (
     f"INSERT OR REPLACE INTO formation_stats ({', '.join(_STATS_COLS)}) "
     f"VALUES ({', '.join('?' * len(_STATS_COLS))})"

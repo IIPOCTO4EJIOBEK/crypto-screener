@@ -80,12 +80,20 @@ def _override(argv: list[str]) -> None:
 
 def load(path):
     c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    cur = c.execute("select kind,tf,n,win_rate,exp_gross,exp_net,cost,sd"
-                    " from formation_stats")
-    rows = [dict(kind=k, tf=t, n=n, win_rate=w, exp_gross=g, exp_net=e,
-                 cost=c_, sd=s) for k, t, n, w, g, e, c_, s in cur]
+    c.row_factory = sqlite3.Row
+    # select *: у баз, измеренных до поправки на перекрытие, нет se и n_eff
+    rows = [dict(r) for r in c.execute("select * from formation_stats")]
     c.close()
     return rows
+
+
+def naive_p(r):
+    """p по старой формуле — как будто сделки независимы. Только для сравнения."""
+    return significance.p_value(r["exp_net"], r.get("sd") or 0.0, r["n"])
+
+
+def fmt_p(p):
+    return "—" if p is None else (f"{p:.2e}" if p < 1e-4 else f"{p:.4f}")
 
 
 if __name__ == "__main__":
@@ -116,12 +124,22 @@ if __name__ == "__main__":
     v = significance.judge(order, min_n=MIN_TRADES)
     for r, ok in zip(order, v.flags):
         r["sig"] = ok
+    # тот же FDR, но по старым p — чтобы было видно, что отняла поправка
+    vn = significance.judge([{**r, "se": 0, "n_eff": 0} for r in order],
+                            min_n=MIN_TRADES)
+    for r, ok in zip(order, vn.flags):
+        r["sig_naive"] = ok
 
     print(f"потолок MAX_CANDLES = {MAX_CANDLES}, порог MIN_TRADES = {MIN_TRADES}, "
           f"FDR alpha = {v.alpha}")
     print(f"проверялось сравнений {v.n_tested}, из них с плюсом {v.n_positive}, "
           f"значимо после поправки {v.n_significant}, DSR лучшей "
           f"{'—' if v.dsr is None else f'{v.dsr:.3f}'}")
+    print(f"без поправки на перекрытие сделок (как раньше) значимо было бы "
+          f"{vn.n_significant}")
+    if v.n_naive:
+        print(f"ВНИМАНИЕ: у {v.n_naive} строк нет n_eff — базы измерены до "
+              f"поправки, их p занижены; пересоберите базы через refresh")
     print()
 
     seen = []
@@ -177,17 +195,22 @@ if __name__ == "__main__":
 
     print()
     print(f"Строки не короче {MIN_TRADES} сделок, по убыванию R net:")
-    print(f"{'формация':26} {'прогон':7} {'сделок':>7} {'win %':>6} {'R gross':>8} "
-          f"{'издерж':>8} {'R net':>8} {'p':>9} {'FDR':>5}")
+    print("p iid — старая формула (сделки независимы); p — с поправкой на "
+          "перекрытие (кластеры, n_eff − 1 ст. св.); p бутстр — блочный "
+          "бутстрэп по тем же кластерам.")
+    print(f"{'формация':26} {'прогон':7} {'сделок':>7} {'n_eff':>6} {'win %':>6} "
+          f"{'R gross':>8} {'издерж':>8} {'R net':>8} {'p iid':>9} {'FDR':>4} "
+          f"{'p':>9} {'p бутстр':>9} {'FDR':>5}")
     for r in order:
         if r["n"] < MIN_TRADES:
             continue
-        p = significance.p_value(r["exp_net"], r.get("sd") or 0.0, r["n"])
         mark = "—" if r["sig"] is None else ("да" if r["sig"] else "нет")
-        ps = "—" if p is None else (f"{p:.2e}" if p < 1e-4 else f"{p:.4f}")
-        print(f"{r['kind']:26} {r['src']:7} {r['n']:7} {r['win_rate']:6.1f} "
+        mn = "—" if r["sig_naive"] is None else ("да" if r["sig_naive"] else "нет")
+        print(f"{r['kind']:26} {r['src']:7} {r['n']:7} {r.get('n_eff') or 0:6} "
+              f"{r['win_rate']:6.1f} "
               f"{r['exp_gross']:+8.3f} {r['cost']:8.3f} {r['exp_net']:+8.3f} "
-              f"{ps:>9} {mark:>5}")
+              f"{fmt_p(naive_p(r)):>9} {mn:>4} {fmt_p(significance.row_p(r)):>9} "
+              f"{fmt_p(r.get('p_boot')):>9} {mark:>5}")
 
     print()
     print("Для сравнения — боевая таблица скринера (та же база, что кормит "
@@ -204,16 +227,17 @@ if __name__ == "__main__":
             r["sig"] = ok
         print(f"  строк {len(prod)}, проверялось {pv.n_tested}, "
               f"значимо {pv.n_significant}, с плюсом {pv.n_positive}")
-        print(f"  {'формация':26} {'ТФ':4} {'сделок':>7} {'R gross':>8} "
-              f"{'R net':>8} {'p':>9} {'FDR':>5}")
+        print(f"  {'формация':26} {'ТФ':4} {'сделок':>7} {'n_eff':>6} "
+              f"{'R gross':>8} {'R net':>8} {'p iid':>9} {'p':>9} {'FDR':>5}")
         for r in porder:
             if r["n"] < MIN_TRADES:
                 continue
-            p = significance.p_value(r["exp_net"], r.get("sd") or 0.0, r["n"])
             mark = "—" if r["sig"] is None else ("да" if r["sig"] else "нет")
-            ps = "—" if p is None else (f"{p:.2e}" if p < 1e-4 else f"{p:.4f}")
             print(f"  {r['kind']:26} {r['tf']:4} {r['n']:7} "
-                  f"{r['exp_gross']:+8.3f} {r['exp_net']:+8.3f} {ps:>9} {mark:>5}")
+                  f"{r.get('n_eff') or 0:6} "
+                  f"{r['exp_gross']:+8.3f} {r['exp_net']:+8.3f} "
+                  f"{fmt_p(naive_p(r)):>9} {fmt_p(significance.row_p(r)):>9} "
+                  f"{mark:>5}")
 
     print()
     sig_pos = [r for r in order if r["sig"] and r["exp_net"] > 0]
@@ -221,4 +245,13 @@ if __name__ == "__main__":
           f"из них с плюсом {len(sig_pos)}:")
     for r in sig_pos:
         print(f"  + {r['kind']} {r['src']}: R net {r['exp_net']:+.3f} "
-              f"на {r['n']} сделках, окно {r['days']:.0f} суток")
+              f"на {r['n']} сделках ({r.get('n_eff') or '?'} независимых "
+              f"событий), окно {r['days']:.0f} суток")
+    lost = [r for r in order if r["sig_naive"] and not r["sig"]]
+    if lost:
+        print("Значимость, которую дало только перекрытие сделок (без "
+              "поправки — «да», с поправкой — «нет»):")
+        for r in lost:
+            print(f"  − {r['kind']} {r['src']}: R net {r['exp_net']:+.3f}, "
+                  f"n={r['n']}, n_eff={r.get('n_eff')}, p iid "
+                  f"{fmt_p(naive_p(r))} → p {fmt_p(significance.row_p(r))}")
