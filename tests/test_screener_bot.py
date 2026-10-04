@@ -137,3 +137,111 @@ def test_состояние_и_страница(tmp_path):
     html = screener_page.build(ledger, st2, policy="all", trend="off", cfg=Config(),
                                now_ms=T0, signals=1)
     assert "AAAUSDT" in html and "Живой результат" in html
+
+
+# --------------------------------------------------------------------------
+# ведение позиции: тейки, безубыток, трейлинг, стоп по закрытию, лимиты
+# --------------------------------------------------------------------------
+def test_частичный_тейк_и_безубыток(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(tp1_r=1.0, tp1_frac=0.5, be_after_tp1=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    # свеча до +1R (102): половина закрыта, стоп на входе
+    data["c"] = [c(T0 + MIN, 100, 102.5, 99.5, 102)]
+    run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)
+    p = st.pos()[0]
+    assert p.qty == pytest.approx(1.0) and p.stop == pytest.approx(100.0)
+    # откат к входу — выход по сдвинутому стопу, сделка в плюсе за счёт тейка
+    data["c"] = [c(T0 + 2 * MIN, 101, 101, 99.9, 100)]
+    res = run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    assert res["closed"] == 1
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "trail" and cl["r_net"] > 0.4
+
+
+def test_трейлинг_в_r(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(trail_r=1.0, no_target=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    assert st.pos()[0].target == 0.0
+    data["c"] = [c(T0 + MIN, 100, 106, 100, 105)]          # лучшая 106 → стоп 104
+    run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)
+    assert st.pos()[0].stop == pytest.approx(104.0)
+    data["c"] = [c(T0 + 2 * MIN, 105, 105, 103, 103.5)]
+    run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "trail" and cl["exit"] == pytest.approx(104.0)
+
+
+def test_стоп_по_закрытию(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(stop_on_close=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 99)]             # шпилька ниже стопа, закрытие выше
+    assert run(st, broker, ledger, data, [], T0 + 2 * MIN, cfg)["closed"] == 0
+    data["c"] = [c(T0 + 2 * MIN, 99, 99, 97, 97.5)]
+    run(st, broker, ledger, data, [], T0 + 3 * MIN, cfg)
+    cl = [r for r in ledger.journal() if r["kind"] == "close"][0]
+    assert cl["reason"] == "stop" and cl["exit"] == 97.5
+
+
+def test_дневной_лимит_и_пауза_по_монете(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(daily_loss=0.003, cooldown_min=30)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 97)]             # стоп: −2×2 = −4 USDT
+    res = run(st, broker, ledger, data, [row(entry=99.5)], T0 + 2 * MIN, cfg)
+    assert res["closed"] == 1 and res["opened"] == 0          # −4 > 0.3 % от 996 — лимит дня
+    assert any(r["kind"] == "day_stop" for r in ledger.journal())
+    assert "AAAUSDT" in st.cooldown
+
+
+def test_пауза_после_серии_убытков(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    cfg = Config(pause_after=1, pause_min=60)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    data["c"] = [c(T0 + MIN, 100, 100, 97, 97)]
+    res = run(st, broker, ledger, data, [row(symbol="BBBUSDT")], T0 + 2 * MIN, cfg)
+    assert res["opened"] == 0 and st.cooldown["__all__"] > T0 + 2 * MIN
+
+
+def test_лимит_позиций_в_одну_сторону(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    res = run(st, broker, ledger, data, [row(), row(symbol="BBBUSDT")], T0, Config(max_side=1))
+    assert res["opened"] == 1 and res["skipped"] == 1
+
+
+def test_уведомления_о_сделках(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    res = run(st, broker, ledger, data, [row()], T0)
+    assert res["events"] and res["events"][0].startswith("ВХОД ЛОНГ AAAUSDT")
+
+
+def test_закрыть_всё_и_пауза_файлами(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path, {"AAAUSDT": 100.0, "BBBUSDT": 100.0})
+    run(st, broker, ledger, data, [row()], T0)
+    (tmp_path / "PAUSE").write_text("x")
+    (tmp_path / "CLOSEALL").write_text("x")
+    res = run(st, broker, ledger, data, [row(symbol="BBBUSDT")], T0 + MIN)
+    assert res["closed"] == 1 and res["opened"] == 0 and not st.positions
+    assert not (tmp_path / "CLOSEALL").exists()
+
+
+def test_команды_telegram(tmp_path):
+    from tools.trade import tg_control
+    bot = tmp_path / "screener-all"
+    bot.mkdir()
+    save_state(bot / "state.json", BotState(cash=1000.0, peak=1000.0, start_equity=1000.0))
+    updates = {"result": [
+        {"update_id": 5, "message": {"chat": {"id": 42}, "text": "/pause"}},
+        {"update_id": 6, "message": {"chat": {"id": 99}, "text": "/closeall"}},  # чужой
+        {"update_id": 7, "message": {"chat": {"id": 42}, "text": "/status"}},
+    ]}
+    cmds = tg_control.poll("t", "42", tmp_path / "off", get=lambda u, p: updates)
+    assert cmds == ["/pause", "/status"]
+    assert (tmp_path / "off").read_text() == "8"
+    out = tg_control.handle(cmds, tmp_path)
+    assert (bot / "PAUSE").exists() and not (bot / "CLOSEALL").exists()
+    assert "screener-all" in out[1]
+    tg_control.handle(["/resume"], tmp_path)
+    assert not (bot / "PAUSE").exists()

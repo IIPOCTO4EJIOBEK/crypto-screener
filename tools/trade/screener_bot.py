@@ -90,6 +90,8 @@ def candles_1m(symbol: str, since_ms: int) -> list:
 def data_dir(a) -> Path:
     if a.data:
         return Path(a.data)
+    if a.name:
+        return ROOT / "data" / "trade" / f"screener-{a.name}"
     name = "screener-" + a.policy + ("" if a.trend == "off" else f"-trend-{a.trend}")
     return ROOT / "data" / "trade" / name
 
@@ -112,7 +114,39 @@ def cmd_status(ledger: Ledger, st) -> None:
         print(f"ОСТАНОВЛЕН: {ledger.halted}")
 
 
+PROFILES = ROOT / "data" / "trade" / "screener-profiles.json"
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Без аргументов и с файлом профилей — прогнать все профили по очереди.
+
+    Сигналы скринера считаются один раз на все профили (это самая долгая часть круга).
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv or not PROFILES.exists():
+        return run_one(argv)
+    profiles = json.loads(PROFILES.read_text())
+    try:                                        # команды из Telegram — до круга
+        from tools.trade import tg_control
+        from tools.trade.run import load_env
+        load_env()
+        tg_control.run(ROOT / "data" / "trade")
+    except Exception as exc:                               # noqa: BLE001
+        print(f"telegram: {exc}", file=sys.stderr)
+    cache: dict = {}
+    rc = 0
+    for prof in profiles:
+        print(f"== {' '.join(prof) or '(по умолчанию)'}")
+        try:
+            rc |= run_one(prof, cache)
+        except Exception as exc:                               # noqa: BLE001
+            print(f"профиль упал: {exc}", file=sys.stderr)
+            rc |= 1
+    return rc
+
+
+def run_one(argv: list[str], cache: dict | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=DEFAULT_DB, help="база скринера (только чтение)")
@@ -133,6 +167,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-open", type=int, default=5)
     ap.add_argument("--max-age", type=int, default=1)
     ap.add_argument("--max-drawdown", type=float, default=0.35)
+    ap.add_argument("--breakeven", type=float, default=0.0,
+                    help="перенести стоп в безубыток при +N R (0 — выкл.)")
+    ap.add_argument("--trail", type=float, default=0.0,
+                    help="трейлинг-стоп в N R от лучшей цены (0 — выкл.)")
+    ap.add_argument("--daily-loss", type=float, default=0.0,
+                    help="лимит убытка за сутки МСК, доля капитала, напр. 0.03")
+    ap.add_argument("--cooldown", type=int, default=0,
+                    help="пауза по монете после стопа, минут")
+    ap.add_argument("--max-side", type=int, default=0,
+                    help="не больше N позиций в одну сторону")
+    ap.add_argument("--trail-pct", type=float, default=0.0,
+                    help="трейлинг-стоп в доле цены от лучшей, напр. 0.01")
+    ap.add_argument("--stop-on-close", action="store_true",
+                    help="стоп по закрытию минутной свечи, а не по касанию")
+    ap.add_argument("--tp1", type=float, default=0.0,
+                    help="первый тейк при +N R с частичным закрытием (0 — выкл.)")
+    ap.add_argument("--tp1-frac", type=float, default=0.5)
+    ap.add_argument("--be-after-tp1", action="store_true",
+                    help="после первого тейка стоп в безубыток")
+    ap.add_argument("--no-target", action="store_true",
+                    help="без цели формации: выход стопом, трейлингом или по времени")
+    ap.add_argument("--pause-after", type=int, default=0,
+                    help="пауза входов после N убыточных сделок подряд")
+    ap.add_argument("--pause-min", type=int, default=60)
+    ap.add_argument("--funding", action="store_true",
+                    help="учитывать фандинг в результате сделки")
+    ap.add_argument("--name", default=None,
+                    help="имя бота: каталог data/trade/screener-<имя>")
+    ap.add_argument("--notify", action="store_true",
+                    help="входы и выходы — в Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID в .env)")
     ap.add_argument("--data", default=None)
     ap.add_argument("--page-out", default=None)
     ap.add_argument("--status", action="store_true")
@@ -146,12 +210,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     cfg = Config(policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
-                 max_open=a.max_open, max_age=a.max_age, max_drawdown=a.max_drawdown)
+                 max_open=a.max_open, max_age=a.max_age, max_drawdown=a.max_drawdown,
+                 breakeven_r=a.breakeven, trail_r=a.trail, daily_loss=a.daily_loss,
+                 cooldown_min=a.cooldown, max_side=a.max_side,
+                 trail_pct=a.trail_pct, stop_on_close=a.stop_on_close, tp1_r=a.tp1,
+                 tp1_frac=a.tp1_frac, be_after_tp1=a.be_after_tp1,
+                 no_target=a.no_target, pause_after=a.pause_after,
+                 pause_min=a.pause_min, funding=a.funding)
     trend, trend_err = load_trend(a.trend_src, time.time())
     if trend_err:
         print(trend_err, file=sys.stderr)
     try:
-        rows, notes = screener_rows(a)
+        ck = (a.signals_json, a.db, a.universe, tuple(a.tfs), a.exchange)
+        if cache is not None and ck in cache:
+            rows, notes = cache[ck]
+        else:
+            rows, notes = screener_rows(a)
+            if cache is not None:
+                cache[ck] = (rows, notes)
     except Exception as exc:                                   # noqa: BLE001
         ledger.log("error", where="signals", error=str(exc)[:300])
         print(f"сигналы не получены: {exc}", file=sys.stderr)
@@ -162,6 +238,10 @@ def main(argv: list[str] | None = None) -> int:
     res = cycle(rows, st, broker=PaperBroker("future"), ledger=ledger,
                 candles=candles_1m, now_ms=now_ms, cfg=cfg, trend=trend)
     save_state(ledger.state_path, st)
+    if a.notify and res["events"]:
+        from tools.trade.run import load_env, notify
+        load_env()
+        notify(f"Бот по скринеру ({ledger.root.name}):\n" + "\n".join(res["events"]))
     print(f"сигналов {len(rows)}, открыто {res['opened']}, закрыто {res['closed']}, "
           f"пропущено {res['skipped']}, капитал {res['equity']:.2f}")
 
