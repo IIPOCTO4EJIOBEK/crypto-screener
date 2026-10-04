@@ -69,6 +69,14 @@ def walk_book(book: OrderBook, side: str, qty: float) -> float | None:
     return None
 
 
+def funding_sum(symbol: str, market: str, start_ms: int, end_ms: int) -> float:
+    """Сумма ставок фандинга, начисленных в (start_ms, end_ms]. На споте — 0."""
+    if market != "future" or end_ms <= start_ms:
+        return 0.0
+    return sum(r for ts, r in md.binance_funding_history(symbol, start_ms + 1, end_ms)
+               if start_ms < ts <= end_ms)
+
+
 def fetch_book(symbol: str, market: str, depth: int = 100) -> OrderBook:
     if market == "future":
         return md.binance_futures_orderbook(symbol, depth)
@@ -101,6 +109,9 @@ class PaperBroker:
 
     def free_quote(self) -> float | None:
         return None
+
+    def funding(self, symbol: str, start_ms: int, end_ms: int) -> float:
+        return funding_sum(symbol, self.market, start_ms, end_ms)
 
     def base_balance(self, symbol: str) -> float | None:
         return None
@@ -183,6 +194,10 @@ class ExchangeBroker:
             elif cur == base and side == "buy":
                 got -= cost
         return Fill(symbol, side, got, price, cash_fee, mid, str(o.get("id")))
+
+    def funding(self, symbol: str, start_ms: int, end_ms: int) -> float:
+        # биржа списывает фандинг со счёта сама; здесь — та же сумма для учёта бота
+        return funding_sum(symbol, self.market, start_ms, end_ms)
 
     def key_report(self) -> dict:
         """Права ключа (только чтение, без заявок): что разрешено и есть ли вывод."""

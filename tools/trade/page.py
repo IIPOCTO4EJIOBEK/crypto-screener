@@ -102,6 +102,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
     mkt = market_return(eq)
     dd = max_drawdown(values) if values else None
     fee = sum(f["fee"] for f in fills)
+    funding = sum(r["total"] for r in rows if r["kind"] == "funding")
     sl = [f["slippage_bp"] for f in fills]
     days = (now_ms - eq[0]["ts"]) / DAY_MS if eq else 0
     sig = signals[-1] if signals else None
@@ -126,6 +127,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
         ("деньги вне рынка", f"{last['cash']:.2f} USDT" if last else "—"),
         ("сделок", str(len(fills))),
         ("комиссий уплачено", f"{fee:.2f} USDT"),
+        ("фандинг уплачен", f"{funding:.2f} USDT" if market == "future" else "— (спот)"),
         ("проскальзывание от середины стакана",
          f"среднее {sum(sl) / len(sl):.1f} б.п., худшее {max(sl):.1f} б.п." if sl else "—"),
         ("дней работы", f"{days:.1f}"),
@@ -168,6 +170,9 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 
     stat_html = "".join(f"<tr><td>{e(k)}</td><td class=num>{e(v)}</td></tr>" for k, v in stats)
     bt_html = "".join(f"<tr><td>{e(k)}</td><td class=num>{e(v)}</td></tr>" for k, v in BACKTEST)
+    fee_text = ("комиссия тейкера USDT-M 0.05 % и фандинг по фактическим начислениям"
+                if market == "future" else "комиссия спота 0.1 %")
+    rebalance_text = ("каждый день" if holding == 1 else f"раз в {holding} дней")
     mode_name = {"paper": "бумажный", "testnet": "тестовая сеть", "live": "ЖИВОЙ СЧЁТ"}.get(mode, mode)
 
     return f"""<!doctype html>
@@ -196,7 +201,7 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
   .wrap {{ overflow-x:auto; }}
   ul {{ margin:6px 0 0; padding-left:18px; }}
 </style></head><body>
-<h1>Торговый бот: тренд-фильтр 28/5</h1>
+<h1>Торговый бот: тренд-фильтр {lookback}/{holding} · {'фьючерсы' if market == 'future' else 'спот'}</h1>
 <div class="meta">режим: {e(mode_name)} · рынок: {e(market)} · обновлено {t(now_ms) if now_ms else '—'} МСК</div>
 {f'<div class="box warn">ОСТАНОВЛЕН: {e(halted)}</div>' if halted else ''}
 
@@ -206,12 +211,12 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 восьми монет (BTC, ETH, SOL, XRP, DOGE, ADA, LINK, AVAX) и считает моментум:
 насколько цена выросла за {lookback} дней. Монеты с ростом — в портфель равными
 долями, остальные — нет, деньги ждут в USDT. Шорта и плеча нет.
-Портфель пересобирается раз в {holding} дней. Если капитал упадёт ниже пика
+Портфель пересобирается {rebalance_text}.{' Рынок — бессрочные фьючерсы USDT-M Binance, плечо 1, только лонг: продажа идёт только на закрытие позиции.' if market == 'future' else ''} Если капитал упадёт ниже пика
 больше чем на 35 %, бот продаёт всё и останавливается до ручного решения.
 <ul>
 <li>Режим «бумажный»: заявки на биржу не уходят. Цена каждой сделки считается
 по живому стакану Binance — так, как прошла бы настоящая рыночная заявка, — плюс
-комиссия спота 0.1 %.</li>
+{fee_text}.</li>
 <li>Это единственное правило в проекте, которое пережило издержки в бэктесте.
 Преимущество скромное: над рынком около +0.13 по Sharpe, а в 2026 году правило
 в минусе вместе с рынком. Бумага нужна, чтобы проверить перенос на живой рынок,
@@ -242,13 +247,14 @@ def build(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 <div class="box">
 Что сравнивать по мере накопления журнала:
 <ul>
-<li><b>Издержки.</b> В бэктесте — 0.05 % + 1 б.п. за сторону. Здесь — комиссия спота
-0.1 % и проскальзывание, замеренное на каждой сделке (в статистике слева).</li>
+<li><b>Издержки.</b> В бэктесте — 0.05 % + 1 б.п. за сторону. Здесь — {fee_text} и проскальзывание, замеренное на каждой сделке (в статистике слева).</li>
 <li><b>Разница с рынком.</b> Бэктест обещает преимущество над рынком в основном на
 падениях: правило уходит в кэш. На росте оно идёт почти вровень с рынком.</li>
 <li><b>Просадка.</b> Стоп 35 % в бэктесте не проверялся; исторически правило
 проходило −76…−79 %, то есть стоп сработал бы.</li>
-<li>За месяц бот принимает около 6 решений — выводы имеют смысл через несколько
+<li>В бэктесте ежедневный ребаланс (L28 H1) дал тот же Sharpe, что и раз в 5 дней
+(1.22 против 1.24 на восьмёрке), но оборот втрое больше: 99 против 36 капиталов в год.</li>
+<li>За месяц бот принимает около {30 // holding} решений — выводы имеют смысл через несколько
 месяцев, не дней.</li>
 </ul></div>
 </div>

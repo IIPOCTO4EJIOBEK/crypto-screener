@@ -28,6 +28,7 @@ class State:
     start_equity: float = 0.0
     start_ts: int = 0
     last_rebalance_day: int | None = None    # day_ts последнего ребаланса
+    last_funding_ts: int | None = None       # до какого момента фандинг уже учтён
 
     def equity(self, prices: dict[str, float]) -> float:
         return self.cash + sum(q * prices.get(s, 0.0) for s, q in self.positions.items())

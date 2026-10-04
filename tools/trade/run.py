@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -125,7 +126,7 @@ def cmd_status(ledger: Ledger) -> None:
         print(f"ОСТАНОВЛЕН: {ledger.halted}  (снять — удалить {ledger.halt_path})")
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_one(argv: list[str] | None = None) -> int:
     load_env()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -218,6 +219,30 @@ def main(argv: list[str] | None = None) -> int:
         notify(text)
     publish_page(ledger, a)
     return 1 if res.problems else 0
+
+
+PROFILES = ROOT / "data" / "trade" / "profiles.json"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Без аргументов и при наличии data/trade/profiles.json — все профили по очереди.
+
+    Так один таймер systemd ведёт несколько ботов (спот раз в 5 дней, фьючерсы
+    каждый день), не трогая файл сервиса. Файл — список списков аргументов:
+    `[[], ["--market", "future", "--holding", "1"]]`. Сбой одного профиля не
+    мешает остальным.
+    """
+    argv = sys.argv[1:] if argv is None else argv
+    if argv or not PROFILES.exists():
+        return run_one(argv)
+    rc = 0
+    for args in json.loads(PROFILES.read_text()):
+        print(f"--- профиль: {' '.join(args) or 'по умолчанию'}")
+        try:
+            rc |= run_one(list(args))
+        except SystemExit as e:          # argparse на кривом профиле
+            rc |= int(e.code or 1)
+    return rc
 
 
 if __name__ == "__main__":

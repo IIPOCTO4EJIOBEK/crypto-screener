@@ -78,6 +78,32 @@ def _execute(orders, broker, state: State, ledger: Ledger, res: StepResult) -> N
                    live=broker.live)
 
 
+def _charge_funding(state: State, broker, prices: dict[str, float], now_ms: int,
+                    ledger: Ledger, res: StepResult) -> None:
+    """Фандинг перпетуала с прошлого шага: лонг платит при положительной ставке.
+
+    На споте `broker.funding` возвращает 0. Сумма считается по текущей цене —
+    приближение: биржа считает по марк-цене в момент каждого начисления.
+    """
+    start = state.last_funding_ts
+    state.last_funding_ts = now_ms
+    if start is None or not state.positions or getattr(broker, "market", "spot") != "future":
+        return
+    paid = {}
+    for sym, q in state.positions.items():
+        try:
+            rate = broker.funding(sym, start, now_ms)
+        except Exception as e:
+            res.problems.append(f"{sym}: фандинг не получен ({type(e).__name__})")
+            continue
+        if rate:
+            paid[sym] = q * prices[sym] * rate
+    if paid:
+        state.cash -= sum(paid.values())
+        ledger.log("funding", paid={k: round(v, 6) for k, v in paid.items()},
+                   total=round(sum(paid.values()), 6), since=start)
+
+
 def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
          lookback: int = 28, holding: int = 5, force: bool = False,
          mode: str = "paper") -> StepResult:
@@ -100,6 +126,7 @@ def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
         ledger.log("skip", reason="no_price", symbols=missing)
         return res
 
+    _charge_funding(state, broker, prices, now_ms, ledger, res)
     equity = state.equity(prices)
     state.peak = max(state.peak, equity)
     res.equity = equity

@@ -199,3 +199,47 @@ def test_страница_бота_собирается_из_журнала(tmp_
     assert page.market_return(ledger.journal() and
                               [r for r in ledger.journal() if r["kind"] == "equity"]) \
         == pytest.approx(150 / 140 - 1)
+
+
+def test_фандинг_на_фьючерсах_списывается_с_прошлого_шага(tmp_path):
+    series = {"A": ramp(40, 1.0)}
+    prices = {"A": 100.0}
+
+    class Fut(PaperBroker):
+        def funding(self, symbol, start, end):
+            self.asked = (start, end)
+            return 0.0003                    # три начисления по 0.01 %
+
+    broker = Fut("future", fee=0.0, book=book_at(prices))
+    ledger = Ledger(tmp_path)
+    now = START + 40 * DAY_MS
+    r1 = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now)
+    cash = r1.state.cash
+    qty = r1.state.positions["A"]
+    r2 = step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now + DAY_MS)
+    assert broker.asked == (now, now + DAY_MS)
+    assert r2.state.cash == pytest.approx(cash - qty * 100.0 * 0.0003)
+    assert [r for r in ledger.journal() if r["kind"] == "funding"]
+
+
+def test_на_споте_фандинга_нет(tmp_path):
+    broker = PaperBroker("spot", fee=0.0, book=book_at({"A": 100.0}))
+    ledger = Ledger(tmp_path)
+    now = START + 40 * DAY_MS
+    step({"A": ramp(40, 1.0)}, broker=broker, ledger=ledger, limits=Limits(), now_ms=now)
+    step({"A": ramp(40, 1.0)}, broker=broker, ledger=ledger, limits=Limits(), now_ms=now + DAY_MS)
+    assert not [r for r in ledger.journal() if r["kind"] == "funding"]
+
+
+def test_профили_запускаются_по_очереди(monkeypatch, tmp_path):
+    from tools.trade import run as cli
+    prof = tmp_path / "profiles.json"
+    prof.write_text('[[], ["--market", "future", "--holding", "1"]]')
+    seen = []
+    monkeypatch.setattr(cli, "PROFILES", prof)
+    monkeypatch.setattr(cli, "run_one", lambda a: seen.append(a) or 0)
+    assert cli.main([]) == 0
+    assert seen == [[], ["--market", "future", "--holding", "1"]]
+    seen.clear()
+    cli.main(["--status"])                       # с аргументами профили не читаются
+    assert seen == [["--status"]]
