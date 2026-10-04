@@ -22,12 +22,18 @@ import re, sys
 path, token = sys.argv[1], sys.argv[2]
 s = open(path, encoding="utf-8").read()
 s = re.sub(r"\n\thandle /api/hook \{.*?\n\t\}\n", "\n", s, flags=re.S)   # старый маршрут
+# respond в Caddy по умолчанию идёт раньше reverse_proxy, поэтому без вложенных
+# handle на любой запрос (и на POST тоже) приходил 405
 block = ("\thandle /api/hook {\n"
          "\t\t@post method POST\n"
-         "\t\treverse_proxy @post 127.0.0.1:8787 {\n"
-         f"\t\t\theader_up X-Token \"{token}\"\n"
+         "\t\thandle @post {\n"
+         "\t\t\treverse_proxy 127.0.0.1:8787 {\n"
+         f"\t\t\t\theader_up X-Token \"{token}\"\n"
+         "\t\t\t}\n"
          "\t\t}\n"
-         "\t\trespond 405\n"
+         "\t\thandle {\n"
+         "\t\t\trespond 405\n"
+         "\t\t}\n"
          "\t}\n")
 anchor = "\theader Cache-Control \"no-cache\"\n"
 assert anchor in s, "якорь не найден в Caddyfile"
