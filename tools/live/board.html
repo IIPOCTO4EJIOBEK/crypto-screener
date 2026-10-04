@@ -536,7 +536,7 @@ function loadCharts(cb){
     .catch(function(){ document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Не удалось загрузить данные графика</div>'; });
 }
 function openChart(sym,tf){
-  C.sym=sym; C.tf=tf||C.tf;
+  C.sym=sym; C.tf=tf||C.tf; C.keep=false; C.range=null;
   document.getElementById('ctitle').textContent=sym.replace(/USDT$/,'')+' / USDT';
   document.getElementById('cbin').href='https://www.binance.com/ru/futures/'+sym;
   var rw=TR[sym]||{}, mt=[];
@@ -580,10 +580,12 @@ function liveStart(sym,tf,cand,vol,dig,lastT){
       var k=(j.k||{})[tf];
       if(!k || Date.now()-j.t>30000){ liveMark(false,'свечи с биржи не идут'); return; }
       if(k[0]<lastT) return;
+      var opened=k[0]>lastT;
       lastT=k[0];
       var time=Math.floor(k[0]/1000)+MSK;
       try{ cand.update({time:time,open:k[1],high:k[2],low:k[3],close:k[4]}); vol.update({time:time,value:k[5],color:k[4]>=k[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)'}); }catch(e){}
       LASTPX=k[4]; if(ZONE) ZONE();
+      if(opened) setTimeout(function(){ softRedraw(false); },1500);   // свеча закрылась — пересчитать волны, Фибо, отмены
       liveMark(true,'онлайн · '+k[4].toFixed(dig)+' · '+new Date(j.t).toLocaleTimeString('ru-RU'));
     }).catch(function(){ if(LV.key===key) liveMark(false,'нет живых свечей'); });
   }
@@ -824,7 +826,7 @@ function drawChart(kl){
     setMarks(i);
     fl.forEach(function(x){cand.removePriceLine(x);}); fl=[];
     [].forEach.call(side.querySelectorAll('.fc'),function(el,j){el.classList.toggle('on',j===i);});
-    var f=p.forms[i]; FZ=(f && f.idx!=null)?f:null; zoneDraw(); if(!f) return;
+    var f=p.forms[i]; FZ=(f && f.idx!=null)?f:null; C.selKey=f?f.title+'|'+f.entry:null; zoneDraw(); if(!f) return;
     if(f.entry!=null) fl.push(cand.createPriceLine({price:f.entry,color:'#4c8dff',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:'вход'}));
     if(f.stop!=null) fl.push(cand.createPriceLine({price:f.stop,color:'#ef4f5a',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'стоп'}));
     if(f.target!=null) fl.push(cand.createPriceLine({price:f.target,color:'#1fbf75',lineWidth:2,lineStyle:1,axisLabelVisible:true,title:'цель'}));
@@ -841,9 +843,13 @@ function drawChart(kl){
   wavesHtml(wv,fb,cs)+
   '<h4 style="margin-top:14px">Уровни</h4>'+p.levels.map(function(l){return '<div class="k">'+(l.kind==='support'?'поддержка':'сопротивление')+' '+px(l.price)+(l.touches?', касаний '+l.touches:'')+'</div>';}).join('');
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
-  var first=p.forms.findIndex(function(f){ return !fstate(f); });
+  var first=-1;
+  if(C.keep && C.selKey) first=p.forms.findIndex(function(f){ return f.title+'|'+f.entry===C.selKey; });   // перерисовка: та же формация
+  if(first<0) first=p.forms.findIndex(function(f){ return !fstate(f); });
   if(p.forms.length) pick(first<0?0:first); else setMarks(-1);
-  var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
+  var n=cs.length;
+  if(C.keep && C.range){ try{ CH.timeScale().setVisibleRange(C.range); }catch(e){ CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8}); } }
+  else CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
   LASTPX=cs[cs.length-1][4]; setTimeout(zoneDraw,0);
   liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
 }document.getElementById('tb').addEventListener('click',function(e){
@@ -863,7 +869,9 @@ render();
 function loadDens(){
   fetch('kl/dens_state.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
     if(!j||!j.items||Date.now()-j.at>300000) return;
+    var changed=DST.at&&j.at!==DST.at;
     DST=j;
+    if(changed) softRedraw(false);   // плотности на открытом графике — по свежей сверке
     var by={}; (D.dens||[]).forEach(function(d){ if(!dgone(d.symbol,d.side,d.price)) (by[d.symbol]=by[d.symbol]||[]).push(d); });
     D.rows.forEach(function(r){
       var best=null, bd=1e9;
@@ -887,6 +895,29 @@ fetch('kl/stats.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():
   render();
 }).catch(function(){});
 setInterval(function(){ if(!paused) location.reload(); }, 60000);
+/* ---------- разметка графика онлайн, без перезагрузки страницы ----------
+   Свечи идут каждую секунду. Остальное пересобирается на открытом графике само:
+   волны, Фибо, отмены и перехай — на закрытии каждой свечи; формации, уровни,
+   наклонные и плотности — как только круг скринера выложил новый снимок. */
+function softRedraw(force){
+  if(!CH || !C.sym || !document.getElementById('chart').classList.contains('open')) return;
+  if(RUL.on || rulShown()) return;               // не сбивать линейку
+  try{ C.range=CH.timeScale().getVisibleRange(); }catch(e){ C.range=null; }
+  C.keep=true; if(force) CHAT=0;
+  var want=++C.seq;
+  loadCharts(function(){
+    fetch('kl/'+C.sym+'_'+C.tf+'.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+      .then(function(kl){ if(want!==C.seq) return; try{ drawChart(kl); }catch(e){} C.keep=false; });
+  });
+}
+var STAT=null;
+setInterval(function(){
+  fetch('status.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j) return; var at=j.at_unix||j.at;
+    if(STAT!==null && at!==STAT) softRedraw(true);
+    STAT=at;
+  }).catch(function(){});
+}, 20000);
 })();
 </script>
 </body>
