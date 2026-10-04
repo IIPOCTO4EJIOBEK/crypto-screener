@@ -233,3 +233,44 @@ def analysis(cs: list[list]) -> tuple[list[dict], list[float], str]:
     piv = zigzag(cs)
     ls, lv = trendlines(cs, piv), hlevels(cs, piv)
     return ls, lv, scenario(cs, ls, lv, piv)
+
+
+def plan(cs: list[list], entry: float, stop: float, direction: str, dens=(), min_rr: float = 3.0) -> dict:
+    """Цель сделки по тренду с учётом уровней: правило «минимум 1:3».
+
+    Препятствия по ходу сделки — перехай/перелой, горизонтальные уровни,
+    наклонные, Фибо-расширения последнего хода и крупные плотности. Если
+    препятствие стоит ближе 3R — до цели цена, скорее всего, не дойдёт, сделки
+    нет. Иначе цель — первое препятствие за 3R (или ровно 3R, если дальше
+    ничего нет)."""
+    risk = abs(entry - stop)
+    if not risk or len(cs) < 30:
+        return {"ok": False, "why": "мало данных"}
+    up = direction != "short"
+    s = 1 if up else -1
+    piv = zigzag(cs)
+    obs: list[tuple[float, str]] = []
+    for q in piv[:-1]:
+        if (up and q["t"] == "H") or (not up and q["t"] == "L"):
+            obs.append((q["p"], "перехай" if up else "перелой"))
+    for p in hlevels(cs, piv):
+        obs.append((p, "уровень"))
+    for x in trendlines(cs, piv):
+        if (up and x["t"] == "H") or (not up and x["t"] == "L"):
+            obs.append((x["now"], "трендовая"))
+    if len(piv) >= 2:
+        A, B = piv[-2], piv[-1]
+        if (B["p"] > A["p"]) == up:
+            for e in (1.272, 1.618):
+                obs.append((A["p"] + (B["p"] - A["p"]) * e, f"фибо {e}"))
+    for d in dens:
+        if (up and d.get("side") == "ask") or (not up and d.get("side") == "bid"):
+            obs.append((d["price"], "плотность"))
+    ahead = sorted(((s * (p - entry) / risk, p, why) for p, why in obs if s * (p - entry) > risk * 0.3), key=lambda x: x[0])
+    block = next((x for x in ahead if x[0] < min_rr), None)
+    if block:
+        return {"ok": False, "why": f"{block[2]} {_fmt(block[1])} на {block[0]:.1f}R — до 1:{min_rr:g} не пускает"}
+    nxt = next((x for x in ahead if x[0] >= min_rr), None)
+    if nxt:
+        return {"ok": True, "target": nxt[1], "rr": round(nxt[0], 2), "why": nxt[2]}
+    return {"ok": True, "target": entry + s * risk * min_rr, "rr": min_rr, "why": f"{min_rr:g}R, препятствий выше нет" if up else f"{min_rr:g}R, препятствий ниже нет"}

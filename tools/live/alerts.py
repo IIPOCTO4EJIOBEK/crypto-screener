@@ -8,7 +8,7 @@
   2 часа до неё;
 * цена у хая или лоя дня — ближе `NEAR_DAY` %;
 * новый сетап «можно торговать» — свежий сработавший сигнал по тренду своего
-  ТФ, R:R от 1, как на главной.
+  ТФ с R:R от 1:3; цель — первый уровень за 3R, уровень ближе 3R сделку отменяет.
 
 К каждому алерту — картинка графика с наклонными, уровнями и разметкой события
 (`tools.live.alert_chart`), два сценария («удержим — к …», «пробьём — к …») и
@@ -42,6 +42,7 @@ SPIKE = 3.0
 NEAR_DAY = 0.3
 MIN_DENS = 100_000          # съеденные плотности меньше этого не шлём
 MAX_PER_MIN = 15            # потолок сообщений в минуту, чтобы не залить канал
+MIN_RR = 3.0                # сделки по тренду — только от 1:3 (правило markus)
 
 
 def _env() -> dict[str, str]:
@@ -88,6 +89,7 @@ class Alerts:
         self.forms_seen: set[str] = set()
         self.forms_mtime = 0.0
         self.stats: dict[str, dict] = {}
+        self.signals: list[dict] = []
         self._charts: tuple[float, dict] = (0.0, {})
         # отправка — в своём потоке: живой поток свечей не должен ждать Telegram
         self.q: queue.Queue = queue.Queue()
@@ -146,6 +148,27 @@ class Alerts:
             tmp = self.state_path.with_name(self.state_path.name + ".tmp")
             tmp.write_text(json.dumps(self.sent), encoding="utf-8")
             os.replace(tmp, self.state_path)
+        except Exception:                           # noqa: BLE001
+            pass
+
+    def _write_signals(self) -> None:
+        """Сетапы для бумажного профиля «alerts»: только свежие (не старше свечи своего ТФ)."""
+        now = time.time() * 1000
+        tfms = {"5m": 300_000, "15m": 900_000, "1h": 3_600_000}
+        keep = []
+        for x in self.signals:
+            t0 = x.get("ts") or x["added"]
+            age = int((now - t0) // tfms.get(x["tf"], 300_000)) if isinstance(t0, (int, float)) else 0
+            if age <= 1:
+                keep.append(dict(x, age_candles=max(age, 0)))
+        self.signals = [x for x in self.signals if any(k["added"] == x["added"] and k["symbol"] == x["symbol"] for k in keep)]
+        try:
+            path = self.state_path.with_name("alert_signals.json")
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps({"built_unix": int(now / 1000), "signals": keep,
+                                       "notes": [f"сетапы алертов: по тренду, R:R от 1:{MIN_RR:g} с учётом уровней"]},
+                                      ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, path)
         except Exception:                           # noqa: BLE001
             pass
 
@@ -284,12 +307,19 @@ class Alerts:
                     hlines=[(lo, "#4c8dff", "лой дня")], title="у лоя дня", extra=self._level_age(sym, lo, False)))
 
     def setups(self, live_dir: Path) -> None:
-        """Новый сетап «можно торговать» — по тем же правилам, что на главной."""
+        """Новый сетап «можно торговать»: по тренду своего ТФ и с R:R не меньше 1:3,
+        где цель — первое препятствие за 3R (перехай, уровень, наклонная, Фибо,
+        плотность), а препятствие ближе 3R сделку отменяет (`alert_chart.plan`).
+
+        Прошедшие сетапы ложатся в `kl/alert_signals.json` — его берёт бумажный
+        профиль «alerts» бота по скринеру."""
+        from tools.live import alert_chart
         src, tn = live_dir / "structures.html", live_dir / "trend-now.json"
         if not src.exists() or not tn.exists():
             return
         mt = src.stat().st_mtime
         if mt == self.forms_mtime:
+            self._write_signals()
             return
         first = self.forms_mtime == 0.0
         self.forms_mtime = mt
@@ -309,29 +339,42 @@ class Alerts:
                     continue
                 if f["kind"] == "trendline_bounce" or f.get("entry") is None or f.get("stop") is None:
                     continue
-                if f.get("direction") != tside or (f.get("rr") is not None and f["rr"] < 1):
+                if f.get("direction") != tside:
                     continue
                 key = f"setup|{p['symbol']}|{tf}|{f['kind']}|{f['direction']}|{f.get('ts')}"
                 if key in self.forms_seen:
                     continue
                 self.forms_seen.add(key)
+                sym = p["symbol"]
+                cs = self.candles(sym, tf)
+                pl = alert_chart.plan(cs, f["entry"], f["stop"], f["direction"],
+                                      dens=self._markup(sym, tf).get("dens", []), min_rr=MIN_RR)
+                if not pl.get("ok"):
+                    continue                        # до 1:3 мешает уровень — не сделка
+                ff = dict(f, target=pl["target"], rr=pl["rr"], target_why=pl["why"])
+                self.signals.append({"kind": ff["kind"], "title": ff.get("title") or ff["kind"], "tf": tf,
+                                     "symbol": sym, "exchange": "binance_futures", "direction": ff["direction"],
+                                     "entry": ff["entry"], "stop": ff["stop"], "target": ff["target"], "rr": ff["rr"],
+                                     "triggered": True, "ts": ff.get("ts"), "reasons": (ff.get("reasons") or [])[:4],
+                                     "measured": ff.get("measured"),
+                                     "exp_net": (ff.get("measured") or {}).get("exp_net"),
+                                     "added": int(time.time() * 1000)})
                 if first:                           # на старте старые сетапы не шлём
                     continue
-                ms = f.get("measured") or {}
+                ms = ff.get("measured") or {}
                 exp = ms.get("exp_net")
                 verdict = ("прошла замер" if ms.get("significant") and exp and exp > 0
                            else f"замер {exp:+.2f}R" if exp is not None else "замера нет")
-                side = "ЛОНГ" if f["direction"] == "long" else "ШОРТ"
-                ff, sym = dict(f), p["symbol"]
+                side = "ЛОНГ" if ff["direction"] == "long" else "ШОРТ"
                 head = (f"🎯 <b>{sym.removesuffix('USDT')}</b> {side} {tf}: {ff.get('title') or ff['kind']}\n"
-                        f"вход {_fmt(ff['entry'])} · стоп {_fmt(ff['stop'])}"
-                        + (f" · цель {_fmt(ff['target'])}" if ff.get("target") else "")
-                        + (f" · R:R {ff['rr']:.2f}" if ff.get("rr") is not None else ""))
+                        f"вход {_fmt(ff['entry'])} · стоп {_fmt(ff['stop'])} · цель {_fmt(ff['target'])} "
+                        f"({ff['target_why']}) · R:R 1:{ff['rr']:.1f}")
                 reasons = "; ".join((ff.get("reasons") or [])[:3])
                 self._send(key, lambda sym=sym, tf=tf, ff=ff, head=head, reasons=reasons, verdict=verdict: self._pack(
                     sym, tf, head, title=ff.get("title") or ff["kind"],
-                    zone={"entry": ff["entry"], "stop": ff["stop"], "target": ff.get("target"), "t": ff.get("ts")},
+                    zone={"entry": ff["entry"], "stop": ff["stop"], "target": ff["target"], "t": ff.get("ts")},
                     mark_t=ff.get("ts"),
                     extra=(f"Почему: {reasons}.\n" if reasons else "") + f"{verdict}. Это сигнал скринера, не совет."))
+        self._write_signals()
         if len(self.forms_seen) > 5000:
             self.forms_seen = set(list(self.forms_seen)[-2000:])

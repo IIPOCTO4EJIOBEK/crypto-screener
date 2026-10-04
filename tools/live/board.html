@@ -441,7 +441,7 @@ segBind('dside',P,'side',renderDens);
 // Отбор как у бота managed: свежий сработавший сигнал (не старше свечи) на
 // 5м/15м/1ч, сторона совпадает с трендом своего ТФ (для 5м — тренд 15м).
 // trendline_bounce не торгуем: его плюс в замере оказался артефактом.
-var TS={tf:'all',dir:'all',sig:false,rr3:false};
+var TS={tf:'all',dir:'all',sig:false,rr3:true};   // правило: по тренду — от 1:3
 try { Object.assign(TS, JSON.parse(localStorage.getItem('board-trade') || '{}')); } catch(e) {}
 function saveT(){ try { localStorage.setItem('board-trade', JSON.stringify(TS)); } catch(e) {} }
 var EXIT_RULE='Ведение как у бота «по скринеру, управляемый»: половина позиции закрывается на +1R, стоп переносится в безубыток, остаток идёт трейлингом 1,5R от лучшей цены. Цель формации — ориентир, бот её не ждёт.';
