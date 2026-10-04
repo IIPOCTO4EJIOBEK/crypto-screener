@@ -339,10 +339,22 @@ def main(argv: list[str] | None = None) -> int:
                   f"({type(e).__name__}), состав будет взят из файла среза")
     uni: dict | None = None
 
+    # Живые свечи для графиков главной — отдельный долгий процесс рядом с
+    # кругом (tools.live.klines): у браузера до Binance доступа может не быть
+    feed = None
+    feed_cmd = None
+    if not a.once and not fixed and a.exchange == "binance_futures":
+        feed_cmd = [sys.executable, "-X", "utf8", "-m", "tools.live.klines",
+                    "--out", str(out_dir / "kl"), "--universe", str(universe_path)]
+
     round_no = 0
     while True:
         round_no += 1
         errors: list[str] = []
+        if feed_cmd and (feed is None or feed.poll() is not None):
+            if feed is not None:
+                errors.append(f"свечи графиков: процесс упал (код {feed.returncode}), перезапущен")
+            feed = subprocess.Popen(feed_cmd, cwd=str(ROOT))
 
         if fixed:
             uni = None

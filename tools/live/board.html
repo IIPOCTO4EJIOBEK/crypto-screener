@@ -453,41 +453,48 @@ function openChart(sym,tf){
   document.getElementById('cfull').href='structures.html#tf='+encodeURIComponent(C.tf)+'&sym='+encodeURIComponent(sym)+'&embed=1';
   [].forEach.call(document.querySelectorAll('#ctf button'),function(b){b.classList.toggle('on',b.dataset.v===C.tf);});
   document.getElementById('chart').classList.add('open'); paused=true;
-  loadCharts(drawChart);
+  var want=C.sym+'|'+C.tf;
+  loadCharts(function(){
+    // свечи — родные kline этого ТФ, их держит ВМ (tools/live/klines.py);
+    // нет файла — рисуем снимок из charts.json
+    fetch('kl/'+C.sym+'_'+C.tf+'.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+      .then(function(kl){ if(want!==C.sym+'|'+C.tf) return; try{drawChart(kl);}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';} });
+  });
 }
 function closeChart(){ document.getElementById('chart').classList.remove('open'); liveStop(); if(CH){CH.remove();CH=null;} paused=false; }
-/* ---------- живые свечи: Binance USDT-M WebSocket, запасной путь — REST раз в 3 с ---------- */
-var LV={ws:null,timer:null,key:null};
-function liveStop(){ if(LV.ws){LV.ws.onclose=null;LV.ws.onerror=null;LV.ws.close();LV.ws=null;} if(LV.timer){clearInterval(LV.timer);LV.timer=null;} LV.key=null; liveMark(false,'—'); }
+/* ---------- живые свечи: файл kl/<SYM>.live.json с ВМ, раз в секунду ----------
+   Браузер к Binance напрямую не ходит: через прокси биржа отвечает «restricted
+   location». ВМ держит WebSocket kline_<tf> и пишет текущую свечу каждого ТФ. */
+var LV={timer:null,key:null};
+function liveStop(){ if(LV.timer){clearInterval(LV.timer);LV.timer=null;} LV.key=null; liveMark(false,'—'); }
 function liveMark(on,text){ var el=document.getElementById('clive'); if(el) el.innerHTML='<i class="live'+(on?' on':'')+'"></i>'+esc(text); }
-function liveStart(sym,tf,cand,vol,dig){
+function liveStart(sym,tf,cand,vol,dig,lastT){
   liveStop(); var key=sym+'|'+tf; LV.key=key;
-  function put(t,o,h,l,c,qv){
-    if(LV.key!==key) return;
-    var time=Math.floor(t/1000)+MSK;
-    try{ cand.update({time:time,open:o,high:h,low:l,close:c}); vol.update({time:time,value:qv,color:c>=o?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)'}); }catch(e){}
-    liveMark(true,'онлайн · '+c.toFixed(dig)+' · '+new Date().toLocaleTimeString('ru-RU'));
-  }
   function poll(){
-    fetch('https://fapi.binance.com/fapi/v1/klines?symbol='+sym+'&interval='+tf+'&limit=3').then(function(r){return r.json();}).then(function(a){
-      a.forEach(function(k){ put(k[0],+k[1],+k[2],+k[3],+k[4],+k[7]); });
-    }).catch(function(){ if(LV.key===key) liveMark(false,'нет связи с биржей'); });
+    fetch('kl/'+sym+'.live.json',{cache:'no-store'}).then(function(r){if(!r.ok) throw new Error(r.status); return r.json();}).then(function(j){
+      if(LV.key!==key) return;
+      var k=(j.k||{})[tf];
+      if(!k || Date.now()-j.t>30000){ liveMark(false,'свечи с биржи не идут'); return; }
+      if(k[0]<lastT) return;
+      lastT=k[0];
+      var time=Math.floor(k[0]/1000)+MSK;
+      try{ cand.update({time:time,open:k[1],high:k[2],low:k[3],close:k[4]}); vol.update({time:time,value:k[5],color:k[4]>=k[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)'}); }catch(e){}
+      liveMark(true,'онлайн · '+k[4].toFixed(dig)+' · '+new Date(j.t).toLocaleTimeString('ru-RU'));
+    }).catch(function(){ if(LV.key===key) liveMark(false,'нет живых свечей'); });
   }
-  function fallback(){ if(LV.key!==key||LV.timer) return; LV.ws=null; poll(); LV.timer=setInterval(poll,3000); }
-  poll();   // догнать свечи, прошедшие после сборки charts.json
-  try{
-    var ws=new WebSocket('wss://fstream.binance.com/ws/'+sym.toLowerCase()+'@kline_'+tf); LV.ws=ws;
-    ws.onmessage=function(e){ var k=JSON.parse(e.data).k; if(k) put(k.t,+k.o,+k.h,+k.l,+k.c,+k.q); };
-    ws.onerror=fallback; ws.onclose=fallback;
-  }catch(e){ fallback(); }
+  poll(); LV.timer=setInterval(poll,1000);
 }
-function drawChart(){
+function drawChart(kl){
   var box=document.getElementById('cbox'), side=document.getElementById('cside');
   liveStop(); if(CH){CH.remove();CH=null;}
   var p=(CHD[C.sym]||{})[C.tf];
-  if(!p || !p.candles.length){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
+  if((!p || !p.candles.length) && !(kl && kl.length)){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
+  p=p||{candles:[],levels:[],lines:[],forms:[],splashes:[]};
   document.getElementById('creg').textContent=p.regime?('режим: '+p.regime):'';
-  var cs=p.candles, T=function(i){ return Math.floor(cs[Math.max(0,Math.min(cs.length-1,i))][0]/1000)+MSK; };
+  // разметка (наклонные, формации) ссылается на номера свечей снимка charts.json,
+  // поэтому время по номеру берём из снимка, а рисуем свечи биржи
+  var pc=p.candles.length?p.candles:kl, T=function(i){ return Math.floor(pc[Math.max(0,Math.min(pc.length-1,i))][0]/1000)+MSK; };
+  var cs=(kl && kl.length)?kl:p.candles;
   var last=cs[cs.length-1][4], dig = last>=1000?1:last>=100?2:last>=1?3:last>=0.01?5:7;
   CH=LightweightCharts.createChart(box,{autoSize:true,
     layout:{background:{color:'#0f1115'},textColor:'#c7cdd8',fontSize:12},
@@ -498,10 +505,10 @@ function drawChart(){
   var cand=CH.addCandlestickSeries({upColor:'#1fbf75',downColor:'#ef4f5a',borderVisible:false,wickUpColor:'#1fbf75',wickDownColor:'#ef4f5a',
     priceFormat:{type:'price',precision:dig,minMove:Math.pow(10,-dig)}});
   cand.setData(cs.map(function(c){return {time:Math.floor(c[0]/1000)+MSK,open:c[1],high:c[2],low:c[3],close:c[4]};}));
-  var splash={}; (p.splashes||[]).forEach(function(i){splash[i]=1;});
+  var splash={}; (p.splashes||[]).forEach(function(i){ if(p.candles[i]) splash[p.candles[i][0]]=1; });
   var vol=CH.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.priceScale('vol').applyOptions({scaleMargins:{top:.82,bottom:0}});
-  vol.setData(cs.map(function(c,i){return {time:Math.floor(c[0]/1000)+MSK,value:c[5],color:splash[i]?'rgba(240,180,41,.85)':(c[4]>=c[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)')};}));
+  vol.setData(cs.map(function(c,i){return {time:Math.floor(c[0]/1000)+MSK,value:c[5],color:splash[c[0]]?'rgba(240,180,41,.85)':(c[4]>=c[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)')};}));
   // уровни: подпись на шкале, без текста поверх свечей
   p.levels.forEach(function(l){
     cand.createPriceLine({price:l.price,color:l.kind==='support'?'#1fbf75':'#ef4f5a',lineWidth:1,lineStyle:2,axisLabelVisible:true,
@@ -548,7 +555,7 @@ function drawChart(){
   [].forEach.call(side.querySelectorAll('.fc'),function(el){el.onclick=function(){pick(+el.dataset.i);};});
   if(p.forms.length) pick(0); else setMarks(-1);
   var n=cs.length; CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
-  liveStart(C.sym,C.tf,cand,vol,dig);
+  liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
 }document.getElementById('tb').addEventListener('click',function(e){
   var tr=e.target.closest('tr[data-sym]'); if(!tr) return;
   var chip=e.target.closest('.f[data-tf]');
