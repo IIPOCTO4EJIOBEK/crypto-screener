@@ -49,11 +49,8 @@ def _override(argv):
 
 def load(path):
     c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    cur = c.execute("select kind,tf,n,win_rate,exp_gross,exp_net,cost,sd"
-                    " from formation_stats")
-    rows = [dict(kind=k, tf=t, n=n, win_rate=w, exp_gross=g, exp_net=e,
-                 cost=c_, sd=s, db=path)
-            for k, t, n, w, g, e, c_, s in cur]
+    c.row_factory = sqlite3.Row
+    rows = [dict(r, db=path) for r in c.execute("select * from formation_stats")]
     c.close()
     return rows
 
@@ -63,6 +60,17 @@ def p_two_sided(mean, sd, n):
         return None
     t = mean / (sd / (n ** 0.5))
     return float(2.0 * stats.t.sf(abs(t), n - 1))
+
+
+def p_row(r):
+    """С поправкой на перекрытие, если база её содержит: t = mean / se,
+    степеней свободы n_eff − 1. Иначе — старая формула."""
+    se, g = r.get("se"), r.get("n_eff")
+    if se and g:
+        if g < 2 or se <= 0:
+            return None
+        return float(2.0 * stats.t.sf(abs(r["exp_net"] / se), g - 1))
+    return p_two_sided(r["exp_net"], r["sd"], r["n"])
 
 
 def bh(pvals, alpha=ALPHA):
@@ -77,9 +85,8 @@ def bh(pvals, alpha=ALPHA):
 
 def verdict(rows, label):
     tested = [(i, r) for i, r in enumerate(rows)
-              if r["n"] >= MIN_TRADES and r["sd"] and p_two_sided(
-                  r["exp_net"], r["sd"], r["n"]) is not None]
-    pv = [p_two_sided(r["exp_net"], r["sd"], r["n"]) for _, r in tested]
+              if r["n"] >= MIN_TRADES and r["sd"] and p_row(r) is not None]
+    pv = [p_row(r) for _, r in tested]
     sig = bh(pv)
     print(f"=== {label}: строк {len(rows)}, в счёт {len(tested)}, "
           f"с плюсом {sum(1 for _, r in tested if r['exp_net'] > 0)}, "
@@ -90,7 +97,8 @@ def verdict(rows, label):
         ps = f"{p:.2e}" if p < 1e-4 else f"{p:.4f}"
         print(f"  {r['kind']:20} {r['tf']:4} n={r['n']:6} "
               f"gross={r['exp_gross']:+.4f} cost={r['cost']:.4f} "
-              f"net={r['exp_net']:+.4f} sd={r['sd']:.4f} p={ps:>9} FDR={mark}")
+              f"net={r['exp_net']:+.4f} sd={r['sd']:.4f} "
+              f"n_eff={r.get('n_eff') or '—'} p={ps:>9} FDR={mark}")
     return len(sig)
 
 

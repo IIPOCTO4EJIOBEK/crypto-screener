@@ -199,3 +199,175 @@ def test_значимость_доходит_до_сделок_через_изм
     s = Stats("bounce", "5m", 3, 2, 1, 0, 1.0, 0.6, 0.4, 0.5)
     assert math.isclose(s.sd, 0.5)
     assert significance.p_value(s.expectancy_net, s.sd, s.n) is not None
+
+
+# --- поправка на перекрытие сделок (docs/research/19) ----------------------
+
+def test_кластеры_склеивают_пересекающиеся_и_касающиеся_сделки():
+    spans = [(0, 10), (5, 20), (20, 30), (31, 40), (100, 110)]
+    c = significance.overlap_clusters(spans)
+    # 0-10 и 5-20 пересекаются, 20-30 касается 5-20 (выход и вход на одной
+    # свече), 31-40 отделена паузой, 100-110 — отдельное событие
+    assert c[0] == c[1] == c[2]
+    assert len({c[2], c[3], c[4]}) == 3
+
+
+def test_кластеры_выровнены_по_входу_а_не_по_времени():
+    spans = [(100, 110), (0, 10), (5, 20)]
+    c = significance.overlap_clusters(spans)
+    assert c[1] == c[2] != c[0]
+
+
+def test_пауза_склейки_объединяет_близкие_события():
+    spans = [(0, 10), (15, 20)]
+    assert len(set(significance.overlap_clusters(spans))) == 2
+    assert len(set(significance.overlap_clusters(spans, gap_ms=5))) == 1
+
+
+def test_без_перекрытий_ошибка_совпадает_с_обычной():
+    """Каждая сделка — свой кластер: поправка обязана ничего не менять."""
+    import random
+    from statistics import stdev
+
+    rng = random.Random(3)
+    xs = [rng.gauss(0.1, 1.0) for _ in range(80)]
+    se = significance.cluster_se(xs, list(range(80)))
+    assert math.isclose(se, stdev(xs) / math.sqrt(80), rel_tol=1e-12)
+    row = dict(exp_net=sum(xs) / 80, sd=stdev(xs), n=80, se=se, n_eff=80)
+    assert math.isclose(significance.row_p(row),
+                        p_value(row["exp_net"], row["sd"], 80), rel_tol=1e-9)
+
+
+def test_копии_одного_события_не_добавляют_значимости():
+    """Восемь монет на одном движении — восемь сделок, но одно событие.
+
+    Старая формула видит в восьми копиях восемь наблюдений и делит ошибку на
+    √8. Кластерная ошибка от копий не меняется вовсе.
+    """
+    import random
+    from statistics import stdev
+
+    rng = random.Random(7)
+    events = [rng.gauss(0.25, 1.0) for _ in range(40)]
+    one = significance.cluster_se(events, list(range(40)))
+    xs = [x for x in events for _ in range(8)]
+    cl = [i for i in range(40) for _ in range(8)]
+    many = significance.cluster_se(xs, cl)
+    assert math.isclose(one, many, rel_tol=1e-12)
+    naive = stdev(xs) / math.sqrt(len(xs))
+    assert naive < many / 2.5, "старая формула занижает ошибку почти в √8 раз"
+
+
+def test_на_нулевом_среднем_с_перекрытием_ложных_находок_около_альфы():
+    """Мир без преимущества, сделки пачками по общему рыночному движению.
+
+    Доля «значимых» по старой формуле в разы выше 5 %, по кластерной —
+    около 5 %. Это и есть та ложная значимость, о которой docs/research/19.
+    """
+    import random
+    from statistics import stdev
+
+    rng = random.Random(42)
+    naive_hits = cl_hits = 0
+    runs = 400
+    for _ in range(runs):
+        xs, spans = [], []
+        t = 0
+        for _ in range(30):                    # 30 событий
+            shock = rng.gauss(0.0, 1.0)        # общее движение рынка
+            k = rng.randint(1, 8)              # сколько монет его поймали
+            for _ in range(k):
+                xs.append(shock + rng.gauss(0.0, 0.3))
+                spans.append((t + rng.randint(0, 3), t + 10))
+            t += 20
+        n = len(xs)
+        m = sum(xs) / n
+        if p_value(m, stdev(xs), n) < 0.05:
+            naive_hits += 1
+        cl = significance.overlap_clusters(spans)
+        p = significance.row_p(dict(exp_net=m, sd=stdev(xs), n=n,
+                                    se=significance.cluster_se(xs, cl),
+                                    n_eff=len(set(cl))))
+        if p < 0.05:
+            cl_hits += 1
+    assert naive_hits / runs > 0.3
+    assert cl_hits / runs < 0.09
+
+
+def test_бутстрэп_сходится_с_кластерной_оценкой():
+    import random
+
+    rng = random.Random(9)
+    xs, cl = [], []
+    for c in range(60):
+        shock = rng.gauss(0.35, 1.0)
+        for _ in range(rng.randint(1, 5)):
+            xs.append(shock + rng.gauss(0.0, 0.3))
+            cl.append(c)
+    se = significance.cluster_se(xs, cl)
+    m = sum(xs) / len(xs)
+    p_an = two_sided_p(m / se, 59)
+    p_bs = significance.cluster_bootstrap_p(xs, cl, n_boot=4000, seed=1)
+    assert p_bs is not None
+    # обе оценки по одну сторону от 0.05 и одного порядка
+    assert (p_an < 0.05) == (p_bs < 0.05)
+    assert 0.2 < p_bs / p_an < 5
+
+
+def test_бутстрэп_не_видит_сдвига_там_где_его_нет():
+    import random
+
+    rng = random.Random(4)
+    xs = [rng.gauss(0.0, 1.0) for _ in range(200)]
+    p = significance.cluster_bootstrap_p(xs, [i // 4 for i in range(200)])
+    assert p > 0.05
+    assert significance.cluster_bootstrap_p(xs, [0] * 200) is None
+
+
+def test_вердикт_берёт_n_eff_и_считает_строки_без_него():
+    """Строка с n = 400, но 12 независимыми событиями — не находка, а строка
+    из старой базы без n_eff считается по старой формуле и попадает в
+    n_naive, чтобы отчёт мог предупредить."""
+    rows = [dict(kind="clustered", tf="1h", n=400, exp_net=0.30, sd=1.0,
+                 se=0.30, n_eff=12),
+            dict(kind="old", tf="1h", n=400, exp_net=0.30, sd=1.0)]
+    v = judge(rows, alpha=0.05, min_n=30)
+    assert v.flags == [False, True]
+    assert v.n_naive == 1
+
+
+def test_одно_событие_на_всю_строку_не_проверяется():
+    rows = [dict(kind="one", tf="1h", n=50, exp_net=0.5, sd=1.0,
+                 se=0.2, n_eff=1)]
+    v = judge(rows, alpha=0.05, min_n=30)
+    assert v.flags == [None]
+
+
+def test_измерение_считает_n_eff_по_времени_сделок():
+    """_build склеивает пересекающиеся сделки строки в кластеры."""
+    from types import SimpleNamespace
+
+    from src.backtest.walk import Trade, _build
+
+    def tr(r, a, b):
+        f = SimpleNamespace(kind="bounce", tf="1h", direction="long", ts=a)
+        return Trade(f, "target" if r > 0 else "stop", r, 1,
+                     entry_ms=a, exit_ms=b, r_net=r)
+
+    ts = [tr(1.0, 0, 10), tr(1.2, 5, 15), tr(-1.0, 100, 110),
+          tr(0.5, 200, 210), tr(-0.4, 300, 310)]
+    s = _build({("bounce", "1h"): ts})[0]
+    assert s.n == 5 and s.n_eff == 4
+    assert s.se > 0 and s.p_boot is not None
+
+
+def test_схема_дописывает_поля_перекрытия_и_хранит_их():
+    conn = db.connect(":memory:")
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(formation_stats)")}
+    assert {"se", "n_eff", "p_boot"} <= cols
+    db.upsert_formation_stats(conn, [dict(
+        kind="bounce", tf="1h", measured_on="2026-10-04", symbol_scope="BTCUSDT",
+        n=40, win_rate=50.0, exp_gross=0.2, exp_net=0.1, cost=0.1, sd=1.0,
+        se=0.25, n_eff=17, p_boot=0.7)])
+    got = db.load_formation_stats(conn)[("bounce", "1h")]
+    assert got["n_eff"] == 17 and got["se"] == 0.25 and got["p_boot"] == 0.7

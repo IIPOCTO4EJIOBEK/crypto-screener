@@ -169,6 +169,20 @@ def binance_futures_ohlcv(symbol: str, interval: str = "1m", limit: int = 1000,
                    float(c[5]), float(c[7]), int(c[8])) for c in raw]
 
 
+def binance_funding_history(symbol: str, start_ms: int,
+                            end_ms: int | None = None) -> list[tuple[int, float]]:
+    """Фактические начисления фандинга USDT-M: (время начисления, ставка).
+
+    Ставка положительна — лонг платит шорту. Один запрос отдаёт до 1000
+    начислений, этого хватает на месяцы при интервале 4-8 часов.
+    """
+    params = {"symbol": symbol.upper(), "startTime": start_ms, "limit": 1000}
+    if end_ms:
+        params["endTime"] = end_ms
+    raw = _get(f"{_BINANCE_FAPI}/fapi/v1/fundingRate", params, use_proxy=False)
+    return [(int(r["fundingTime"]), float(r["fundingRate"])) for r in raw]
+
+
 def binance_futures_orderbook(symbol: str, depth: int = 100) -> OrderBook:
     raw = _get(f"{_BINANCE_FAPI}/fapi/v1/depth",
                {"symbol": symbol.upper(), "limit": _fapi_depth(depth)},
