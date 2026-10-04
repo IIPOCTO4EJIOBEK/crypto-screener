@@ -128,5 +128,6 @@ def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
     state.peak = max(state.peak, res.equity)
     ledger.save(state)
     ledger.log("equity", equity=round(res.equity, 4), cash=round(state.cash, 4),
-               positions=state.positions, peak=round(state.peak, 4))
+               positions=state.positions, peak=round(state.peak, 4),
+               prices={k: round(v, 8) for k, v in prices.items()})
     return res

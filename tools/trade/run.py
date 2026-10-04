@@ -87,6 +87,18 @@ def make_broker(mode: str, market: str):
                           market=market, testnet=False)
 
 
+def publish_page(ledger: Ledger, a) -> None:
+    """Пересобрать страницу бота; её сбой не должен ронять торговый шаг."""
+    from tools.trade import page
+    try:
+        kw = dict(mode=a.mode, market=a.market, holding=a.holding, lookback=a.lookback)
+        page.write(ledger, ledger.root / "bot.html", **kw)
+        if a.page_out:
+            page.write(ledger, Path(a.page_out), **kw)
+    except Exception as e:
+        print(f"страница бота: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 def fmt_day(ts: int) -> str:
     return datetime.fromtimestamp(ts / 1000, timezone.utc).strftime("%Y-%m-%d")
 
@@ -135,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check-key", choices=["live", "testnet"])
     ap.add_argument("--i-understand-real-money", action="store_true")
     ap.add_argument("--data", default=str(ROOT / "data" / "trade"))
+    ap.add_argument("--page-out", default=os.environ.get("TRADE_PAGE_OUT"),
+                    help="куда ещё положить страницу бота (кроме каталога журнала)")
     a = ap.parse_args(argv)
 
     root = Path(a.data) / (f"{a.mode}-{a.market}")
@@ -185,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         print(text, file=sys.stderr)
         ledger.log("error", error=text)
         notify(text)
+        publish_page(ledger, a)
         return 1
 
     d = res.decision
@@ -201,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     print(text)
     if res.rebalanced or res.problems or res.halted:
         notify(text)
+    publish_page(ledger, a)
     return 1 if res.problems else 0
 
 

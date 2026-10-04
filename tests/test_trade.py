@@ -178,3 +178,24 @@ def test_биржевой_брокер_учитывает_комиссию_в_м
     b.market = "future"
     b.execute("BTCUSDT", "sell", 1.0)
     assert b.ex.sent[0] == "BTC/USDT:USDT" and b.ex.sent[4] == {"reduceOnly": True}
+
+
+def test_страница_бота_собирается_из_журнала(tmp_path):
+    from tools.trade import page
+
+    series = {"A": ramp(40, 1.0), "B": ramp(40, -1.0, 200.0)}
+    prices = {"A": 140.0, "B": 160.0}
+    broker = PaperBroker("spot", fee=0.001, book=book_at(prices, spread=0.02))
+    ledger = Ledger(tmp_path)
+    now = START + 40 * DAY_MS
+    step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now)
+    empty = page.build(Ledger(tmp_path / "empty"))
+    assert "сделок ещё нет" in empty
+    prices["A"] = 150.0
+    step(series, broker=broker, ledger=ledger, limits=Limits(capital=1000), now_ms=now + DAY_MS)
+    out = page.write(ledger, tmp_path / "bot.html")
+    text = out.read_text()
+    assert "<polyline" in text and "покупка" in text and ">A<" in text
+    assert page.market_return(ledger.journal() and
+                              [r for r in ledger.journal() if r["kind"] == "equity"]) \
+        == pytest.approx(150 / 140 - 1)
