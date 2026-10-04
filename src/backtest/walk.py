@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from statistics import stdev
 
 from src.analysis.formations import Formation, detect_all
+from src.backtest import significance
 from src.backtest.costs import Costs, cost_r
 from src.data.archive import FundingRate
 from src.data.market import Candle
@@ -172,6 +173,12 @@ class Stats:
     total_r_net: float = 0.0
     total_cost: float = 0.0
     sd: float = 0.0        # разброс результата по сделкам, в R
+    # Поправка на перекрытие сделок (src/backtest/significance.py): ошибка
+    # среднего R net по кластерам пересекающихся сделок, число кластеров —
+    # эффективный размер выборки — и p блочного бутстрэпа для сверки.
+    se: float = 0.0
+    n_eff: int = 0
+    p_boot: float | None = None
 
     @property
     def win_rate(self) -> float:
@@ -208,6 +215,14 @@ def _build(groups: dict) -> list[Stats]:
         # разброс нужен для значимости среднего: без него нельзя отличить
         # ровный плюс от среднего, собранного из редких крупных выигрышей
         sd = stdev(nets) if len(nets) > 1 else 0.0
+        # Сделки строки идут внахлёст — по восьми монетам сразу и при
+        # удержании дольше шага среза, — и sd/√n считает их независимыми.
+        # Кластер — связная группа пересекающихся по времени сделок.
+        clusters = significance.overlap_clusters(
+            [(t.entry_ms, t.exit_ms) for t in ts])
+        se = significance.cluster_se(nets, clusters) or 0.0
+        n_eff = len(set(clusters))
+        p_boot = significance.cluster_bootstrap_p(nets, clusters)
         out.append(Stats(kind, tf, len(ts),
                          sum(1 for t in ts if t.outcome == "target"),
                          sum(1 for t in ts if t.outcome == "stop"),
@@ -215,7 +230,7 @@ def _build(groups: dict) -> list[Stats]:
                          sum(t.r for t in ts),
                          sum(t.r_net for t in ts),
                          sum(t.cost_r for t in ts),
-                         sd))
+                         sd, se, n_eff, p_boot))
     out.sort(key=lambda s: -s.n)
     return out
 
