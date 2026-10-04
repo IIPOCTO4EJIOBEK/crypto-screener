@@ -17,22 +17,28 @@ TAG = '<script src="/nav.js"></script>'
 PAGES = ("index.html", "screener.html", "structures.html", "densities.html",
          "bots.html", "bot.html")
 TRADE = Path("/opt/crypto-trade/data/trade")
+_SEEN: dict[str, float] = {}                        # файл → время изменения, когда уже проверен
 
 
 def inject(path: Path) -> bool:
     """Вставить меню перед последним </body>. True — файл изменён."""
     try:
-        s = path.read_text(encoding="utf-8")
+        real = path.resolve()                       # bots.html и bot.html — ссылки на файлы торгового контура
+        mt = real.stat().st_mtime
+        if _SEEN.get(str(real)) == mt:              # не менялся с прошлой проверки — не читаем
+            return False
+        s = real.read_text(encoding="utf-8")
     except Exception:                               # noqa: BLE001
         return False
     if TAG in s or "</body>" not in s:
+        _SEEN[str(real)] = mt
         return False
     i = s.rfind("</body>")
     s = s[:i] + TAG + "\n" + s[i:]
-    real = path.resolve()                           # bots.html и bot.html — ссылки на файлы торгового контура
     tmp = real.with_name(real.name + ".navtmp")
     tmp.write_text(s, encoding="utf-8")
     os.replace(tmp, real)
+    _SEEN[str(real)] = real.stat().st_mtime
     return True
 
 

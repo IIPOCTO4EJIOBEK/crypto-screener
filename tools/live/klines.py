@@ -177,6 +177,16 @@ class Feed:
                 return True
         return False
 
+    async def nav_loop(self) -> None:
+        """Общее меню на страницах, в том числе ботов: пересобранную страницу чиним за секунду."""
+        from tools.live import navinject
+        while True:
+            try:
+                await asyncio.to_thread(navinject.ensure, self.out.parent)
+            except Exception as e:                  # noqa: BLE001
+                print(f"klines: меню не вставлено: {type(e).__name__} {e}")
+            await asyncio.sleep(1.0)
+
     async def dens_loop(self) -> None:
         """Раз в полминуты — живы ли плотности снимка (kl/dens_state.json)."""
         from tools.live import dens_watch
@@ -184,11 +194,6 @@ class Feed:
         seen, last = 0.0, 0.0
         while True:
             await asyncio.sleep(5)
-            try:                                    # общее меню на страницах, в том числе ботов
-                from tools.live import navinject
-                await asyncio.to_thread(navinject.ensure, self.out.parent)
-            except Exception as e:                  # noqa: BLE001
-                print(f"klines: меню не вставлено: {type(e).__name__} {e}")
             if self.alerts:
                 try:
                     await asyncio.to_thread(self.alerts.setups, self.out.parent)
@@ -260,6 +265,7 @@ class Feed:
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())
         asyncio.get_running_loop().create_task(self.dens_loop())
+        asyncio.get_running_loop().create_task(self.nav_loop())
         timeout = aiohttp.ClientTimeout(total=20)
         async with aiohttp.ClientSession(timeout=timeout) as http:
             while True:

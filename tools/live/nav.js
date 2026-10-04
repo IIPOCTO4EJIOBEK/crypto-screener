@@ -81,6 +81,8 @@
     var home=document.createElement('a'); home.className='gn-home'; home.href='/'; home.textContent='Крипто-скринер';
     bar.appendChild(home); bar.appendChild(burger); bar.appendChild(nav);
     document.body.insertBefore(bar,document.body.firstChild);
+    // у страниц были свои строки ссылок — оставляем одну общую шапку
+    [].forEach.call(document.querySelectorAll('header nav, nav.links, .nav, .links, .toplinks'),function(el){ if(!bar.contains(el)) el.style.display='none'; });
   }
   mark();
 })();

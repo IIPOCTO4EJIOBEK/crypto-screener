@@ -209,7 +209,7 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
   </tr></thead><tbody id="dtb"></tbody></table></div>
 </section>
 <footer id="foot"></footer>
-<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="seg" id="cint" title="Как часто обновлять свечи"><button data-v="1">1с</button><button data-v="3">3с</button><button data-v="5">5с</button></span><span class="seg" id="copt" title="Разметка на графике"><button data-v="lines">Линии</button><button data-v="waves">Волны</button><button data-v="fib">Фибо</button></span><span class="mute" id="creg"></span><span class="mute" id="cmeta"></span><span class="mute" id="clive"><i class="live"></i>—</span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, правая кнопка — линейка, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
+<div id="chart"><div class="hd"><b id="ctitle"></b><span class="seg" id="ctf"><button data-v="5m">5м</button><button data-v="15m">15м</button><button data-v="1h">1ч</button></span><span class="seg" id="cint" title="Как часто обновлять свечи"><button data-v="1">1с</button><button data-v="3">3с</button><button data-v="5">5с</button></span><span class="seg" id="copt" title="Разметка на графике"><button data-v="lines">Линии</button><button data-v="waves">Волны</button><button data-v="fib">Фибо</button><button data-v="lowrr" title="Показывать сетапы с R:R ниже 1:3">R:R&lt;3</button></span><span class="mute" id="creg"></span><span class="mute" id="cmeta"></span><span class="mute" id="clive"><i class="live"></i>—</span><a id="cbin" target="_blank" rel="noopener">Binance ↗</a><a id="cfull" target="_blank" rel="noopener">подробно ↗</a><button class="x" id="cx" title="Закрыть (Esc)">×</button></div><div class="body"><div id="cbox"><div id="chint">колесо — масштаб, перетаскивание — сдвиг, правая кнопка — линейка, двойной клик по шкале — сброс</div></div><div id="cside"></div></div></div>
 <script src="vendor/lightweight-charts-4.2.0.js"></script>
 
 <script id="data" type="application/json">__DATA__</script>
@@ -586,7 +586,7 @@ function liveStart(sym,tf,cand,vol,dig,lastT){
   poll(); LV.timer=setInterval(poll,LV.sec*1000);
 }
 /* ---------- волны и Фибоначчи по живым свечам ---------- */
-var OPT={lines:true,waves:true,fib:true};
+var OPT={lines:true,waves:true,fib:true,lowrr:false};
 try { Object.assign(OPT, JSON.parse(localStorage.getItem('board-opt')||'{}')); } catch(e) {}
 [].forEach.call(document.querySelectorAll('#copt button'),function(b){
   b.classList.toggle('on',!!OPT[b.dataset.v]);
@@ -660,7 +660,7 @@ function autoLines(cs,piv){
   var pick=[];
   ['L','H'].forEach(function(t){
     out.filter(function(x){return x.t===t;}).sort(function(x,y){return y.score-x.score;}).forEach(function(x){
-      if(pick.filter(function(y){return y.t===t;}).length>=3) return;
+      if(pick.filter(function(y){return y.t===t;}).length>=2) return;
       if(pick.some(function(y){ return y.t===t && Math.abs(y.now-x.now)<tol*2 && Math.abs(y.sl-x.sl)*20<atr; })) return;  // почти та же линия
       pick.push(x);
     });
@@ -677,7 +677,7 @@ function autoLevels(cs,piv){
     if(c){ c.p=(c.p*c.n+q.p)/(c.n+1); c.n++; } else cl.push({p:q.p,n:1});
   });
   var px0=cs[n-1][4];
-  return cl.filter(function(x){return x.n>=2;}).sort(function(x,y){return Math.abs(x.p-px0)-Math.abs(y.p-px0);}).slice(0,4);
+  return cl.filter(function(x){return x.n>=2;}).sort(function(x,y){return Math.abs(x.p-px0)-Math.abs(y.p-px0);}).slice(0,3);
 }
 function isRound(p){ var t=String(+(+p).toPrecision(10)).replace('-','').replace('.','').replace(/^0+/,'').replace(/0+$/,''); return t.length<=2; }
 
@@ -760,28 +760,37 @@ function drawChart(kl){
   var cand=CH.addCandlestickSeries({upColor:'#1fbf75',downColor:'#ef4f5a',borderVisible:false,wickUpColor:'#1fbf75',wickDownColor:'#ef4f5a',
     priceFormat:{type:'price',precision:dig,minMove:Math.pow(10,-dig)}});
   CAND=cand;
+  window.__chart={CH:CH,cand:cand,cs:cs};
   cand.setData(cs.map(function(c){return {time:Math.floor(c[0]/1000)+MSK,open:c[1],high:c[2],low:c[3],close:c[4]};}));
   var splash={}; (p.splashes||[]).forEach(function(i){ if(p.candles[i]) splash[p.candles[i][0]]=1; });
   var vol=CH.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.priceScale('vol').applyOptions({scaleMargins:{top:.82,bottom:0}});
   vol.setData(cs.map(function(c,i){return {time:Math.floor(c[0]/1000)+MSK,value:c[5],color:splash[c[0]]?'rgba(240,180,41,.85)':(c[4]>=c[1]?'rgba(31,191,117,.35)':'rgba(239,79,90,.35)')};}));
   // уровни: подпись на шкале, без текста поверх свечей
-  p.levels.forEach(function(l){
+  // линии разметки не участвуют в автомасштабе: шкала строится по свечам
+  var NOSCALE=function(){ return null; }, pxNow=cs[cs.length-1][4];
+  function nearest(xs,get,k){ return xs.slice().sort(function(a,b){return Math.abs(get(a)-pxNow)-Math.abs(get(b)-pxNow);}).slice(0,k); }
+  nearest(p.levels,function(l){return l.price;},3).forEach(function(l){
     cand.createPriceLine({price:l.price,color:l.kind==='support'?'#1fbf75':'#ef4f5a',lineWidth:1,lineStyle:2,axisLabelVisible:true,
       title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')});
   });
   // плотности из стакана: оранжевые линии с размером
-  (CHDENS[C.sym]||[]).filter(function(d){ return !dgone(C.sym,d.side,d.price); }).sort(function(a,b){return b.notional-a.notional;}).slice(0,6).forEach(function(d){
+  (CHDENS[C.sym]||[]).filter(function(d){ return !dgone(C.sym,d.side,d.price) && Math.abs(d.price-pxNow)/pxNow<=0.02; }).sort(function(a,b){return b.notional-a.notional;}).slice(0,3).forEach(function(d){
     var it=DST.items[dkey(C.sym,d.side,d.price)]||{}, sz=it.s==='live'&&it.left?it.left:d.notional;
     cand.createPriceLine({price:d.price,color:'#f0b429',lineWidth:2,lineStyle:0,axisLabelVisible:true,title:(d.side==='bid'?'плотн. bid ':'плотн. ask ')+money(sz)+(isRound(d.price)?' · круглое':'')});
   });
   // наклонные: отрезок от первой точки до последней свечи
-  var seen={};
+  var seen={}, tLast=Math.floor(cs[cs.length-1][0]/1000)+MSK, SL=[];
   p.lines.forEach(function(ln){
     var key=ln.a.join()+ln.b.join(); if(seen[key]) return; seen[key]=1;
-    var s=CH.addLineSeries({color:ln.kind==='up'?'#4c8dff':'#c084fc',lineWidth:2,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false});
     var ta=T(ln.a[0]), tb=T(ln.b[0]); if(ta>=tb) return;
-    s.setData([{time:ta,value:ln.a[1]},{time:tb,value:ln.b[1]}]);
+    var v1=ln.a[1]+(ln.b[1]-ln.a[1])*(tLast-ta)/(tb-ta);      // продолжить до последней свечи
+    SL.push({ln:ln,ta:ta,v1:v1});
+  });
+  nearest(SL,function(x){return x.v1;},2).forEach(function(x){
+    if(Math.abs(x.v1-pxNow)/pxNow>0.15) return;
+    var s=CH.addLineSeries({color:x.ln.kind==='up'?'#4c8dff':'#c084fc',lineWidth:2,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:NOSCALE});
+    s.setData([{time:x.ta,value:x.ln.a[1]},{time:tLast,value:x.v1}]);
   });
   // волны (три толчка) и Фибоначчи по последнему ходу зигзага
   var piv=zigzag(cs), wv=waves(piv), WM=[], TT=function(i){ return Math.floor(cs[i][0]/1000)+MSK; };
@@ -794,10 +803,10 @@ function drawChart(kl){
     fb={a:A,b:B,lv:FIB_R.map(function(r){return {r:r,p:B.p-(B.p-A.p)*r};}).concat(FIB_E.map(function(e){return {r:e,p:A.p+(B.p-A.p)*e};}))};
     if(OPT.fib){
       var t0=TT(A.i), t1=TT(cs.length-1);
-      if(t0<t1) fb.lv.forEach(function(x){
+      if(t0<t1) fb.lv.filter(function(x){ return [0.382,0.5,0.618,1.618].indexOf(x.r)>=0; }).forEach(function(x){
         var key=x.r===0.5||x.r===0.618;
         var ls=CH.addLineSeries({color:x.r>1?'rgba(167,139,250,.55)':(key?'#a78bfa':'rgba(167,139,250,.6)'),lineWidth:key?2:1,lineStyle:x.r>1?1:2,
-          lastValueVisible:true,priceLineVisible:false,crosshairMarkerVisible:false,title:'фибо '+x.r});
+          lastValueVisible:true,priceLineVisible:false,crosshairMarkerVisible:false,title:'фибо '+x.r,autoscaleInfoProvider:NOSCALE});
         ls.setData([{time:t0,value:x.p},{time:t1,value:x.p}]);
       });
     }
@@ -809,7 +818,7 @@ function drawChart(kl){
     var tEnd=TT(cs.length-1);
     AL.forEach(function(x){
       var ls=CH.addLineSeries({color:x.t==='L'?'#ff7a1a':'#ff5ca8',lineWidth:x.touch>=3?2:1,lastValueVisible:true,priceLineVisible:false,crosshairMarkerVisible:false,
-        title:(x.t==='L'?'накл. подд.':'накл. сопр.')+(x.touch>=3?' '+x.touch+'×':'')});
+        title:(x.t==='L'?'накл. подд.':'накл. сопр.')+(x.touch>=3?' '+x.touch+'×':''),autoscaleInfoProvider:NOSCALE});
       var t0=TT(x.a.i); if(t0<tEnd) ls.setData([{time:t0,value:x.a.p},{time:tEnd,value:x.now}]);
     });
     ALV.forEach(function(l){
@@ -820,6 +829,7 @@ function drawChart(kl){
   // подпись только у выбранной формации, у остальных стрелка — без наложения текста
   function setMarks(sel){
     cand.setMarkers(p.forms.map(function(f,i){ if(f.idx==null) return null;
+      if(!OPT.lowrr && f.rr!=null && f.rr<3 && i!==sel) return null;   // слабые по R:R — без стрелок
       var up=f.dir!=='short';
       return {time:T(f.idx),position:up?'belowBar':'aboveBar',color:up?'#1fbf75':'#ef4f5a',shape:up?'arrowUp':'arrowDown',text:i===sel?f.title:'',size:i===sel?1.6:1};
     }).filter(Boolean).concat(WM).sort(function(a,b){return a.time-b.time;}));
@@ -852,7 +862,8 @@ function drawChart(kl){
     });
     return best;
   }
-  function fstate(f){ return fdead(f,LASTPX!=null?LASTPX:cs[cs.length-1][4]) || fcancel(f) || (f.rr!=null&&f.rr<1?'R:R ниже 1 — не торгуем':null); }
+  function fstate(f){ return fdead(f,LASTPX!=null?LASTPX:cs[cs.length-1][4]) || fcancel(f) || (f.rr!=null&&f.rr<1?'R:R ниже 1 — не торгуем':null) ||
+    (!OPT.lowrr && f.rr!=null && f.rr<3 ? 'R:R ниже 1:3 — скрыта (кнопка «R:R<3»)' : null); }
   // зона сделки выбранной формации: от свечи сигнала вправо, зелёная до цели,
   // красная до стопа — как инструмент «позиция» в TradingView
   var FZ=null;
