@@ -11,7 +11,9 @@
 Общая страница `bots.html` собирает в одном месте всех ботов из
 `profiles.json` (тренд-фильтр) и `screener-profiles.json` (боты по скринеру).
 Вкладка тренд-бота рисуется здесь же, вкладка бота по скринеру показывает его
-собственную `bot.html` во встроенном окне.
+собственную `bot.html` во встроенном окне. Страница бота вшита в `bots.html`
+целиком (`srcdoc`), поэтому файл самодостаточен: веб-серверу не нужно
+раздавать каталоги ботов.
 """
 
 from __future__ import annotations
@@ -19,7 +21,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -356,18 +357,18 @@ def screener_root(data: Path, args: list[str]) -> Path:
     return data_dir(a, base=data)
 
 
-def screener_tab(data: Path, root: Path) -> str:
-    """Своя страница бота по скринеру во встроенном окне (путь — от bots.html)."""
+def screener_tab(root: Path) -> str:
+    """Своя страница бота по скринеру во встроенном окне, вшитая в bots.html.
+
+    Не ссылкой на файл: веб-сервер раздаёт bots.html, но не обязан раздавать
+    каталоги ботов — по ссылке окно показало бы 404.
+    """
     page = root / "bot.html"
     if not page.exists():
         return ('<div class="box sub">бот ещё не запускался — страница появится '
                 'после первого круга</div>')
-    try:
-        src = Path(os.path.relpath(page, data)).as_posix()
-    except ValueError:                    # другой диск на Windows
-        src = page.resolve().as_uri()
-    return (f'<iframe class="bot" src="{e(src)}" loading="lazy" title="{e(root.name)}"></iframe>'
-            f'<div class="sub"><a href="{e(src)}">открыть отдельно</a></div>')
+    doc = page.read_text(encoding="utf-8")
+    return f'<iframe class="bot" srcdoc="{e(doc)}" loading="lazy" title="{e(root.name)}"></iframe>'
 
 
 TABS_JS = """<script>
@@ -403,7 +404,7 @@ def build_all(data: Path, profiles: list[list[str]],
         name = "По скринеру · " + root.name.removeprefix("screener-")
         # Ledger создаёт каталог — для бота, который ещё не запускался, не трогаем диск
         name, sub = tab_label(Ledger(root), name) if root.exists() else (name, "ещё не запускался")
-        items.append((root.name, name, sub, screener_tab(data, root)))
+        items.append((root.name, name, sub, screener_tab(root)))
     if not items:
         return shell("Торговые боты", '<h1>Торговые боты</h1><div class="box sub">'
                      'профилей нет: data/trade/profiles.json и screener-profiles.json</div>')

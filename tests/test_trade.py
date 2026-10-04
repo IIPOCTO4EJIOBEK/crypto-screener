@@ -231,12 +231,14 @@ def test_общая_страница_показывает_ботов_по_скр
     bot = Ledger(tmp_path / "screener-managed")
     bot.log("equity", equity=1000.0, cash=1000.0, open=0)
     bot.log("equity", equity=1050.0, cash=1050.0, open=0)
-    (bot.root / "bot.html").write_text("<html></html>", encoding="utf-8")
+    (bot.root / "bot.html").write_text('<h1 class="x">Бот & "managed"</h1>', encoding="utf-8")
 
     text = page.write_all(tmp_path, now_ms=START).read_text(encoding="utf-8")
     assert text.count('role="tab"') == 3
     assert "По скринеру · managed" in text and "1050.00 USDT · +5.00 %" in text
-    assert 'src="screener-managed/bot.html"' in text
+    # страница бота вшита целиком и экранирована — без ссылок на соседние файлы
+    assert 'srcdoc="&lt;h1 class=&quot;x&quot;&gt;Бот &amp; &quot;managed&quot;&lt;/h1&gt;"' in text
+    assert "screener-managed/bot.html" not in text
     # бот без запусков: подпись есть, окна нет, каталог не создан
     assert "По скринеру · all-trend-overall" in text
     assert not (tmp_path / "screener-all-trend-overall").exists()
