@@ -57,19 +57,26 @@ echo "== 6. crontab"
 DIR=$(pwd)
 L1="*/2 * * * * cd $DIR && flock -n /tmp/screener-bot.lock $PY -X utf8 -m tools.trade.screener_bot >> data/trade/screener-bot.log 2>&1"
 L2="@reboot cd $DIR && $PY -X utf8 -m tools.trade.webhook >> data/trade/webhook.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'tools.trade.screener_bot' | grep -v 'tools.trade.webhook'; echo "$L1"; echo "$L2" ) | crontab -
-crontab -l | grep tools.trade
+# без set -e внутри: у нового пользователя crontab пуст, и grep без строк
+# возвращает 1 — раньше это молча обрывало скрипт на этом шаге
+TMP=$(mktemp)
+{ crontab -l 2>/dev/null || true; } | { grep -v -e 'tools.trade.screener_bot' -e 'tools.trade.webhook' || true; } > "$TMP"
+echo "$L1" >> "$TMP"
+echo "$L2" >> "$TMP"
+crontab "$TMP"
+rm -f "$TMP"
+crontab -l | grep tools.trade || echo "crontab не записался"
 
 echo "== 7. вебхук"
 if ! pgrep -f 'tools.trade.webhook' >/dev/null; then
-  nohup $PY -X utf8 -m tools.trade.webhook >> data/trade/webhook.log 2>&1 &
+  nohup $PY -X utf8 -m tools.trade.webhook < /dev/null >> data/trade/webhook.log 2>&1 &
   sleep 1
 fi
 pgrep -f 'tools.trade.webhook' >/dev/null && echo "вебхук слушает 127.0.0.1:8787" || echo "вебхук не запустился, см. data/trade/webhook.log"
 
 echo "== 8. проверка правил выхода на архиве (в фоне)"
 if $PY -c "import requests; requests.head('https://data.binance.vision', timeout=10).raise_for_status()" 2>/dev/null; then
-  nohup $PY -X utf8 -m tools.exit_study --days 45 > data/trade/exit_study.txt 2>&1 &
+  nohup $PY -X utf8 -m tools.exit_study --days 45 < /dev/null > data/trade/exit_study.txt 2>&1 &
   echo "запущена, итог: data/trade/exit_study.txt"
 else
   echo "data.binance.vision недоступен — проверку правил выхода пропускаю"
