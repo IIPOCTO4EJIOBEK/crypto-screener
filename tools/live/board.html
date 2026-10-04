@@ -437,7 +437,7 @@ showTab(location.hash.slice(1));
 ['ftb','dtb'].forEach(function(id){
   document.getElementById(id).addEventListener('click',function(e){ var tr=e.target.closest('tr[data-sym]'); if(tr) openChart(tr.dataset.sym, tr.dataset.tf||null); });
 });
-var C={sym:null,tf:'15m'};
+var C={sym:null,tf:'15m',seq:0};
 var CH=null, CHD=null, CHDENS={}, CHAT=0, MSK=3*3600;
 function loadCharts(cb){
   // разметка (уровни, формации) пересобирается кругом скринера: берём свежую,
@@ -453,12 +453,12 @@ function openChart(sym,tf){
   document.getElementById('cfull').href='structures.html#tf='+encodeURIComponent(C.tf)+'&sym='+encodeURIComponent(sym)+'&embed=1';
   [].forEach.call(document.querySelectorAll('#ctf button'),function(b){b.classList.toggle('on',b.dataset.v===C.tf);});
   document.getElementById('chart').classList.add('open'); paused=true;
-  var want=C.sym+'|'+C.tf;
+  var want=++C.seq;   // быстрые клики: рисует только последний
   loadCharts(function(){
     // свечи — родные kline этого ТФ, их держит ВМ (tools/live/klines.py);
     // нет файла — рисуем снимок из charts.json
     fetch('kl/'+C.sym+'_'+C.tf+'.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
-      .then(function(kl){ if(want!==C.sym+'|'+C.tf) return; try{drawChart(kl);}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';} });
+      .then(function(kl){ if(want!==C.seq) return; try{drawChart(kl);}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';} });
   });
 }
 function closeChart(){ document.getElementById('chart').classList.remove('open'); liveStop(); if(CH){CH.remove();CH=null;} paused=false; }
