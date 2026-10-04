@@ -12,6 +12,8 @@
 * `kl/dens_state.json` — живы ли плотности последнего снимка: стоят, съедены
   или сняты (`tools.live.dens_watch`), раз в полминуты.
 
+Тот же процесс шлёт алерты в Telegram (`tools.live.alerts`).
+
 Свечи каждого ТФ — родные `kline_<tf>` биржи (REST на старте, дальше
 WebSocket), а не пересборка из 5m. Состав монет берётся из файла среза
 вселенной и перечитывается раз в несколько минут.
@@ -69,6 +71,7 @@ class Feed:
         self.dirty_live: set[str] = set()
         self.dirty_hist: set[tuple[str, str]] = set()
         self.syms: list[str] = []
+        self.alerts = None
 
     def read_symbols(self) -> list[str]:
         try:
@@ -89,6 +92,11 @@ class Feed:
         elif not cs or c[0] > cs[-1][0]:
             if cs:
                 self.dirty_hist.add(key)            # прошлая свеча закрылась
+                if self.alerts:
+                    try:
+                        self.alerts.candle_closed(sym, tf, cs[-1], cs[:-1])
+                    except Exception as e:          # noqa: BLE001
+                        print(f"klines: алерт свечи: {type(e).__name__} {e}")
             cs.append(c)
             del cs[:-LIMIT]
         else:
@@ -155,6 +163,8 @@ class Feed:
                     took = coins.pop("_elapsed", None)
                     _write(self.out / "stats.json", {"at": int(time.time() * 1000),
                                                      "took": took, "coins": coins})
+                    if self.alerts:
+                        self.alerts.stats_updated(coins)
                 except Exception as e:              # noqa: BLE001
                     print(f"klines: метрики не собраны: {type(e).__name__} {e}")
             await asyncio.sleep(STATS_EVERY)
@@ -174,6 +184,11 @@ class Feed:
         seen, last = 0.0, 0.0
         while True:
             await asyncio.sleep(5)
+            if self.alerts:
+                try:
+                    await asyncio.to_thread(self.alerts.setups, self.out.parent)
+                except Exception as e:              # noqa: BLE001
+                    print(f"klines: алерт сетапов: {type(e).__name__} {e}")
             if not src.exists():
                 continue
             mtime = src.stat().st_mtime        # новый снимок сверяем сразу
@@ -186,6 +201,9 @@ class Feed:
                 st = await asyncio.to_thread(dens_watch.check, src, self.touched)
                 st["at"] = int(time.time() * 1000)
                 _write(self.out / "dens_state.json", st)
+                if self.alerts:
+                    snap = dens_watch.snapshot(src)[1]
+                    await asyncio.to_thread(self.alerts.dens_checked, st, snap)
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: плотности не сверены: {type(e).__name__} {e}")
 
@@ -231,6 +249,8 @@ class Feed:
 
     async def run(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
+        from tools.live.alerts import Alerts
+        self.alerts = Alerts(self.out)
         asyncio.get_running_loop().create_task(self.flusher())
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())
