@@ -67,6 +67,7 @@ svg.sp{display:block}
 #ruler span{position:absolute;left:50%;top:100%;transform:translate(-50%,4px);background:#4c8dff;color:#fff;padding:3px 8px;border-radius:4px;font-size:12px;line-height:1.35;white-space:nowrap;text-align:center}
 #ruler.down span{background:#ef4f5a}
 #fzone{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+#flines{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
 #fzone .z{position:absolute}
 #fzone .tp{background:rgba(31,191,117,.14)}
 #fzone .sl{background:rgba(239,79,90,.14)}
@@ -757,7 +758,7 @@ function wavesHtml(wv,fb,cs){
 function drawChart(kl){
   var box=document.getElementById('cbox'), side=document.getElementById('cside');
   liveStop(); if(CH){CH.remove();CH=null;}
-  rulHide(); CAND=null; ZONE=null; var fz=document.getElementById('fzone'); if(fz) fz.innerHTML='';
+  rulHide(); CAND=null; ZONE=null; var fz=document.getElementById('fzone'); if(fz) fz.innerHTML=''; var flz=document.getElementById('flines'); if(flz) flz.innerHTML='';
   var p=(CHD[C.sym]||{})[C.tf];
   if((!p || !p.candles.length) && !(kl && kl.length)){ side.innerHTML='<h4>Нет данных по этому таймфрейму</h4>'; return; }
   p=p||{candles:[],levels:[],lines:[],forms:[],splashes:[]};
@@ -771,7 +772,7 @@ function drawChart(kl){
     layout:{background:{color:'#0f1115'},textColor:'#c7cdd8',fontSize:12},
     grid:{vertLines:{color:'#1c212b'},horzLines:{color:'#1c212b'}},
     rightPriceScale:{borderColor:'#262c37',scaleMargins:{top:.08,bottom:.22}},
-    timeScale:{borderColor:'#262c37',timeVisible:true,secondsVisible:false,rightOffset:8,barSpacing:8},
+    timeScale:{borderColor:'#262c37',timeVisible:true,secondsVisible:false,rightOffset:30,barSpacing:8},
     crosshair:{mode:0}, localization:{locale:'ru-RU'}});
   var cand=CH.addCandlestickSeries({upColor:'#1fbf75',downColor:'#ef4f5a',borderVisible:false,wickUpColor:'#1fbf75',wickDownColor:'#ef4f5a',
     priceFormat:{type:'price',precision:dig,minMove:Math.pow(10,-dig)}});
@@ -798,7 +799,9 @@ function drawChart(kl){
       title:(big?'★ ':'')+(d.side==='bid'?'плотн. bid ':'плотн. ask ')+money(sz)+(it.k5!=null?' · '+it.k5.toFixed(1)+'×5м':'')+(isRound(d.price)?' · круглое':'')+(near?' · рядом':'')});
   });
   // наклонные: отрезок от первой точки до последней свечи
-  var seen={}, tLast=Math.floor(cs[cs.length-1][0]/1000)+MSK, SL=[];
+  // EXT — наклонные, продолженные вправо за последнюю свечу (рисует extDraw поверх графика)
+  var seen={}, tLast=Math.floor(cs[cs.length-1][0]/1000)+MSK, SL=[], EXT=[];
+  var barSec=cs.length>1?(cs[cs.length-1][0]-cs[cs.length-2][0])/1000:300;
   p.lines.forEach(function(ln){
     var key=ln.a.join()+ln.b.join(); if(seen[key]) return; seen[key]=1;
     var ta=T(ln.a[0]), tb=T(ln.b[0]); if(ta>=tb) return;
@@ -809,6 +812,7 @@ function drawChart(kl){
     if(Math.abs(x.v1-pxNow)/pxNow>0.15) return;
     var s=CH.addLineSeries({color:x.ln.kind==='up'?'#4c8dff':'#c084fc',lineWidth:2,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:NOSCALE});
     s.setData([{time:x.ta,value:x.ln.a[1]},{time:tLast,value:x.v1}]);
+    EXT.push({v:x.v1, sb:(x.v1-x.ln.a[1])/(tLast-x.ta)*barSec, c:x.ln.kind==='up'?'#4c8dff':'#c084fc', w:2});
   });
   // волны (три толчка) и Фибоначчи по последнему ходу зигзага
   var piv=zigzag(cs), wv=waves(piv), WM=[], TT=function(i){ return Math.floor(cs[i][0]/1000)+MSK; };
@@ -838,6 +842,7 @@ function drawChart(kl){
       var ls=CH.addLineSeries({color:x.t==='L'?'#ff7a1a':'#ff5ca8',lineWidth:x.touch>=3?2:1,lastValueVisible:true,priceLineVisible:false,crosshairMarkerVisible:false,
         title:(x.t==='L'?'накл. подд.':'накл. сопр.')+(x.touch>=3?' '+x.touch+'×':''),autoscaleInfoProvider:NOSCALE});
       var t0=TT(x.a.i); if(t0<tEnd) ls.setData([{time:t0,value:x.a.p},{time:tEnd,value:x.now}]);
+      EXT.push({v:x.now, sb:x.sl, c:x.t==='L'?'#ff7a1a':'#ff5ca8', w:x.touch>=3?2:1});
     });
     ALV.forEach(function(l){
       cand.createPriceLine({price:l.p,color:'rgba(230,233,239,.85)',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'уровень '+l.n+'×'});
@@ -913,8 +918,25 @@ function drawChart(kl){
     el.innerHTML=rect(f.target,'tp',f.target==null?'':'цель '+px(f.target)+' ('+pc(f.target)+')'+(f.rr!=null?' · R:R '+f.rr:'')+nowT)+
                  rect(f.stop,'sl','стоп '+px(f.stop)+' ('+pc(f.stop)+')')+marks;
   }
-  ZONE=zoneDraw;
-  CH.timeScale().subscribeVisibleLogicalRangeChange(function(){ if(ZONE===zoneDraw) zoneDraw(); });
+  // продолжение наклонных вправо пунктиром до шкалы цены — видно, куда упрётся цена
+  function extDraw(){
+    var el=document.getElementById('flines');
+    if(!el){ el=document.createElement('div'); el.id='flines'; box.appendChild(el); }
+    if(!CH || !EXT.length || cs.length<2){ el.innerHTML=''; return; }
+    var ts=CH.timeScale(), x0=ts.timeToCoordinate(tLast), xp=ts.timeToCoordinate(tLast-barSec);
+    var x2=box.clientWidth-CH.priceScale('right').width();
+    if(x0==null || xp==null || x0>=x2 || x0<=xp){ el.innerHTML=''; return; }
+    var bars=(x2-x0)/(x0-xp), svg='';
+    EXT.forEach(function(e){
+      var y0=cand.priceToCoordinate(e.v), y2=cand.priceToCoordinate(e.v+e.sb*bars);
+      if(y0==null || y2==null) return;
+      svg+='<line x1="'+x0+'" y1="'+y0+'" x2="'+x2+'" y2="'+y2+'" stroke="'+e.c+'" stroke-width="'+e.w+'" stroke-dasharray="6 4" opacity=".9"/>';
+    });
+    el.innerHTML='<svg width="100%" height="100%" style="position:absolute;inset:0">'+svg+'</svg>';
+  }
+  ZONE=function(){ zoneDraw(); extDraw(); };
+  var ZMINE=ZONE;
+  CH.timeScale().subscribeVisibleLogicalRangeChange(function(){ if(ZONE===ZMINE) ZMINE(); });
   var fl=[];
   function pick(i){
     setMarks(i);
@@ -942,9 +964,9 @@ function drawChart(kl){
   if(first<0) first=p.forms.findIndex(function(f){ return !fstate(f); });
   if(p.forms.length) pick(first<0?0:first); else setMarks(-1);
   var n=cs.length;
-  if(C.keep && C.range){ try{ CH.timeScale().setVisibleRange(C.range); }catch(e){ CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8}); } }
-  else CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+8});
-  LASTPX=cs[cs.length-1][4]; setTimeout(zoneDraw,0);
+  if(C.keep && C.range){ try{ CH.timeScale().setVisibleRange(C.range); }catch(e){ CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+30}); } }
+  else CH.timeScale().setVisibleLogicalRange({from:Math.max(0,n-120),to:n+30});   // справа ~20% пустого места под продолжение линий
+  LASTPX=cs[cs.length-1][4]; setTimeout(function(){ if(ZONE===ZMINE) ZMINE(); },0);
   liveStart(C.sym,C.tf,cand,vol,dig,cs[cs.length-1][0]);
 }document.getElementById('tb').addEventListener('click',function(e){
   var fv=e.target.closest('[data-fav]'), hd=e.target.closest('[data-hide]');
