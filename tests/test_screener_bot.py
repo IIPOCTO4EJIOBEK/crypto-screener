@@ -276,3 +276,53 @@ def test_bot_json_для_страницы_скринера(tmp_path):
     assert o["symbol"] == "AAAUSDT" and o["reasons"] == ["флагшток +3 %", "пробой"]
     assert o["book"]["band_usdt"] == 5e5
     assert o["levels"]["tp1"] == pytest.approx(102.0) and o["levels"]["stop_now"] == 98.0
+
+
+# --------------------------------------------------------------------------
+# внешние сигналы: ручная сделка и вебхук
+# --------------------------------------------------------------------------
+def test_ручной_сигнал_мимо_фильтра_тренда(tmp_path):
+    from src.trade import inbox
+    book, broker, ledger, st, data = setup(tmp_path)
+    inbox.put(tmp_path, {"symbol": "BINANCE:AAAUSDT.P", "side": "buy", "stop_pct": 2,
+                         "note": "пробой"})
+    inbox.put(tmp_path, {"symbol": "AAAUSDT", "side": "short"})          # без стопа
+    rows, bad = inbox.take(tmp_path, lambda s: 100.0)
+    assert len(rows) == 1 and bad and "стоп" in bad[0][1]
+    r = rows[0]
+    assert r["stop"] == pytest.approx(98.0) and r["target"] == pytest.approx(104.0)
+    trend = {"coins": {"AAAUSDT": {"1h": "short", "15m": "short", "overall": "short"}}}
+    res = run(st, broker, ledger, data, rows, T0, Config(trend="overall", policy="measured"),
+              trend)
+    assert res["opened"] == 1 and st.pos()[0].reasons == ["пробой"]
+    assert not list((tmp_path / "inbox").glob("*.json"))
+
+
+def test_вебхук_секрет_и_очередь(tmp_path):
+    import io
+    import json as _json
+
+    from tools.trade.webhook import make_handler
+    bot = tmp_path / "screener-managed"
+    bot.mkdir()
+    (bot / "state.json").write_text("{}")
+    H = make_handler("s" * 20, tmp_path)
+
+    def call(body: dict, token: str | None = None, path="/hook"):
+        raw = _json.dumps(body).encode()
+        h = H.__new__(H)
+        h.path = path
+        h.headers = {"Content-Length": str(len(raw)), **({"X-Token": token} if token else {})}
+        h.rfile = io.BytesIO(raw)
+        h.wfile = io.BytesIO()
+        sent = {}
+        h.send_response = lambda c: sent.setdefault("code", c)
+        h.send_header = lambda *a: None
+        h.end_headers = lambda: None
+        h.do_POST()
+        return sent["code"]
+
+    assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1}, "wrong") == 403
+    assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1, "token": "s" * 20}) == 200
+    assert call({"symbol": "BTCUSDT"}, "s" * 20, "/hook?bot=nope") == 404
+    assert len(list((bot / "inbox").glob("*.json"))) == 1

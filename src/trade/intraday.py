@@ -85,7 +85,8 @@ class Exit:
 
 def signal_key(row: dict) -> str:
     """Один и тот же сигнал скринер показывает несколько кругов подряд."""
-    return f"{row['kind']}|{row['tf']}|{row['symbol']}|{row['direction']}|{row['entry']:.10g}"
+    key = f"{row['kind']}|{row['tf']}|{row['symbol']}|{row['direction']}|{row['entry']:.10g}"
+    return key + (f"|{row['key_suffix']}" if row.get("key_suffix") else "")
 
 
 def eligible(row: dict, *, policy: str, max_age: int = 1) -> str | None:
@@ -469,12 +470,13 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             if len(st.positions) >= cfg.max_open:
                 break                          # места нет; сигнал ещё свежий — посмотрим в следующий круг
             st.seen[key] = now_ms
-            why = eligible(row, policy=cfg.policy, max_age=cfg.max_age)
+            manual = bool(row.get("manual"))     # ручной / вебхук: решение трейдера
+            why = eligible(row, policy="all" if manual else cfg.policy, max_age=cfg.max_age)
             if why == "сигнал не свежий":
                 continue                       # старые — молча, их много
             side = row["direction"]
             tr = trend_of(trend, row["symbol"], row["tf"], cfg.trend if cfg.trend != "off" else "tf")
-            why = why or trend_block(side, tr, cfg.trend)
+            why = why or (None if manual else trend_block(side, tr, cfg.trend))
             if not why and row["symbol"] in open_syms:
                 why = "по монете уже есть позиция"
             if not why and row["symbol"] in open_cool:
