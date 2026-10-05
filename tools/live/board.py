@@ -317,6 +317,10 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
             "ch24h": _pct(price, ago24) if ago24 else None,
             "volume": (uni.get("volumes") or {}).get(sym),
             "natr": _natr(h1),
+            # всплеск объёма за сутки: самая крупная 15м свеча к среднему за сутки
+            "spike24": (round(max(c[5] for c in m15[-97:-1]) / (sum(c[5] for c in m15[-97:-1]) / len(m15[-97:-1])), 1)
+                        if len(m15) > 20 and sum(c[5] for c in m15[-97:-1]) else None),
+            "next_funding": (stats.get(sym) or {}).get("next_funding"),
             "trend": tr, "overall": tr_all,
             "dens_pct": d.get("nearest_pct"), "dens_usd": d.get("nearest_notional"),
             "dens_n": d.get("n_densities"),

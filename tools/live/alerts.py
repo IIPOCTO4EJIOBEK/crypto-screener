@@ -43,6 +43,14 @@ NEAR_DAY = 0.3
 MIN_DENS = 100_000          # съеденные плотности меньше этого не шлём
 MAX_PER_MIN = 15            # потолок сообщений в минуту, чтобы не залить канал
 MIN_RR = 3.0                # сделки по тренду — только от 1:3 (правило markus)
+# Монеты «в игре» (разбор алертов Дигаша): алерты — только по ним, остальные
+# хай/лой дня — одной сводкой раз в DIGEST_MIN минут. Дневной лимит — на всё, кроме отработок.
+PLAY_TOP = 15               # топ роста за сутки
+PLAY_CH = 5.0               # или изменение за сутки по модулю от, %
+PLAY_NATR = 1.5             # или NATR 1ч от, %
+PLAY_SPIKE = 3.0            # или 5м свеча за последний час с оборотом от N× среднего
+DIGEST_MIN = 30
+DAY_LIMIT = 60
 SCREENER_URL = "http://10.1.222.59"
 
 
@@ -96,6 +104,10 @@ class Alerts:
         except Exception:                           # noqa: BLE001
             self.tracks = []
         self._trend: tuple[float, dict] = (0.0, {})
+        self.digest: dict[str, str] = {}
+        self.dens_age: dict[str, int] = {}
+        self.digest_at = time.time()
+        self.day_count: tuple[str, int] = (time.strftime("%Y%m%d"), 0)
         self._charts: tuple[float, dict] = (0.0, {})
         # отправка — в своём потоке: живой поток свечей не должен ждать Telegram
         self.q: queue.Queue = queue.Queue()
@@ -115,6 +127,12 @@ class Alerts:
         self.window = [t for t in self.window if now - t < 60]
         if len(self.window) >= MAX_PER_MIN:
             return
+        day = time.strftime("%Y%m%d")
+        if self.day_count[0] != day:
+            self.day_count = (day, 0)
+        if self.day_count[1] >= DAY_LIMIT:
+            return
+        self.day_count = (day, self.day_count[1] + 1)
         self.window.append(now)
         self.sent[key] = now
         self.q.put((key, build))
@@ -352,6 +370,43 @@ class Alerts:
             (f"\n\n{ctx}" if ctx else "") + f"\n#{sym} · {open_link}"
         return text, png, trade
 
+    def in_play(self, sym: str) -> bool:
+        """Монета «в игре»: топ роста, сильное движение за сутки, высокий NATR или свежий всплеск объёма."""
+        st = self.stats.get(sym) or {}
+        ch = st.get("ch24h")
+        if ch is not None:
+            if abs(ch) >= PLAY_CH:
+                return True
+            ranked = sorted((v.get("ch24h") or 0 for v in self.stats.values()), reverse=True)
+            if ch > 0 and ranked.index(ch) < PLAY_TOP:
+                return True
+        h1 = self.candles(sym, "1h")
+        if len(h1) > 16:
+            trs = [max(c[2], p[4]) - min(c[3], p[4]) for p, c in zip(h1[-15:-1], h1[-14:])]
+            if h1[-1][4] and sum(trs) / len(trs) / h1[-1][4] * 100 >= PLAY_NATR:
+                return True
+        m5 = self.candles(sym, "5m")
+        if len(m5) > 40:
+            base = [c[5] for c in m5[-37:-13] if c[5]]
+            avg = sum(base) / len(base) if base else 0
+            if avg and max(c[5] for c in m5[-13:]) >= PLAY_SPIKE * avg:
+                return True
+        return False
+
+    def flush_digest(self) -> None:
+        """Сводка хай/лой дня по монетам не «в игре» — одним сообщением."""
+        if not self.digest or time.time() - self.digest_at < DIGEST_MIN * 60:
+            return
+        items, self.digest, self.digest_at = sorted(self.digest.items()), {}, time.time()
+        hi = [f"{s.removesuffix('USDT')} {t}" for s, t in items if t.startswith("⬆")]
+        lo = [f"{s.removesuffix('USDT')} {t}" for s, t in items if t.startswith("⬇")]
+        text = f"🗒 <b>Сводка за {DIGEST_MIN} мин</b>: крупные монеты у границ дня (не в игре — без отдельных алертов)"
+        if hi:
+            text += "\nУ хая: " + ", ".join(x.replace("⬆ ", "") for x in hi)
+        if lo:
+            text += "\nУ лоя: " + ", ".join(x.replace("⬇ ", "") for x in lo)
+        self._send(f"digest|{int(time.time())}", lambda text=text: (text, b""))
+
     def _trend_side(self, sym: str) -> str | None:
         """Тренд монеты на 15м из trend-now.json (кэш по времени файла)."""
         path = self.live_dir / "trend-now.json"
@@ -399,25 +454,33 @@ class Alerts:
             for d in ds:
                 k = dens_watch.key(sym, d)
                 st = (items.get(k) or {}).get("s")
-                if st == "eaten" and self.dens_prev.get(k) == "shown" and (d.get("notional") or 0) >= MIN_DENS:
+                if st == "eaten" and self.dens_prev.get(k) == "shown" and (d.get("notional") or 0) >= MIN_DENS \
+                        and self.in_play(sym):
                     side = "продажу" if d["side"] == "ask" else "покупку"
-                    dd = dict(d)
+                    dd = dict(d, age=self.dens_age.get(k))
                     self._send(f"eaten|{k}", lambda sym=sym, dd=dd, side=side: self._pack(
-                        sym, "5m", f"🍽 <b>{sym.removesuffix('USDT')}</b> съели плотность на {side}: "
-                                   f"{_fmt(dd['price'])}, было {_money(dd['notional'])} $",
+                        sym, "5m", f"🍽 <b>{sym.removesuffix('USDT')}</b> съели плотность: "
+                                   f"{'ask' if dd['side'] == 'ask' else 'bid'} {_fmt(dd['price'])} · {_money(dd['notional'])} $"
+                                   + (f" · стояла {dd['age'] // 60} мин" if dd.get("age") else ""),
                         hlines=[(dd["price"], "#f0b429", "съели")], title="плотность съедена"))
         # «было на экране»: съеденной считаем только плотность, прошедшую порог
         self.dens_prev = {k: ("shown" if dens_watch.shown(v, R) else v.get("s")) for k, v in items.items()}
+        self.dens_age = {k: v["age"] for k, v in items.items() if v.get("age") is not None} |             {k: a for k, a in self.dens_age.items() if k not in items}
 
     def stats_updated(self, coins: dict[str, dict]) -> None:
         """Цена у хая или лоя дня."""
         self.stats = coins
+        self.flush_digest()
         for sym, st in coins.items():
             p, hi, lo = st.get("price"), st.get("day_hi"), st.get("day_lo")
             if not p or hi is None or lo is None:
                 continue
             day = time.strftime("%Y%m%d")
-            if (hi - p) / p * 100 <= NEAR_DAY:
+            near_hi, near_lo = (hi - p) / p * 100 <= NEAR_DAY, (p - lo) / p * 100 <= NEAR_DAY
+            if (near_hi or near_lo) and not self.in_play(sym):
+                self.digest[sym] = f"⬆ {_fmt(hi)}" if near_hi else f"⬇ {_fmt(lo)}"
+                continue
+            if near_hi:
                 self._send(f"dayhi|{sym}|{day}", lambda sym=sym, p=p, hi=hi: self._pack(
                     sym, "15m", f"⬆️ <b>{sym.removesuffix('USDT')}</b> у хая дня: цена {_fmt(p)}, хай {_fmt(hi)}",
                     hlines=[(hi, "#4c8dff", "хай дня")], title="у хая дня", extra=self._level_age(sym, hi, True)))

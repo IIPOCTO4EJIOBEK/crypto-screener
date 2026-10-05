@@ -155,9 +155,10 @@ footer{color:var(--mute);font-size:12px;padding:12px 16px 24px}
     <th data-k="volume">Оборот 24ч</th>
     <th data-k="natr">NATR 1ч</th>
     <th data-k="rvol" title="Оборот последней закрытой 15м свечи к среднему за сутки">Объём ×</th>
+    <th data-k="spike24" title="Самая крупная 15м свеча за сутки к среднему обороту — был ли всплеск">Всплеск 24ч</th>
     <th data-k="tpm" title="Сделок в минуту за последние 5 минут и во сколько раз это больше среднего за сутки">Сделок/мин</th>
     <th data-k="dhl" title="Сколько процентов до хая (↑) и лоя (↓) дня и недели">До хая / лоя</th>
-    <th data-k="funding" title="Текущая ставка финансирования за 8 ч">Funding</th>
+    <th data-k="funding" title="Текущая ставка финансирования и сколько до следующего списания">Funding · до списания</th>
     <th data-k="oi1h" title="Изменение открытого интереса за 1 ч и за сутки">OI 1ч · 24ч</th>
     <th data-k="ls" title="Доля счетов в лонге к доле в шорте (Binance)">L/S</th>
     <th data-k="cvd1h" title="Покупки по рынку минус продажи по рынку за час, USDT">CVD 1ч</th>
@@ -253,6 +254,8 @@ function fdead(f,p){
   if(f.target!=null && (up ? p>=f.target : p<=f.target)) return 'цель взята';
   return null;
 }
+function ftimer(t){ var d=t-Date.now(); if(d<=0) return 'сейчас'; var h=Math.floor(d/3600000), m=Math.floor(d%3600000/60000); return 'через '+(h?h+' ч ':'')+m+' мин'; }
+setInterval(function(){ [].forEach.call(document.querySelectorAll('.ftimer'),function(el){ el.textContent=ftimer(+el.dataset.nf); }); },30000);
 function sideOf(r){ return S.tf==='overall' ? r.overall : ((r.trend[S.tf]||{}).side || 'flat'); }
 function val(r,k){
   if(k==='overall') return {long:1,flat:0,short:-1}[r.overall];
@@ -285,8 +288,11 @@ function render(){
   });
   var html = rows.map(function(r){
     var tfs = '<span class="tf">'+['15m','1h','4h'].map(function(t){return tag((r.trend[t]||{}).side,true);}).join('')+'</span>';
+    var dit=r.dens_px!=null?DST.items[dkey(r.symbol,r.dens_side,r.dens_px)]:null;
     var dens = r.dens_pct==null ? '<span class="mute">—</span>' :
-      '<span class="dens'+(r.dens_pct<=drules().near_pct?' near':'')+'">'+r.dens_pct.toFixed(2)+'%</span> <span class="mute">'+money(r.dens_usd)+' $</span>';
+      '<span class="'+(r.dens_side==='bid'?'up':'down')+'">'+(r.dens_side==='bid'?'bid':'ask')+'</span> '+money(r.dens_usd)+' $ · '+
+      '<span class="dens'+(r.dens_pct<=drules().near_pct?' near':'')+'">'+r.dens_pct.toFixed(2)+'%</span>'+
+      (dit&&dit.age!=null?' <span class="mute">· '+(dit.age>=3600?Math.floor(dit.age/3600)+' ч':Math.max(1,Math.round(dit.age/60))+' мин')+'</span>':'');
     var live = r.forms.filter(function(f){ return !fdead(f,r.price); });
     var fs = live.slice(0,3).map(function(f){
       var arrow = f.dir==='long'?' ↑':f.dir==='short'?' ↓':'';
@@ -298,9 +304,11 @@ function render(){
       '<td>'+px(r.price)+'</td><td>'+pct(r.ch1h)+'</td><td>'+pct(r.ch24h)+'</td>'+
       '<td>'+money(r.volume)+'</td><td>'+(r.natr==null?'—':r.natr.toFixed(2)+'%')+'</td>'+
       '<td>'+(r.rvol==null?'<span class="mute">—</span>':'<span class="'+(r.rvol>=3?'near':r.rvol>=1.5?'up':'')+'">'+r.rvol.toFixed(1)+'×</span>')+'</td>'+
+      '<td>'+(r.spike24==null?'<span class="mute">—</span>':'<span class="'+(r.spike24>=5?'near':r.spike24>=3?'up':'mute')+'">'+r.spike24.toFixed(1)+'×</span>')+'</td>'+
       '<td class="two">'+(r.tpm==null?'<span class="mute">—</span>':r.tpm.toLocaleString('ru-RU')+(r.tpm_avg?'<small class="'+(r.tpm/r.tpm_avg>=2?'near':'')+'">'+(r.tpm/r.tpm_avg).toFixed(1)+'× к среднему</small>':''))+'</td>'+
       '<td class="two">'+hl(r.day,'дн')+hl(r.week,'нед',1)+'</td>'+
-      '<td>'+(r.funding==null?'<span class="mute">—</span>':'<span class="'+(r.funding>=0.05?'down':r.funding<=-0.05?'up':'')+'">'+(r.funding>0?'+':'')+r.funding.toFixed(4)+'%</span>')+'</td>'+
+      '<td class="two">'+(r.funding==null?'<span class="mute">—</span>':'<span class="'+(r.funding>=0.05?'down':r.funding<=-0.05?'up':'')+'">'+(r.funding>0?'+':'')+r.funding.toFixed(4)+'%</span>')+
+        (r.next_funding?'<small class="ftimer" data-nf="'+r.next_funding+'">'+ftimer(r.next_funding)+'</small>':'')+'</td>'+
       '<td class="two">'+pct(r.oi1h)+'<small>'+(r.oi24h==null?'—':(r.oi24h>0?'+':'')+r.oi24h.toFixed(1)+'% · '+money(r.oi)+' $')+'</small></td>'+
       '<td>'+(r.ls==null?'<span class="mute">—</span>':'<span class="'+(r.ls>=2?'down':r.ls<=0.7?'up':'')+'">'+r.ls.toFixed(2)+'</span>')+'</td>'+
       '<td>'+(r.cvd1h==null?'<span class="mute">—</span>':'<span class="'+(r.cvd1h>0?'up':r.cvd1h<0?'down':'')+'">'+(r.cvd1h>0?'+':r.cvd1h<0?'−':'')+money(Math.abs(r.cvd1h))+'</span>')+'</td>'+
@@ -790,10 +798,18 @@ function drawChart(kl){
   // линии разметки не участвуют в автомасштабе: шкала строится по свечам
   var NOSCALE=function(){ return null; }, pxNow=cs[cs.length-1][4];
   function nearest(xs,get,k){ return xs.slice().sort(function(a,b){return Math.abs(get(a)-pxNow)-Math.abs(get(b)-pxNow);}).slice(0,k); }
+  var TFRU={'5m':'5м','15m':'15м','1h':'1ч','4h':'4ч'};
   nearest(p.levels,function(l){return l.price;},3).forEach(function(l){
     cand.createPriceLine({price:l.price,color:l.kind==='support'?'#1fbf75':'#ef4f5a',lineWidth:1,lineStyle:2,axisLabelVisible:true,
-      title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')});
+      title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')+' · '+(TFRU[C.tf]||C.tf)});
   });
+  // уровни старшего ТФ (1ч на 5м и 15м) — сильнее, подписаны своим ТФ
+  if(C.tf!=='1h'){ var hp=(CHD[C.sym]||{})['1h'];
+    if(hp) nearest(hp.levels||[],function(l){return l.price;},2).forEach(function(l){
+      if(Math.abs(l.price-pxNow)/pxNow>0.05) return;
+      cand.createPriceLine({price:l.price,color:l.kind==='support'?'#1fbf75':'#ef4f5a',lineWidth:2,lineStyle:0,axisLabelVisible:true,
+        title:(l.kind==='support'?'подд.':'сопр.')+(l.touches?' '+l.touches+'×':'')+' · 1ч'});
+    }); }
   // плотности из стакана: оранжевые линии с размером
   (CHDENS[C.sym]||[]).filter(function(d){ return dshow(C.sym,d) && Math.abs(d.price-pxNow)/pxNow*100<=drules().max_dist; }).sort(function(a,b){return b.notional-a.notional;}).slice(0,3).forEach(function(d){
     var it=DST.items[dkey(C.sym,d.side,d.price)]||{}, sz=it.s==='live'&&it.left?it.left:d.notional;
@@ -848,7 +864,7 @@ function drawChart(kl){
       EXT.push({v:x.now, sb:x.sl, c:x.t==='L'?'#ff7a1a':'#ff5ca8', w:x.touch>=3?2:1});
     });
     ALV.forEach(function(l){
-      cand.createPriceLine({price:l.p,color:'rgba(230,233,239,.85)',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'уровень '+l.n+'×'});
+      cand.createPriceLine({price:l.p,color:'rgba(230,233,239,.85)',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'уровень '+l.n+'× · '+(TFRU[C.tf]||C.tf)});
     });
   }
   // формации: маркеры на свечах; вход/стоп/цель — только у выбранной
