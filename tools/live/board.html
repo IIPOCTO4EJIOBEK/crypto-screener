@@ -890,6 +890,24 @@ function drawChart(kl){
   }
   function fstate(f){ return fdead(f,LASTPX!=null?LASTPX:cs[cs.length-1][4]) || fcancel(f) || (f.rr!=null&&f.rr<1?'R:R ниже 1 — не торгуем':null) ||
     (!OPT.lowrr && f.rr!=null && f.rr<3 ? 'R:R ниже 1:3 — скрыта (кнопка «R:R<3»)' : null); }
+  // открытые позиции ботов по этой монете: вход, стоп, цель и текущий R (kl/positions.json)
+  var POSL=[];
+  function posDraw(){
+    fetch('kl/positions.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}).then(function(j){
+      if(!j || CAND!==cand) return;
+      POSL.forEach(function(l){ try{cand.removePriceLine(l);}catch(e){} }); POSL=[];
+      (j.positions||[]).filter(function(x){return x.symbol===C.sym;}).forEach(function(x){
+        var up=x.side!=='short', R=x.risk0||Math.abs(x.entry-x.stop), px0=LASTPX!=null?LASTPX:cs[cs.length-1][4];
+        var nowR=R?((up?px0-x.entry:x.entry-px0)/R):0, tag='бот '+x.bot+' '+(up?'лонг':'шорт');
+        POSL.push(cand.createPriceLine({price:x.entry,color:'#22d3ee',lineWidth:2,lineStyle:0,axisLabelVisible:true,
+          title:tag+' · вход · сейчас '+(nowR>0?'+':'')+nowR.toFixed(2)+'R'}));
+        if(x.stop) POSL.push(cand.createPriceLine({price:x.stop,color:'#ef4f5a',lineWidth:2,lineStyle:2,axisLabelVisible:true,title:tag+' · стоп'}));
+        if(x.target) POSL.push(cand.createPriceLine({price:x.target,color:'#1fbf75',lineWidth:2,lineStyle:2,axisLabelVisible:true,title:tag+' · цель'}));
+      });
+    });
+  }
+  posDraw();
+  var posTimer=setInterval(function(){ if(CAND!==cand){ clearInterval(posTimer); return; } posDraw(); }, 10000);
   // зона сделки выбранной формации: от свечи сигнала вправо, зелёная до цели,
   // красная до стопа — как инструмент «позиция» в TradingView
   var FZ=null;

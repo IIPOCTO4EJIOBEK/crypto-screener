@@ -85,4 +85,22 @@
     [].forEach.call(document.querySelectorAll('header nav, nav.links, .nav, .links, .toplinks'),function(el){ if(!bar.contains(el)) el.style.display='none'; });
   }
   mark();
+
+  // Монеты в таблицах — ссылки на график в скринере (#chart=SYM&tf=TF), в том числе
+  // внутри вкладок ботов (встроенные окна той же страницы). Таблицы пересобираются — проходим раз в 3 с.
+  var SYM=/^(?:(ЛОНГ|ШОРТ)\s*)?([A-Z0-9]{2,}USDT)$/;
+  function linkify(doc){
+    if(!doc || !doc.body) return;
+    [].forEach.call(doc.querySelectorAll('td'),function(td){
+      if(td.dataset.gnl || td.querySelector('a')) return;
+      var m=SYM.exec((td.textContent||'').trim()); if(!m) return;
+      var row=td.closest('tr'), tf=/\b(1m|5m|15m|1h|4h)\b/.exec(row?row.textContent:'');
+      var a=doc.createElement('a'); a.href='/#chart='+m[2]+'&tf='+(tf?tf[1]:'15m'); a.target='_top'; a.textContent=m[2];
+      a.style.cssText='color:#4c8dff;text-decoration:none;font-weight:600'; a.title='Открыть график в скринере';
+      td.textContent=''; if(m[1]){ td.appendChild(doc.createTextNode(m[1]+' ')); } td.appendChild(a); td.dataset.gnl='1';
+    });
+    if(doc===document && location.pathname!=='/' && location.pathname!=='/board.html')
+      [].forEach.call(doc.querySelectorAll('iframe'),function(f){ try{ linkify(f.contentDocument); }catch(e){} });
+  }
+  if(location.pathname!=='/' && location.pathname!=='/board.html'){ linkify(document); setInterval(function(){ linkify(document); },3000); }
 })();

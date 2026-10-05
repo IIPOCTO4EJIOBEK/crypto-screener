@@ -50,7 +50,34 @@ def ensure(live_dir: Path) -> int:
                 shutil.copy2(src, dst)
         except Exception:                           # noqa: BLE001
             pass
+    positions(live_dir)
     n = sum(inject(live_dir / p) for p in PAGES if (live_dir / p).exists())
     if TRADE.exists():
         n += sum(inject(p) for p in TRADE.glob("*/bot.html"))
     return n
+
+
+def positions(live_dir: Path) -> int:
+    """Открытые позиции ботов по скринеру → kl/positions.json (для графика главной)."""
+    import json
+    out = []
+    if TRADE.exists():
+        for st in TRADE.glob("screener-*/state.json"):
+            try:
+                d = json.loads(st.read_text(encoding="utf-8"))
+            except Exception:                       # noqa: BLE001
+                continue
+            bot = st.parent.name.removeprefix("screener-")
+            for p in (d.get("positions") or {}).values():
+                if not isinstance(p, dict) or not p.get("symbol"):
+                    continue
+                out.append({k: p.get(k) for k in ("symbol", "tf", "side", "entry", "stop", "target", "risk0",
+                                                   "opened_ms", "expires_ms", "title", "mark")} | {"bot": bot})
+    path = live_dir / "kl" / "positions.json"
+    try:
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps({"positions": out}, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:                               # noqa: BLE001
+        pass
+    return len(out)
