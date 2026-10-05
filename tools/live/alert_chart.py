@@ -218,15 +218,55 @@ def scenario(cs: list[list], lines: list[dict], levels: list[float], piv: list[d
     s = sup[0] if sup else (lows[0] if lows else None)
     up_t = next((x for x in res + highs if x > p + gap), None)
     down_t = next((x for x in sup[1:] + lows if s is not None and x < s - gap), None)
+    def pc(x: float) -> str:                # проценты от текущей цены
+        return f"{_fmt(x)} ({(x - p) / p * 100:+.2f}%)"
     out = []
     if s is not None:
         kind = "трендовой" if any(abs(x["now"] - s) < 1e-12 for x in lines) else "уровне"
-        out.append(f"↗️ Если удержимся на {kind} {_fmt(s)}" + (f" — дорога к {_fmt(up_t)}." if up_t else " — продолжение вверх."))
+        out.append(f"↗️ Если удержимся на {kind} {pc(s)}" + (f" — дорога к {pc(up_t)}." if up_t else " — продолжение вверх."))
         if down_t:
-            out.append(f"↘️ Если пробьём {_fmt(s)} закрытием свечи — ждём снижения к {_fmt(down_t)}.")
+            out.append(f"↘️ Если пробьём {_fmt(s)} закрытием свечи — ждём снижения к {pc(down_t)}.")
     elif up_t:
-        out.append(f"↗️ Сверху ближайшая цель {_fmt(up_t)}.")
+        out.append(f"↗️ Сверху ближайшая цель {pc(up_t)}.")
     return "\n".join(out)
+
+
+def trade13(cs: list[list], direction: str, dens=(), min_rr: float = 3.0) -> dict:
+    """Сделка по тренду от текущей цены: стоп за ближайшей опорой (поддержкой для
+    лонга, сопротивлением для шорта), цель — по `plan` с правилом 1:3."""
+    if len(cs) < 30 or direction not in ("long", "short"):
+        return {"ok": False, "why": "нет тренда"}
+    p, atr = cs[-1][4], _atr(cs)
+    piv = zigzag(cs)
+    ls, lv = trendlines(cs, piv), hlevels(cs, piv)
+    up = direction == "long"
+    # стоп не ближе 1,2 средней свечи и 0,4% от цены: ближе его снимет шум, а комиссия съест R
+    mind = max(atr * 1.2, p * 0.004)
+    if up:
+        sup = [x["now"] for x in ls if x["t"] == "L" and x["now"] < p] + [l for l in lv if l < p] + \
+              [q["p"] for q in piv if q["t"] == "L" and q["p"] < p]
+        base = max(sup) if sup else p - atr
+        stop = min(base - atr * 0.3, p - mind)
+    else:
+        res = [x["now"] for x in ls if x["t"] == "H" and x["now"] > p] + [l for l in lv if l > p] + \
+              [q["p"] for q in piv if q["t"] == "H" and q["p"] > p]
+        base = min(res) if res else p + atr
+        stop = max(base + atr * 0.3, p + mind)
+    pl = plan(cs, p, stop, direction, dens=dens, min_rr=min_rr)
+    return dict(pl, entry=p, stop=stop, direction=direction)
+
+
+def trade13_text(t: dict) -> str:
+    p = t.get("entry")
+    if not p:
+        return ""
+    side = "лонг" if t["direction"] == "long" else "шорт"
+    def pc(x: float) -> str:
+        return f"{_fmt(x)} ({(x - p) / p * 100:+.2f}%)"
+    if not t.get("ok"):
+        return f"📐 1:3 по тренду ({side}): не набирается — {t.get('why', '')}."
+    return (f"📐 1:3 по тренду: {side} от {_fmt(p)} · стоп {pc(t['stop'])} · цель {pc(t['target'])} "
+            f"— {t['why']}, R:R 1:{t['rr']:.1f}")
 
 
 def analysis(cs: list[list]) -> tuple[list[dict], list[float], str]:

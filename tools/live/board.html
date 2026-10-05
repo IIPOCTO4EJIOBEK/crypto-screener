@@ -527,6 +527,9 @@ segBind('ttf',TS,'tf',function(){saveT();renderTrade();}); segBind('tdir',TS,'di
 (function(){ var c=document.getElementById('trr3'); c.checked=!!TS.rr3; c.onchange=function(){TS.rr3=c.checked;saveT();renderTrade();}; })();
 
 function showTab(name){
+  // ссылка из алерта: #chart=XRPUSDT&tf=5m — сразу открыть график монеты
+  var cm=/^chart=([A-Z0-9]+)(?:&tf=(\w+))?/.exec(name||'');
+  if(cm){ name='coins'; setTimeout(function(){ if(TR[cm[1]]||true) openChart(cm[1], cm[2]||'5m'); },0); }
   name=({trade:1,coins:1,forms:1,dens:1})[name]?name:'coins';
   [].forEach.call(document.querySelectorAll('.view'),function(v){v.classList.toggle('on',v.id==='v-'+name);});
   [].forEach.call(document.querySelectorAll('nav a[data-tab]'),function(a){a.classList.toggle('on',a.dataset.tab===name);});

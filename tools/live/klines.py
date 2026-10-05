@@ -202,6 +202,10 @@ class Feed:
             await asyncio.sleep(5)
             if self.alerts:
                 try:
+                    await asyncio.to_thread(self.alerts.follow)
+                except Exception as e:              # noqa: BLE001
+                    print(f"klines: отработки: {type(e).__name__} {e}")
+                try:
                     await asyncio.to_thread(self.alerts.setups, self.out.parent)
                 except Exception as e:              # noqa: BLE001
                     print(f"klines: алерт сетапов: {type(e).__name__} {e}")

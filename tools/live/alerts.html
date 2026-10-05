@@ -45,12 +45,12 @@ h1{font-size:20px;margin:6px 0 4px}
 (function(){
   var F='';
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  function clean(t){ return esc(t).replace(/&lt;(\/?)b&gt;/g,'<$1b>').replace(/#([A-Z0-9]+USDT)/g,function(m,s){return '<a href="/#coins" data-sym="'+s+'">#'+s+'</a>';}); }
+  function clean(t){ return esc(t).replace(/&lt;(\/?)b&gt;/g,'<$1b>').replace(/#([A-Z0-9]+USDT)/g,function(m,s){return '<a href="/#chart='+s+'&tf=5m">#'+s+'</a>';}).replace(/&lt;a href=&quot;([^&]*(?:&amp;[^&]*)*)&quot;&gt;(.*?)&lt;\/a&gt;/g,function(m,u,t){return '<a href="'+u.replace(/&amp;/g,'&')+'">'+t+'</a>';}); }
   function load(){
     fetch('kl/alerts_log.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];}).then(function(xs){
       var rows=xs.slice().reverse().filter(function(x){ return !F || x.text.indexOf(F)===0 || (F==='⬆'&&x.text.indexOf('⬇')===0); });
       document.getElementById('list').innerHTML=rows.length?rows.map(function(x){
-        return '<div class="a"><div class="t">'+new Date(x.t).toLocaleString('ru-RU')+(x.photo?' · с графиком':'')+'</div>'+clean(x.text)+'</div>';
+        return '<div class="a"><div class="t">'+new Date(x.t).toLocaleString('ru-RU')+(x.photo?' · с графиком':'')+(x.link?' · <a href="'+x.link+'" target="_blank" rel="noopener">в Telegram</a>':'')+'</div>'+clean(x.text)+'</div>';
       }).join(''):'<div class="mute">Алертов пока нет.</div>';
     });
   }

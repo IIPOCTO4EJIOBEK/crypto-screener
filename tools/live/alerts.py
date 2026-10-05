@@ -43,6 +43,7 @@ NEAR_DAY = 0.3
 MIN_DENS = 100_000          # съеденные плотности меньше этого не шлём
 MAX_PER_MIN = 15            # потолок сообщений в минуту, чтобы не залить канал
 MIN_RR = 3.0                # сделки по тренду — только от 1:3 (правило markus)
+SCREENER_URL = "http://10.1.222.59"
 
 
 def _env() -> dict[str, str]:
@@ -90,6 +91,11 @@ class Alerts:
         self.forms_mtime = 0.0
         self.stats: dict[str, dict] = {}
         self.signals: list[dict] = []
+        try:
+            self.tracks: list[dict] = json.loads(self.state_path.with_name("alerts_track.json").read_text(encoding="utf-8"))
+        except Exception:                           # noqa: BLE001
+            self.tracks = []
+        self._trend: tuple[float, dict] = (0.0, {})
         self._charts: tuple[float, dict] = (0.0, {})
         # отправка — в своём потоке: живой поток свечей не должен ждать Telegram
         self.q: queue.Queue = queue.Queue()
@@ -117,32 +123,40 @@ class Alerts:
         while True:
             key, build = self.q.get()
             try:
-                text, png = build()
+                res = build()
             except Exception as e:                  # noqa: BLE001
                 print(f"alerts: не собран {key}: {type(e).__name__} {e}", flush=True)
                 continue
-            self._post(text, png)
+            text, png = res[0], res[1]
+            trade = res[2] if len(res) > 2 else None
+            reply_to = res[3] if len(res) > 3 else None
+            mid = self._post(text, png, reply_to=reply_to)
+            if mid and trade and trade.get("ok"):
+                self._track(mid, trade)
 
-    def _post(self, text: str, png: bytes = b"") -> None:
+    def _post(self, text: str, png: bytes = b"", reply_to: int | None = None) -> int | None:
         now = time.time()
         api = f"https://api.telegram.org/bot{self.token}"
+        data = {"chat_id": self.chat, "parse_mode": "HTML"}
+        if reply_to:
+            data.update(reply_to_message_id=str(reply_to), allow_sending_without_reply="true")
         try:
             if png:
                 if len(text) > 1000:                # подпись к фото — до 1024 символов
                     text = text[:990] + "…"
-                r = requests.post(f"{api}/sendPhoto", data={"chat_id": self.chat, "caption": text, "parse_mode": "HTML"},
+                r = requests.post(f"{api}/sendPhoto", data=dict(data, caption=text),
                                   files={"photo": ("chart.png", png, "image/png")}, timeout=30, proxies=self.proxies)
             else:
-                r = requests.post(f"{api}/sendMessage", data={"chat_id": self.chat, "text": text, "parse_mode": "HTML",
-                                                               "disable_web_page_preview": "true"},
+                r = requests.post(f"{api}/sendMessage", data=dict(data, text=text, disable_web_page_preview="true"),
                                   timeout=15, proxies=self.proxies)
             if r.status_code != 200:
                 print(f"alerts: Telegram {r.status_code}: {r.text[:200]}", flush=True)
-                return
+                return None
+            mid = (r.json().get("result") or {}).get("message_id")
         except Exception as e:                      # noqa: BLE001
             print(f"alerts: Telegram недоступен: {type(e).__name__}", flush=True)
-            return
-        self._log(text, bool(png))
+            return None
+        self._log(text, bool(png), mid)
         self.sent = {k: v for k, v in self.sent.items() if now - v < 86400}
         try:
             tmp = self.state_path.with_name(self.state_path.name + ".tmp")
@@ -150,6 +164,74 @@ class Alerts:
             os.replace(tmp, self.state_path)
         except Exception:                           # noqa: BLE001
             pass
+        return mid
+
+    # ---------------------------------------------------------------- отработки
+    def link(self, mid: int) -> str:
+        """Ссылка на сообщение канала: t.me/c/<id канала без -100>/<номер>."""
+        c = str(self.chat)
+        return f"https://t.me/c/{c[4:] if c.startswith('-100') else c.lstrip('-')}/{mid}"
+
+    def _track(self, mid: int, t: dict) -> None:
+        self.tracks.append({"mid": mid, "sym": t["sym"], "tf": t.get("tf", "5m"), "dir": t["direction"],
+                            "entry": t["entry"], "stop": t["stop"], "target": t["target"], "rr": t["rr"],
+                            "t": int(time.time() * 1000), "hit": [], "done": False})
+        self._save_tracks()
+
+    def _save_tracks(self) -> None:
+        try:
+            path = self.state_path.with_name("alerts_track.json")
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(self.tracks[-500:], ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, path)
+        except Exception:                           # noqa: BLE001
+            pass
+
+    def follow(self) -> None:
+        """Отработки: по каждой сделке из алерта — +1R, +2R, цель или стоп,
+        ответом на исходное сообщение со ссылкой на него."""
+        if not self.token or not self.tracks:
+            return
+        now = int(time.time() * 1000)
+        changed = False
+        for tr in self.tracks:
+            if tr["done"]:
+                continue
+            if now - tr["t"] > 24 * 3600_000:
+                tr["done"] = True; changed = True
+                continue
+            cs = [c for c in self.candles(tr["sym"], "5m") if c[0] + 300_000 > tr["t"]]
+            if not cs:
+                continue
+            up, R = tr["dir"] == "long", abs(tr["entry"] - tr["stop"])
+            best = max(c[2] for c in cs) if up else min(c[3] for c in cs)
+            worst = min(c[3] for c in cs) if up else max(c[2] for c in cs)
+            mins = (now - tr["t"]) // 60000
+            name, ent = tr["sym"].removesuffix("USDT"), tr["entry"]
+            def pc(x: float) -> str:
+                return f"{_fmt(x)} ({(x - ent) / ent * 100:+.2f}%)"
+            msg = None
+            if (worst <= tr["stop"]) if up else (worst >= tr["stop"]):
+                msg = f"❌ <b>{name}</b>: стоп {pc(tr['stop'])}, −1R за {mins} мин"
+                tr["done"] = True
+            elif (best >= tr["target"]) if up else (best <= tr["target"]):
+                msg = f"✅ <b>{name}</b>: цель взята {pc(tr['target'])}, +{tr['rr']:.1f}R за {mins} мин"
+                tr["done"] = True
+            else:
+                got = (best - ent) / R if up else (ent - best) / R
+                for n in (1, 2):
+                    if got >= n and n not in tr["hit"]:
+                        tr["hit"].append(n)
+                        lvl = ent + (n * R if up else -n * R)
+                        msg = f"🟢 <b>{name}</b>: +{n}R {pc(lvl)} за {mins} мин" + \
+                              (" — стоп можно перенести в безубыток" if n == 1 else "")
+            if msg:
+                changed = True
+                link = self.link(tr["mid"])
+                text = msg + f"\n<a href=\"{link}\">сигнал</a> · вход {_fmt(ent)} · стоп {_fmt(tr['stop'])} · цель {_fmt(tr['target'])}"
+                self.q.put((f"follow|{tr['mid']}|{msg[:2]}", lambda text=text, mid=tr["mid"]: (text, b"", None, mid)))
+        if changed:
+            self._save_tracks()
 
     def _write_signals(self) -> None:
         """Сетапы для бумажного профиля «alerts»: только свежие (не старше свечи своего ТФ)."""
@@ -172,14 +254,14 @@ class Alerts:
         except Exception:                           # noqa: BLE001
             pass
 
-    def _log(self, text: str, photo: bool) -> None:
+    def _log(self, text: str, photo: bool, mid: int | None = None) -> None:
         """Лента для страницы alerts.html: последние 300 алертов."""
         path = self.state_path.with_name("alerts_log.json")
         try:
             log = json.loads(path.read_text(encoding="utf-8"))
         except Exception:                           # noqa: BLE001
             log = []
-        log.append({"t": int(time.time() * 1000), "text": text, "photo": photo})
+        log.append({"t": int(time.time() * 1000), "text": text, "photo": photo, "link": self.link(mid) if mid else None})
         try:
             tmp = path.with_name(path.name + ".tmp")
             tmp.write_text(json.dumps(log[-300:], ensure_ascii=False), encoding="utf-8")
@@ -250,10 +332,46 @@ class Alerts:
         if cs:
             png = alert_chart.render(sym, tf, cs, title=title, levels=mk.get("levels", []), dens=mk.get("dens", []),
                                      hlines=hlines, zone=zone, mark_t=mark_t, lines=lines, hlv=lv[:3])
+        trade = None
+        if not zone:                                # у сетапа своя зона; остальным — сделка 1:3 по тренду
+            trade = alert_chart.trade13(cs, self._trend_side(sym), dens=mk.get("dens", []), min_rr=MIN_RR)
+            trade.update(sym=sym, tf=tf)
+            t13 = alert_chart.trade13_text(trade)
+            scen = (scen + "\n" if scen else "") + t13
+            if trade.get("ok"):
+                self._add_signal(sym, tf, trade, head)
+                zone = {"entry": trade["entry"], "stop": trade["stop"], "target": trade["target"], "t": cs[-1][0]}
+                png = alert_chart.render(sym, tf, cs, title=title, levels=mk.get("levels", []), dens=mk.get("dens", []),
+                                         hlines=hlines, zone=zone, mark_t=mark_t, lines=lines, hlv=lv[:3])
+        else:
+            trade = dict(zone, ok=True, sym=sym, tf=tf, direction="long" if zone["target"] > zone["entry"] else "short",
+                         rr=abs(zone["target"] - zone["entry"]) / abs(zone["entry"] - zone["stop"]))
         ctx = self._context(sym)
+        open_link = f'<a href="{SCREENER_URL}/#chart={sym}&tf={tf}">открыть в скринере</a>'
         text = head + (f"\n{extra}" if extra else "") + (f"\n\n{scen}" if scen else "") + \
-            (f"\n\n{ctx}" if ctx else "") + f"\n#{sym}"
-        return text, png
+            (f"\n\n{ctx}" if ctx else "") + f"\n#{sym} · {open_link}"
+        return text, png, trade
+
+    def _trend_side(self, sym: str) -> str | None:
+        """Тренд монеты на 15м из trend-now.json (кэш по времени файла)."""
+        path = self.live_dir / "trend-now.json"
+        try:
+            mt = path.stat().st_mtime
+            if mt != self._trend[0]:
+                self._trend = (mt, json.loads(path.read_text(encoding="utf-8")).get("coins", {}))
+        except Exception:                           # noqa: BLE001
+            return None
+        return (self._trend[1].get(sym) or {}).get("15m")
+
+    def _add_signal(self, sym: str, tf: str, t: dict, head: str) -> None:
+        """Сделка 1:3 из алерта — сигнал бумажному профилю «alerts»."""
+        title = re.sub(r"<[^>]+>", "", head).split(":")[0][2:].strip() or "алерт"
+        self.signals.append({"kind": "alert", "title": title, "tf": tf, "symbol": sym, "exchange": "binance_futures",
+                             "direction": t["direction"], "entry": t["entry"], "stop": t["stop"], "target": t["target"],
+                             "rr": t["rr"], "triggered": True, "ts": int(time.time() * 1000) // 300_000 * 300_000,
+                             "reasons": [t.get("why", "")], "measured": None, "exp_net": None,
+                             "added": int(time.time() * 1000)})
+        self._write_signals()
 
     # ---------------------------------------------------------------- события
     def candle_closed(self, sym: str, tf: str, closed: list, prev: list[list]) -> None:
