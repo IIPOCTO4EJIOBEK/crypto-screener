@@ -39,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHAT = "-1004297324007"
 COOLDOWN = 3600.0           # одно и то же событие по монете — не чаще раза в час
 SPIKE = 3.0
+MIN_SPIKE_USD = 300_000      # всплеск на 5м свече меньше этого оборота — шум мелкой монеты
 NEAR_DAY = 0.3
 MIN_DENS = 100_000          # съеденные плотности меньше этого не шлём
 MAX_PER_MIN = 15            # потолок сообщений в минуту, чтобы не залить канал
@@ -435,7 +436,7 @@ class Alerts:
             return
         base = [c[5] for c in prev[-24:] if c[5]]
         avg = sum(base) / len(base) if base else 0
-        if not avg or closed[5] < SPIKE * avg:
+        if not avg or closed[5] < SPIKE * avg or closed[5] < MIN_SPIKE_USD:
             return
         ch = (closed[4] - closed[1]) / closed[1] * 100 if closed[1] else 0
         side = "up" if ch >= 0 else "down"
