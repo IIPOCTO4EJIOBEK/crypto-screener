@@ -2,7 +2,8 @@
    Подключается строкой <script src="/nav.js"></script>; если на странице есть #gnav —
    меню встаёт туда, иначе сверху страницы появляется своя полоса. */
 (function(){
-  if(window.__gnav) return; window.__gnav=1;
+  if(window.__gnav || window.self!==window.top) return;   // во вкладках ботов (встроенные окна) меню не нужно
+  window.__gnav=1;
   var G=[
     ['Торговля',[['Можно торговать','/#trade','trade'],['Монеты','/#coins','coins']]],
     ['Анализ',[['Формации','/#forms','forms'],['Плотности','/#dens','dens'],['Сигналы скринера','/screener.html'],['Структуры и уровни','/structures.html'],['Стаканы подробно','/densities.html']]],
