@@ -11,6 +11,11 @@ class MinuteCache:
   saved=self.cache.get(symbol)
   if saved and saved[0]<=since:return saved[1]
   now=int(time.time()*1000)
+  # The cursor already covers every CLOSED minute. An absent unfinished
+  # WS minute is not a historical gap; fresh ticks are checked separately.
+  if since>now:raise RecoveryPending('position cursor is in the future')
+  if since//60_000 == now//60_000:
+   self.sources[symbol]='no-new-closed-minute';return []
   try:
    try:data=json.loads((self.root/(symbol+'_1m.json')).read_text('utf-8'))
    except (OSError,ValueError):data=[]

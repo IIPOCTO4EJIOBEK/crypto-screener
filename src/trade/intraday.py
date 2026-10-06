@@ -395,7 +395,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
     # 1. выходы
     for p in st.pos():
         if cfg.no_timeout and not p.pending_exit_reason: p.expires_ms = 2**62
-        if cfg.exit_on_opposite and not p.pending_exit_reason:
+        if cfg.exit_on_opposite and p.pending_exit_reason in ('','invalidation'):
             from src.trade.reversal import confirmed
             candidates=[r for r in (exit_rows if exit_rows is not None else rows) if confirmed(p,r,r.get('_latest_closed',0),now_ms)]
             try:reversal_price=broker.mid(p.symbol) if candidates else None
@@ -403,12 +403,17 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             opposite = next((r for r in candidates
                 if reversal_price is not None and confirmed(p,r,reversal_price,now_ms)), None)
             if opposite:
+                newly_pending=p.pending_exit_reason!='invalidation'
                 p.pending_exit_reason = "invalidation"
                 p.expires_ms = 0
-                p.manual_reason = f"Подтверждённый разворот {opposite['direction']} {opposite['tf']}: {opposite['kind']}, уровень {opposite['trigger_level']:.8g}, закрытие {opposite['_latest_closed']:.8g} и текущая цена {reversal_price:.8g} за уровнем"
+                p.manual_reason = f"Подтверждённый разворот {opposite['direction']} {opposite['tf']}: {opposite.get('_why') or opposite['kind']}, уровень {opposite['trigger_level']:.8g}, закрытие {opposite['_latest_closed']:.8g} и текущая цена {reversal_price:.8g} за уровнем"
                 st.put(p)
-                ledger.log("invalidation", key=p.key, symbol=p.symbol,
-                           opposite_kind=opposite["kind"], opposite_tf=opposite["tf"],reason=p.manual_reason)
+                if newly_pending:
+                    ledger.log("invalidation", key=p.key, symbol=p.symbol,
+                               opposite_kind=opposite["kind"], opposite_tf=opposite["tf"],reason=p.manual_reason)
+            elif p.pending_exit_reason=='invalidation':
+                p.pending_exit_reason='';p.expires_ms=2**62;p.manual_reason=''
+                st.put(p);ledger.log('invalidation_deferred',key=p.key,symbol=p.symbol,reason='подтверждение отмены или свежая цена больше не доступны')
         try:
             cs = candles(p.symbol, max(p.last_check_ms, p.opened_ms))
         except Exception as exc:                            # noqa: BLE001
@@ -667,7 +672,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                          reasons=list(row.get("reasons") or []), market_context=context(now_ms),
                          book={k: row.get(k) for k in ("spread_bps", "imbalance", "band_usdt", "mid")
                                if row.get(k) is not None},
-                         signal_ts=int(row.get("ts") or 0), entry_rules=asdict(cfg), attempt_key=attempt_key)
+                         signal_ts=int(row.get("ts") or 0), entry_rules={**asdict(cfg),"trigger_level":row.get('trigger_level'),"prior_atr":row.get('_risk_atr')}, attempt_key=attempt_key)
             if cfg.no_target:
                 p.target = 0.0
             st.attempts[attempt_key] = st.attempts.get(attempt_key, 0) + 1

@@ -47,6 +47,15 @@ def test_live_1m_timestamp_not_refreshed_by_other_timeframes(tmp_path):
  (tmp_path/'AAAUSDT.live.json').write_text(json.dumps(dict(t=now,quote_ms={'1m':now-30000,'1h':now},k={'1m':[0,100,101,99,100,1]})))
  assert MinuteCache(tmp_path,None).live(['AAAUSDT'],now)=={}
 
+def test_no_closed_minute_since_cursor_is_not_an_outage(tmp_path,monkeypatch):
+ monkeypatch.setattr('src.trade.monitor_market.time.time',lambda:123.0)
+ cache=MinuteCache(tmp_path,lambda *a:(_ for _ in ()).throw(AssertionError('REST')),local_only=True)
+ assert cache.candles('AAAUSDT',120001)==[]
+ assert cache.sources['AAAUSDT']=='no-new-closed-minute'
+ # A missing minute BEFORE the cursor remains a real recovery requirement.
+ with pytest.raises(RecoveryPending):cache.candles('AAAUSDT',60000)
+ with pytest.raises(RecoveryPending):cache.candles('AAAUSDT',180000)
+
 def test_books_include_held_symbols(tmp_path,monkeypatch):
  from tools.trade.book_feed import symbols
  universe=tmp_path/'u';pin=tmp_path/'p';universe.write_text('{"symbols":["BTCUSDT"]}');pin.write_text('{"symbols":["1000BONKUSDT"]}')

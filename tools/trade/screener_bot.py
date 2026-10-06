@@ -338,9 +338,9 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
     rows = manual + list(rows)
     exit_rows = rows
     if a.exit_on_opposite:
-        from src.trade.reversal import load as reversal_rows
+        from src.trade.reversal import load as reversal_rows, load_thesis
         source=Path(a.trend_src).parent/'trade-setups.json';ck=('reversal',str(source))
-        if ck not in cache:cache[ck]=reversal_rows(source,source.parent/'kl',now_ms)
+        if ck not in cache:cache[ck]=reversal_rows(source,source.parent/'kl',now_ms)+load_thesis(ledger.root.parent/'thesis-status.json',now_ms)
         exit_rows=cache[ck]
     from src.trade.position_controls import pending, apply
     commands = pending(ledger.root)

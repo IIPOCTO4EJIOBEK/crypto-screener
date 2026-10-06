@@ -268,7 +268,7 @@ def collect_pair(conn, symbol: str, tf: str, exchange: str,
             "rr": round(f.rr, 3), "risk_pct": round(f.risk_pct, 3),
             "confidence": f.confidence, "triggered": bool(f.triggered),
             "age_candles": f.age_candles, "style": f.style,
-            "ts": f.ts, "invalid": f.invalid,
+            "ts": f.ts, "invalid": f.invalid, "trigger_level": f.trigger_level,
             # сигнальная свеча: _scan отбрасывает формирующуюся и отсчитывает
             # возраст назад — при age 0 это последняя закрытая свеча массива
             "idx": len(raw) - 2 - f.age_candles,
@@ -288,6 +288,12 @@ def collect_pair(conn, symbol: str, tf: str, exchange: str,
         signal_range = raw[end].high-raw[end].low
         expected = max(2*atr, signal_range) if atr else None
         pl = trade_plan(form["entry"], form["stop"], form["direction"], plan_levels, expected_move=expected)
+        from src.data.entry_safety import stop_guard, prior_atr
+        baseline_atr=prior_atr([[c.ts,c.open,c.high,c.low,c.close] for c in raw],form['ts'])
+        guard=stop_guard(form['entry'],form['stop'],tf,baseline_atr)
+        if guard:pl=dict(ok=False,why=guard)
+        if form['kind']=='volume_splash':pl=dict(ok=False,why='всплеск объёма — кандидат; нужен отдельный пробой или ретест уровня')
+        form['prior_atr']=baseline_atr
         form["atr"] = atr; form["expected_move"] = expected
         form["raw_target"] = form["target"]
         form["plan_ok"] = pl["ok"]
