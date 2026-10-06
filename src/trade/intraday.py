@@ -396,17 +396,19 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
     for p in st.pos():
         if cfg.no_timeout and not p.pending_exit_reason: p.expires_ms = 2**62
         if cfg.exit_on_opposite and not p.pending_exit_reason:
-            opposite = next((r for r in (exit_rows if exit_rows is not None else rows)
-                if r.get("symbol") == p.symbol and r.get("direction") in ("long", "short") and r.get("direction") != p.side
-                and r.get("triggered") and r.get("age_candles", 99) == 0
-                and r.get("kind") in ("breakout", "retest", "structure_break")
-                and INTERVALS.get(r.get("tf"), 10**9) <= INTERVALS[p.tf]), None)
+            from src.trade.reversal import confirmed
+            candidates=[r for r in (exit_rows if exit_rows is not None else rows) if confirmed(p,r,r.get('_latest_closed',0),now_ms)]
+            try:reversal_price=broker.mid(p.symbol) if candidates else None
+            except (ValueError,OSError,KeyError,TypeError):reversal_price=None
+            opposite = next((r for r in candidates
+                if reversal_price is not None and confirmed(p,r,reversal_price,now_ms)), None)
             if opposite:
                 p.pending_exit_reason = "invalidation"
                 p.expires_ms = 0
+                p.manual_reason = f"Подтверждённый разворот {opposite['direction']} {opposite['tf']}: {opposite['kind']}, уровень {opposite['trigger_level']:.8g}, закрытие {opposite['_latest_closed']:.8g} и текущая цена {reversal_price:.8g} за уровнем"
                 st.put(p)
                 ledger.log("invalidation", key=p.key, symbol=p.symbol,
-                           opposite_kind=opposite["kind"], opposite_tf=opposite["tf"])
+                           opposite_kind=opposite["kind"], opposite_tf=opposite["tf"],reason=p.manual_reason)
         try:
             cs = candles(p.symbol, max(p.last_check_ms, p.opened_ms))
         except Exception as exc:                            # noqa: BLE001
@@ -601,7 +603,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                 ledger.log("skip", key=key, symbol=row["symbol"], formation=row["kind"],
                            tf=row["tf"], side=side, reason=why, trend=tr)
                 continue
-            if remaining_notional <= 0:
+            if remaining_notional <= 1e-6:
                 st.seen.pop(key, None)
                 out["skipped"] += 1
                 ledger.log("skip", key=key, symbol=row["symbol"], formation=row["kind"], tf=row["tf"], side=side,

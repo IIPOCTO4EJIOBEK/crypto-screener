@@ -207,7 +207,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
     ap.add_argument("--capital", type=float, default=1000.0)
     ap.add_argument("--parallel-timeframes", action="store_true", help="разрешить отдельные позиции одной монеты на разных ТФ")
     ap.add_argument("--min-entry-rr", type=float, default=0.0, help="минимум чистого R:R после исполнения и комиссий")
-    ap.add_argument("--exit-on-opposite", action="store_true", help="эксперимент: выход при свежем противоположном пробое/ретесте/сломе")
+    ap.add_argument("--exit-on-opposite", action="store_true", help="выход при подтверждённом противоположном пробое/ретесте/сломе на том же или старшем ТФ")
     ap.add_argument("--risk-pct", type=float, default=0.01)
     ap.add_argument("--max-open", type=int, default=5)
     ap.add_argument("--max-age", type=int, default=1)
@@ -337,16 +337,11 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
                    reason=f"внешний сигнал не принят: {why}", trend="")
     rows = manual + list(rows)
     exit_rows = rows
-    if a.exit_on_opposite and a.signals_json and not a.exits_only:
-        import copy
-        other = copy.copy(a); other.signals_json = None
-        ck = (None, other.db, other.universe, tuple(other.tfs), other.exchange)
-        try:
-            if cache is not None and ck in cache: exit_rows = cache[ck][0]
-            else: exit_rows = screener_rows(other)[0]
-        except Exception as exc:
-            ledger.log("error", where="exit_signals", error=type(exc).__name__)
-            exit_rows = []
+    if a.exit_on_opposite:
+        from src.trade.reversal import load as reversal_rows
+        source=Path(a.trend_src).parent/'trade-setups.json';ck=('reversal',str(source))
+        if ck not in cache:cache[ck]=reversal_rows(source,source.parent/'kl',now_ms)
+        exit_rows=cache[ck]
     from src.trade.position_controls import pending, apply
     commands = pending(ledger.root)
     before = None

@@ -47,7 +47,7 @@ WS = "wss://fstream.binance.com/market/stream?streams="
 SILENT = 30.0               # столько секунд без сообщений — переподключение
 TFS = ("1m", "5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
-UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
+UNIVERSE_EVERY = 30.0       # include newly held symbols promptly
 STATS_EVERY = float(os.environ.get("SCREENER_STATS_EVERY", "120"))         # пауза между проходами рыночных метрик, с
 DENS_EVERY = float(os.environ.get("SCREENER_DENS_EVERY", "90"))           # пауза между сверками плотностей со стаканом, с
 
@@ -77,17 +77,22 @@ class Feed:
         self.ticks = {}
         self.manual_queued = set()
         self.manual_retry = {}
+        self.quote_times = {}
 
     def read_symbols(self) -> list[str]:
         try:
             u = json.loads(self.universe.read_text(encoding="utf-8"))
-            return sorted(set(s.upper() for s in u.get("symbols", [])))
+            held=[];pin=os.environ.get('SCREENER_POSITION_SYMBOLS')
+            if pin:held=json.loads(Path(pin).read_text(encoding='utf-8'))['symbols']
+            return sorted(set(s.upper() for s in list(u.get("symbols", []))+held))
         except Exception as e:                      # noqa: BLE001
             print(f"klines: состав не прочитан ({type(e).__name__}), остаюсь на старом")
             return self.syms
 
     def merge(self, sym: str, tf: str, c: list, quote_ms: int = 0) -> None:
-        self.live_prices[sym] = (float(c[4]), time.time())
+        if quote_ms:
+            self.live_prices[sym] = (float(c[4]), quote_ms/1000)
+            self.quote_times[(sym,tf)] = quote_ms
         if tf == '1m' and quote_ms:
             trace = self.ticks.setdefault(sym, [])
             if not trace or (quote_ms > trace[-1][0] and c[4] != trace[-1][1]):
@@ -97,6 +102,7 @@ class Feed:
         cs = self.hist.get(key)
         if cs is None:
             self.pending[key] = c
+            self.dirty_live.add(sym)
             return
         if cs and c[0] == cs[-1][0]:
             cs[-1] = c
@@ -157,8 +163,10 @@ class Feed:
             self.dirty_live.discard(sym)
             k = {tf: self.hist[(sym, tf)][-1] for tf in self.tfs
                  if self.hist.get((sym, tf))}
+            k.update({tf:self.pending[(sym,tf)] for tf in self.tfs if (sym,tf) in self.pending})
             if k:
-                _write(self.out / f"{sym}.live.json", {"t": now, "k": k, "ticks": self.ticks.get(sym, [])})
+                stamps={tf:self.quote_times.get((sym,tf),0) for tf in k}
+                _write(self.out / f"{sym}.live.json", {"t": now, "k": k, "quote_ms":stamps,"ticks": self.ticks.get(sym, [])})
 
     async def flusher(self) -> None:
         while True:
@@ -272,19 +280,15 @@ class Feed:
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: плотности не сверены: {type(e).__name__} {e}")
 
-    async def session(self, http: aiohttp.ClientSession) -> None:
+    async def socket_group(self, http: aiohttp.ClientSession, syms, sem) -> None:
         """Одно подключение: WS на весь состав + догрузка истории."""
-        syms = self.syms
         streams = "/".join(f"{s.lower()}@kline_{tf}" for s in syms for tf in self.tfs)
-        sem = asyncio.Semaphore(3)
         async with http.ws_connect(WS + streams, heartbeat=60, max_msg_size=0) as ws:
-            self.hist.clear()
-            self.pending.clear()
             loader = asyncio.gather(*(self.load(http, s, tf, sem)
                                       for s in syms for tf in self.tfs))
             print(f"klines: подключён, монет {len(syms)}, ТФ {','.join(self.tfs)}")
             sys.stdout.flush()
-            checked = last = time.monotonic()
+            last = time.monotonic()
             try:
                 while True:
                     try:
@@ -302,15 +306,28 @@ class Feed:
                         if k:
                             self.merge(k["s"], k["i"], [int(k["t"]), float(k["o"]), float(k["h"]),
                                                         float(k["l"]), float(k["c"]), float(k["q"])], int(d.get('E') or 0))
-                    if time.monotonic() - checked > UNIVERSE_EVERY:
-                        checked = time.monotonic()
-                        fresh = self.read_symbols()
-                        if fresh and fresh != self.syms:
-                            print(f"klines: состав сменился ({len(self.syms)} → {len(fresh)}), переподключаюсь")
-                            self.syms = fresh
-                            return
             finally:
                 loader.cancel()
+                await asyncio.gather(loader,return_exceptions=True)
+
+    async def session(self,http):
+        self.hist.clear();self.pending.clear();self.quote_times.clear()
+        sem=asyncio.Semaphore(3)
+        # Keep each connection bounded even if 200 held coins leave the universe.
+        chunk=max(1,512//len(self.tfs))
+        tasks=[asyncio.create_task(self.socket_group(http,self.syms[i:i+chunk],sem)) for i in range(0,len(self.syms),chunk)]
+        try:
+            while True:
+                done,_=await asyncio.wait(tasks,timeout=UNIVERSE_EVERY,return_when=asyncio.FIRST_COMPLETED)
+                if done:
+                    for task in done:task.result()
+                    return
+                fresh=self.read_symbols()
+                if fresh and fresh!=self.syms:
+                    self.syms=fresh;return
+        finally:
+            for task in tasks:task.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
 
     async def run(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
@@ -353,4 +370,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

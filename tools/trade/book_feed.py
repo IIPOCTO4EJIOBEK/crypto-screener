@@ -15,7 +15,9 @@ def write(path,data):
 
 def symbols(path):
     data=json.loads(path.read_text())
-    return sorted({s.upper() for s in data['symbols'] if s.upper().endswith('USDT')})
+    held=[];pin=os.environ.get('SCREENER_POSITION_SYMBOLS')
+    if pin:held=json.loads(Path(pin).read_text())['symbols']
+    return sorted({s.upper() for s in list(data['symbols'])+held if s.upper().endswith('USDT')})
 
 async def group(http, syms, out):
     while True:

@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "positions_per_profile": 200,
+  "profiles": 7,
+  "total": 1400,
+  "round_seconds": [
+    0.3389179380610585,
+    0.2715468150563538,
+    0.28669569990597665,
+    0.3611727950628847,
+    0.31869554379954934
+  ],
+  "median_seconds": 0.31869554379954934,
+  "max_seconds": 0.3611727950628847,
+  "stop_batch_seconds": 0.5860632890835404,
+  "closed_by_stop": 1400,
+  "limitations": [
+    "Synthetic shared candles and quotes; no real exchange traffic.",
+    "Includes SQL commits, JSON projections and notification queue writes.",
+    "Excludes HTML rendering, funding settlement and photo sender; not an end-to-end SLA."
+  ]
+}

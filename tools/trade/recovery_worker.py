@@ -15,6 +15,10 @@ def round_once(trade_root,market_root,recovery_root,fetch=candles_1m):
         for p in state.get('positions',{}).values():
             since=max(p['opened_ms'],p.get('last_check_ms',0));s=p['symbol'];needed[s]=min(needed.get(s,since),since)
     cache=MinuteCache(market_root,None,recovery_root=recovery_root,local_only=True);repaired=[];errors=[]
+    # Keep live subscriptions for positions that left the turnover universe.
+    path=trade_root/'position-symbols.json';tmp=path.with_suffix('.tmp')
+    tmp.write_text(json.dumps(dict(symbols=sorted(needed),updated_ms=int(time.time()*1000))))
+    os.replace(tmp,path)
     for s,since in needed.items():
         try:cache.candles(s,since)
         except RecoveryPending:
