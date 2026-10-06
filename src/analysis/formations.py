@@ -304,7 +304,7 @@ def detect_breakout(candles: list[Candle], tf: str, symbol: str,
             last.ts, last.close, last.close, stop, targets, True,
             _confidence(conf), reasons,
             f"закрытие свечи обратно за уровень {lv.price:.4f} или "
-            f"всплеск объёма меньше {SPLASH_MIN}×"))
+            f"всплеск объёма меньше {SPLASH_MIN}×", trigger_level=lv.price))
 
     return out
 
@@ -579,7 +579,7 @@ def detect_structure_break(candles: list[Candle], tf: str, symbol: str,
                     [f"структура была восходящей: максимумы и минимумы росли",
                      f"цена закрылась ниже последнего минимума {hl:.4f} — "
                      f"последовательность сломана"],
-                    "возврат цены выше сломанного минимума и обновление максимума"))
+                    "возврат цены выше сломанного минимума и обновление максимума", trigger_level=hl))
     elif down_structure:
         lh = highs[-1][1]
         if last.close > lh * (1 + tol):
@@ -595,7 +595,7 @@ def detect_structure_break(candles: list[Candle], tf: str, symbol: str,
                     ["структура была нисходящей: максимумы и минимумы падали",
                      f"цена закрылась выше последнего максимума {lh:.4f} — "
                      f"последовательность сломана"],
-                    "возврат цены ниже сломанного максимума"))
+                    "возврат цены ниже сломанного максимума", trigger_level=lh))
     if out and n > 0 and out[0].risk_pct > 4 * n:
         return []  # до стопа слишком далеко — это уже не слом, а разворот
     return out

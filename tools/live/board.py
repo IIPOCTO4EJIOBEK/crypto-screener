@@ -275,7 +275,7 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
                 "age": f.get("age_candles"), "exp": m.get("exp_net"), "n": m.get("n"),
                 "sig": bool(m.get("significant")), "price": p.get("price"),
                 "regime": (p.get("regime") or {}).get("label"),
-                "triggered": bool(f.get("triggered")), "invalid": f.get("invalid"), "ts": f.get("ts"),
+                "triggered": bool(f.get("triggered")), "invalid": f.get("invalid"), "ts": f.get("ts"), "trigger_level": f.get("trigger_level"),
                 "reasons": f.get("reasons", [])[:4],
             })
         for f in p.get("formations", []):

@@ -17,4 +17,4 @@ def select(data):
 
 
 def bot_rows(setups):
- return [dict(symbol=f['symbol'],tf=f['tf'],kind=f['kind'],title=f['title'],direction=f['dir'],entry=f['entry'],stop=f['stop'],target=f['target'],rr=f['rr'],triggered=True,age_candles=f.get('age') or 0,ts=f.get('ts'),key_suffix='page:'+str(f.get('ts') or f['entry']),exp_net=f.get('exp'),measured={'n':f.get('n') or 0},reasons=f.get('reasons') or [],page_setups=True) for f in setups]
+ return [dict(symbol=f['symbol'],tf=f['tf'],kind=f['kind'],title=f['title'],direction=f['dir'],entry=f['entry'],stop=f['stop'],target=f['target'],rr=f['rr'],triggered=True,age_candles=f.get('age') or 0,ts=f.get('ts'),key_suffix='page:'+str(f.get('ts') or f['entry']),exp_net=f.get('exp'),measured={'n':f.get('n') or 0},reasons=f.get('reasons') or [],trigger_level=f.get('trigger_level'),page_setups=True) for f in setups]
