@@ -28,7 +28,7 @@ def audit(root, market, trend_path):
             grouped[(path.name,row.get('formation'),row.get('tf'),row.get('side'))].append(row)
         pos=list(st.get('positions',{}).values())
         result['profiles'][path.name]={'positions':len(pos),'closed':len(closes),'reasons':dict(Counter(e.get('reason') for e in closes)),
-            'net':sum(e.get('pnl',0)-e.get('fee',0)-e.get('funding',0)+e.get('partial',0) for e in closes),
+            'net':sum(e.get('pnl',0)-e.get('fee',0)-e.get('funding',0) for e in closes),
             'last_errors':[e for e in journal if e.get('kind')=='error'][-3:]}
         for p in pos:
             sign=1 if p['side']=='long' else -1;entry=p['entry'];risk=p.get('risk0') or abs(entry-p['stop']);tf=p['tf'];duration=INTERVALS[tf]*1000
@@ -47,7 +47,7 @@ def audit(root, market, trend_path):
                 mfe_r=mfe,mae_r=mae,history_complete=bool(closed_bars and closed_bars[0][0]<=p['opened_ms'] and closed_bars[-1][0]+duration==now//duration*duration and all(b[0]-a[0]==duration for a,b in zip(complete,complete[1:]))),
                 reasons=p.get('reasons',[]),dust=p['qty']*entry<=1e-6))
     for (profile,kind,tf,side),events in grouped.items():
-        net=[e.get('pnl',0)-e.get('fee',0)-e.get('funding',0)+e.get('partial',0) for e in events]
+        net=[e.get('pnl',0)-e.get('fee',0)-e.get('funding',0) for e in events]
         loss=-sum(v for v in net if v<0)
         result['groups'].append(dict(profile=profile,kind=kind,tf=tf,side=side,n=len(events),stops=sum(e.get('reason')=='stop' for e in events),net=sum(net),
             wins=sum(v>0 for v in net),pf=sum(v for v in net if v>0)/loss if loss else None,

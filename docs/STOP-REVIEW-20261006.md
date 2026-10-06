@@ -2,6 +2,8 @@
 
 Исходный срез: 06.10.2026 22:07:38 МСК. Проверка после установки: 06.10.2026 22:15:41 МСК. Источники: семь SQL execution.db, журнал закрытий, локальные свечи и trend-now.json. Только бумажная торговля. Raw-журналы, ключи и учётные данные в Git не публикуются.
 
+Коррекция расчёта: partial уже включён в close.pnl и не прибавляется повторно. В первоначальной версии managed ошибочно показан +10.0611USDT; корректный результат этого же среза −11.0671USDT. Состояние счетов и сделки не изменялись. Отдельная оценка новых входов: RULE-EVALUATION-20261006.md / https://vpn.markus.tw1.su/rule-evaluation.html.
+
 До установки: 137 ненулевых открытых позиций, 247 закрытий, 120 выходов по стопу (48.6%). 19 открытых позиций имели исходный стоп шире 5%, 8 — шире 10%. После установки в проверенном срезе 144 позиций. Это разные тестовые профили; одинаковая монета в нескольких профилях не является независимым рыночным наблюдением.
 
 ## Что было неправильно
@@ -40,7 +42,7 @@
 | screener-all | 37 | 14 | -19.250 | target: 22, stop: 14, timeout: 1 |
 | screener-all-trend-tf | 89 | 32 | 22.062 | target: 50, stop: 32, timeout: 7 |
 | screener-can-trade | 9 | 7 | 0.758 | stop: 7, target: 2 |
-| screener-managed | 42 | 16 | 10.061 | timeout: 9, stop: 16, trail: 17 |
+| screener-managed | 42 | 16 | -11.067 | timeout: 9, stop: 16, trail: 17 |
 | screener-structure-fast | 5 | 4 | -0.273 | stop: 4, target: 1 |
 
 Частые стопы не означают автоматически убыток: alerts имел 38 стопов из 54 закрытий и положительный итог. Данные смешивают старые версии, разные размеры позиций, трейлинг и правила; сумма результатов профилей не является доходностью единого счёта. Net включает закрытый PnL, комиссии, funding и учтённые частичные закрытия. Малые выборки нельзя считать доказанным преимуществом.
@@ -206,6 +208,8 @@ ATR× в таблице — отдельный диагностический с
 | screener-alerts | breakout | 15m | short | 11 | 8 | -9.108 | 0.604 |
 | screener-managed | bounce | 1h | short | 3 | 3 | -6.566 | 0.000 |
 | screener-alerts | breakout | 1h | short | 1 | 1 | -6.136 | 0.000 |
+| screener-managed | structure_break | 15m | short | 7 | 3 | -6.087 | 0.564 |
+| screener-managed | structure_break | 15m | long | 10 | 3 | -5.176 | 0.809 |
 | screener-alerts | breakout | 1h | long | 1 | 1 | -4.747 | 0.000 |
 | screener-all | bounce | 1h | short | 5 | 3 | -3.993 | 0.639 |
 | screener-all | trendline_bounce | 5m | short | 4 | 4 | -3.530 | 0.000 |
@@ -221,7 +225,6 @@ ATR× в таблице — отдельный диагностический с
 | screener-alerts | volume_splash | 5m | short | 2 | 1 | -1.607 | 0.259 |
 | screener-alerts | breakout | 5m | long | 6 | 5 | -1.578 | 0.712 |
 | screener-alerts | volume_splash | 5m | long | 1 | 1 | -1.252 | 0.000 |
-| screener-managed | structure_break | 15m | short | 7 | 3 | -1.113 | 0.920 |
 | screener-alerts | alert | 15m | long | 1 | 1 | -1.085 | 0.000 |
 | screener-alerts | absorption | 5m | short | 1 | 1 | -0.909 | 0.000 |
 | screener-all-trend-tf | retest | 15m | long | 4 | 2 | -0.894 | 0.646 |
@@ -249,10 +252,10 @@ ATR× в таблице — отдельный диагностический с
 | screener-can-trade | breakout | 1h | short | 1 | 1 | -0.013 | 0.000 |
 | screener-managed | retest | 5m | short | 1 | 1 | -0.005 | 0.000 |
 | screener-managed | retest | 5m | long | 1 | 1 | -0.004 | 0.000 |
+| screener-managed | retest | 15m | long | 4 | 1 | -0.002 | 0.658 |
 | screener-all-trend-tf | bounce | 5m | long | 1 | 1 | -0.001 | 0.000 |
-| screener-managed | retest | 15m | long | 4 | 1 | 0.001 | 1.160 |
 | screener-all-trend-tf | retest | 15m | short | 5 | 2 | 0.004 | 2.075 |
-| screener-managed | absorption | 15m | long | 2 | 1 | 0.020 | 10.764 |
+| screener-managed | absorption | 15m | long | 2 | 1 | 0.011 | 6.644 |
 | screener-all-trend-tf | breakout | 1h | long | 1 | 0 | 0.024 | — |
 | screener-all-trend-tf | breakout | 1h | short | 1 | 0 | 0.024 | — |
 | screener-all-trend-tf | volume_splash | 1h | long | 1 | 0 | 0.069 | — |
@@ -261,22 +264,21 @@ ATR× в таблице — отдельный диагностический с
 | screener-all-trend-tf | retest | 1h | long | 1 | 0 | 0.189 | — |
 | screener-all-trend-tf | absorption | 15m | short | 1 | 0 | 0.264 | — |
 | screener-can-trade | breakout | 5m | long | 1 | 0 | 0.372 | — |
+| screener-managed | trendline_bounce | 5m | long | 1 | 0 | 0.387 | — |
 | screener-alerts | retest | 5m | long | 5 | 4 | 0.489 | 1.120 |
-| screener-managed | trendline_bounce | 5m | long | 1 | 0 | 0.670 | — |
 | screener-all | trendline_bounce | 15m | long | 15 | 0 | 0.716 | 1.492 |
+| screener-managed | trendline_bounce | 15m | long | 3 | 0 | 0.778 | 3.414 |
+| screener-managed | bounce | 15m | long | 1 | 0 | 0.783 | — |
 | screener-can-trade | volume_splash | 1h | long | 2 | 1 | 0.942 | 81.190 |
 | screener-all-trend-tf | absorption | 15m | long | 1 | 0 | 1.083 | — |
-| screener-managed | bounce | 15m | long | 1 | 0 | 1.240 | — |
-| screener-managed | trendline_bounce | 15m | long | 3 | 0 | 1.806 | 6.608 |
+| screener-managed | bounce | 5m | short | 4 | 2 | 1.413 | 1.939 |
 | screener-structure-fast | breakout | 5m | long | 1 | 0 | 1.858 | — |
-| screener-managed | bounce | 5m | short | 4 | 2 | 2.402 | 2.596 |
+| screener-managed | bounce | 1h | long | 1 | 0 | 2.158 | — |
 | screener-alerts | breakout | 5m | short | 4 | 1 | 2.631 | 2.249 |
+| screener-managed | retest | 15m | short | 2 | 0 | 2.857 | — |
 | screener-all-trend-tf | bounce | 1h | long | 1 | 0 | 2.863 | — |
 | screener-alerts-structure | breakout | 5m | short | 3 | 1 | 3.620 | 5.326 |
 | screener-all | structure_break | 15m | long | 1 | 0 | 4.026 | — |
-| screener-managed | structure_break | 15m | long | 10 | 3 | 4.030 | 1.149 |
-| screener-managed | bounce | 1h | long | 1 | 0 | 4.230 | — |
-| screener-managed | retest | 15m | short | 2 | 0 | 4.965 | — |
 | screener-alerts | alert | 5m | long | 2 | 1 | 5.055 | 4.894 |
 | screener-all-trend-tf | structure_break | 15m | short | 8 | 3 | 6.722 | 1.444 |
 | screener-alerts | retest | 1h | short | 1 | 0 | 7.804 | — |
