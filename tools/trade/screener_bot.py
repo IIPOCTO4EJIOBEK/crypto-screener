@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -53,7 +54,19 @@ def open_db(path: str) -> sqlite3.Connection:
 def screener_rows(a) -> tuple[list[dict], list[str]]:
     if a.signals_json:
         data = json.loads(Path(a.signals_json).read_text())
-        return data.get("signals", []), data.get("notes", [])
+        if data.get("built_unix") and time.time()-float(data["built_unix"]) > 900:
+            return [], ["файл сигналов устарел"]
+        from src.data.market import INTERVALS
+        rows=[]
+        for r in data.get("signals", []):
+            r=dict(r)
+            if r.get("page_setups") and r.get("tf") not in a.tfs: continue
+            ts=r.get("ts");duration=INTERVALS.get(r.get("tf"),300)*1000
+            if isinstance(ts,(int,float)):
+                ready=r.get("ready_ms") or ts+duration
+                r["age_candles"]=max(0,int((time.time()*1000-ready)//duration))
+            rows.append(r)
+        return rows, data.get("notes", [])
     from src.backtest.costs import Costs
     from src.storage import db
     from tools.live import screen, universe
@@ -151,7 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         from tools.trade import tg_control
         from tools.trade.run import load_env
         load_env()
-        tg_control.run(ROOT / "data" / "trade")
+        if os.environ.get("TELEGRAM_CONTROL_ENABLED") == "1":
+            tg_control.run(ROOT / "data" / "trade")
     except Exception as exc:                               # noqa: BLE001
         print(f"telegram: {exc}", file=sys.stderr)
     cache: dict = {}
@@ -182,7 +196,13 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
                     help="фильтр по тренду скринера: tf — тренд таймфрейма сигнала, "
                          "overall — общий (1h и 4h совпали)")
     ap.add_argument("--trend-src", default=DEFAULT_TREND)
+    ap.add_argument("--no-timeout", action="store_true")
+    ap.add_argument("--max-attempts-5m", type=int, default=1)
+    ap.add_argument("--capital-fraction", type=float, default=1.0)
     ap.add_argument("--capital", type=float, default=1000.0)
+    ap.add_argument("--parallel-timeframes", action="store_true", help="разрешить отдельные позиции одной монеты на разных ТФ")
+    ap.add_argument("--min-entry-rr", type=float, default=0.0, help="минимум чистого R:R после исполнения и комиссий")
+    ap.add_argument("--exit-on-opposite", action="store_true", help="эксперимент: выход при свежем противоположном пробое/ретесте/сломе")
     ap.add_argument("--risk-pct", type=float, default=0.01)
     ap.add_argument("--max-open", type=int, default=5)
     ap.add_argument("--max-age", type=int, default=1)
@@ -229,7 +249,8 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         cmd_status(ledger, st)
         return 0
 
-    cfg = Config(policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
+    if not 0 < a.capital_fraction <= 1: ap.error("capital-fraction must be in (0,1]")
+    cfg = Config(no_timeout=a.no_timeout, max_attempts_5m=a.max_attempts_5m, capital_fraction=a.capital_fraction, parallel_timeframes=a.parallel_timeframes, min_entry_rr=a.min_entry_rr, exit_on_opposite=a.exit_on_opposite, policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
                  max_open=a.max_open, max_age=a.max_age, max_drawdown=a.max_drawdown,
                  breakeven_r=a.breakeven, trail_r=a.trail, daily_loss=a.daily_loss,
                  cooldown_min=a.cooldown, max_side=a.max_side,
@@ -263,9 +284,32 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         ledger.log("skip", key=name, symbol="?", formation="inbox", tf="-", side="-",
                    reason=f"внешний сигнал не принят: {why}", trend="")
     rows = manual + list(rows)
-    res = cycle(rows, st, broker=broker, ledger=ledger,
+    exit_rows = rows
+    if a.exit_on_opposite and a.signals_json:
+        import copy
+        other = copy.copy(a); other.signals_json = None
+        ck = (None, other.db, other.universe, tuple(other.tfs), other.exchange)
+        try:
+            if cache is not None and ck in cache: exit_rows = cache[ck][0]
+            else: exit_rows = screener_rows(other)[0]
+        except Exception as exc:
+            ledger.log("error", where="exit_signals", error=type(exc).__name__)
+            exit_rows = []
+    from src.trade.position_controls import pending, apply
+    commands = pending(ledger.root)
+    before = None
+    control_events=[]
+    if commands:
+        before = cycle([], st, broker=broker, ledger=ledger, candles=candles_1m, now_ms=now_ms, cfg=cfg, trend=trend)
+        control_events=apply(commands, st, broker, ledger, now_ms)
+    res = cycle(rows, st, broker=broker, ledger=ledger, exit_rows=exit_rows,
                 candles=candles_1m, now_ms=now_ms, cfg=cfg, trend=trend)
+    res["events"] = control_events + res["events"]
+    if before:
+        res["events"] = before["events"] + res["events"]
+        res["closed"] += before["closed"]
     save_state(ledger.state_path, st)
+    for path, msg in commands: path.rename(path.with_suffix('.done'))
     if a.notify and res["events"]:
         from tools.trade.run import load_env, notify
         load_env()

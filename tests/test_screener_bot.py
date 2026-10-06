@@ -421,3 +421,93 @@ def test_capacity_records_reason_without_consuming_signal(tmp_path):
     assert events[-1]['symbols']==['API3USDT']
     assert not any('API3USDT' in key for key in st.seen)
     assert result['events']
+
+
+def test_actual_paper_fill_beyond_target_is_rejected(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    class MovingBook:
+        calls=0
+        def __call__(self,symbol,market):
+            self.calls+=1
+            price=100 if self.calls==1 else 105
+            return OrderBook('t',symbol,0,[Level(price,1e9)],[Level(price,1e9)])
+    broker=PaperBroker('future',book=MovingBook())
+    res=run(st,broker,ledger,data,[row()],T0)
+    assert res['opened']==0 and st.cash==1000 and not st.positions
+    assert any('цена исполнения' in r.get('reason','') for r in ledger.journal())
+
+
+def test_minimum_net_rr_rejects_late_entry(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    result=run(st,broker,ledger,data,[row()],T0,Config(min_entry_rr=3))
+    assert not result['opened'] and st.cash==1000
+    assert any(r.get('rr_net',99)<3 for r in ledger.journal() if r['kind']=='skip')
+
+
+def test_opposite_structural_signal_closes_old_position(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0)
+    opposite=row(direction='short',kind='breakout',entry=100,stop=102,target=94)
+    result=run(st,broker,ledger,data,[opposite],T0+MIN,Config(exit_on_opposite=True))
+    closes=[r for r in ledger.journal() if r['kind']=='close']
+    assert result['closed']==1 and closes[-1]['reason']=='invalidation'
+
+
+def test_parallel_timeframes_keep_distinct_positions(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    result=run(st,broker,ledger,data,[row(tf='5m'),row(tf='15m')],T0,Config(parallel_timeframes=True))
+    assert result['opened']==2
+    assert all(p.entry_rules['parallel_timeframes'] for p in st.pos())
+
+
+def test_more_slots_do_not_create_extra_capital(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path,prices={'AAAUSDT':100,'BBB USDT':100,'BBBUSDT':100})
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1,risk_pct=1))
+    result=run(st,broker,ledger,data,[row(symbol='BBBUSDT')],T0+MIN,Config(max_open=20))
+    assert result['opened']==0 and not any('BBBUSDT' in key for key in st.seen)
+    assert any('капитал' in r.get('reason','') for r in ledger.journal())
+
+
+def test_eighty_percent_capital_limit(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1,risk_pct=1,capital_fraction=.8))
+    assert sum(p.qty*p.entry for p in st.pos()) <= 800+1e-7
+    assert len(st.positions)==1
+
+
+def test_three_attempts_have_distinct_receipts_and_wait_for_next_event(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(max_attempts_5m=3,no_timeout=True)
+    signal=row(ts=T0)
+    run(st,broker,ledger,data,[signal],T0,cfg)
+    for n in range(3):
+        data['c']=[c(T0+(2*n+1)*MIN,100,101,97,99)]
+        run(st,broker,ledger,data,[signal],T0+(2*n+2)*MIN,cfg)
+    assert not st.positions
+    opened=[r for r in ledger.journal() if r['kind']=='open']
+    assert len(opened)==3 and len({r['key'] for r in opened})==3
+    assert any(r['kind']=='attempt_review' for r in ledger.journal())
+    data['c']=[]
+    assert run(st,broker,ledger,data,[row(ts=T0+5*MIN)],T0+8*MIN,cfg)['opened']==1
+
+
+def test_no_timeout_preserves_position_after_old_horizon(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(no_timeout=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    assert run(st,broker,ledger,data,[],T0+3*86400000,cfg)['closed']==0
+
+
+def test_manual_stop_edit_and_close_preserve_reason(tmp_path):
+    from src.trade.position_controls import enqueue,pending,apply
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(no_timeout=True))
+    p=st.pos()[0]
+    enqueue(tmp_path,dict(op='edit',key=p.key,reason='уровень поддержки',stop=99,target=107))
+    commands=pending(tmp_path);apply(commands,st,broker,ledger,T0+MIN)
+    assert st.pos()[0].stop==99 and st.pos()[0].target==107
+    apply([(tmp_path/'close.json',dict(op='close',key=p.key,reason='слом идеи'))],st,broker,ledger,T0+MIN)
+    result=run(st,broker,ledger,data,[],T0+2*MIN,Config(no_timeout=True))
+    assert result['closed']==1
+    closed=[r for r in ledger.journal() if r['kind']=='close'][-1]
+    assert closed['reason']=='manual' and closed['manual_reason']=='слом идеи'

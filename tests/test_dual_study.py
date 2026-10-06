@@ -20,3 +20,28 @@ def test_two_accounts_can_both_hit_stop():
 def test_no_future_price_after_stop_is_used():
  a=leg([bar(100,100,98,99),bar(99,500,1,500)],1,slippage=0)
  assert a['exit']==99 and a['reason']=='stop'
+
+
+from tools.trade.dual_study import protected_pair
+
+
+def test_joint_close_after_stop_closes_remaining_leg():
+    cs=[bar(100,101.5,100,101.2),bar(101.2,105,100,104)]
+    p=protected_pair(cs,'close_after_stop',slippage=0)
+    assert p['short']['reason']=='stop'
+    assert p['long']['reason']=='pair_stop_close'
+    assert p['long']['exit']==101.2
+
+
+def test_basket_trail_does_not_count_future_extrema():
+    cs=[bar(100,101.1,100,101),bar(101,101.9,101,101.8),bar(101.8,101.8,101.3,101.3)]
+    p=protected_pair(cs,'basket_trail',slippage=0)
+    assert p['trigger']=='pair_profit_trail'
+    assert p['long']['exit']==101.3
+    assert p['peak_net']>5
+
+
+def test_joint_control_cannot_erase_two_stops_in_same_bar():
+    p=protected_pair([bar(100,102,98,100)],'close_after_stop',slippage=0)
+    assert p['long']['reason']==p['short']['reason']=='stop'
+    assert p['pair_pnl']< -20

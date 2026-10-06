@@ -59,10 +59,11 @@ def notify(text: str) -> None:
         return
     try:
         import requests
-        response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json={"chat_id": chat, "text": text}, timeout=15)
-        if not response.ok or not response.json().get("ok"):
-            print(f"telegram: delivery failed HTTP {response.status_code}", file=sys.stderr)
+        for offset in range(0,len(text),3500):
+            response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json={"chat_id": chat, "text": text[offset:offset+3500]}, timeout=15)
+            if not response.ok or not response.json().get("ok"):
+                print(f"telegram: delivery failed HTTP {response.status_code}", file=sys.stderr)
     except Exception as e:
         print(f"telegram: {type(e).__name__}", file=sys.stderr)
 
