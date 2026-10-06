@@ -86,6 +86,8 @@
     [].forEach.call(document.querySelectorAll('header nav, nav.links, .nav, .links, .toplinks'),function(el){ if(!bar.contains(el)) el.style.display='none'; });
   }
   mark();
+  var monitorBadge=document.createElement('a');monitorBadge.href='/bot-review.html';monitorBadge.style.cssText='margin-left:12px;font:12px system-ui;color:#94a3b8;text-decoration:none';monitorBadge.textContent='контроль ботов: проверка…';(host||bar).appendChild(monitorBadge);
+  function monitorStatus(){fetch('/monitor-status.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error();return r.json();}).then(function(x){var age=(Date.now()-x.updated_ms)/1000,busy=(x.busy_profiles||[]).length;monitorBadge.textContent=age>30?'⚠ контроль ботов: нет свежего статуса':busy?'⚠ контроль: '+busy+' профилей занято':'● контроль ботов: '+x.duration_seconds.toFixed(1)+'с / '+x.interval_seconds+'с';monitorBadge.style.color=age>30||busy||!x.ok?'#fbbf24':'#34d399';}).catch(function(){monitorBadge.textContent='контроль ботов: статус недоступен';});}monitorStatus();setInterval(monitorStatus,10000);
 
   // Монеты в таблицах — ссылки на график в скринере (#chart=SYM&tf=TF), в том числе
   // внутри вкладок ботов (встроенные окна той же страницы). Таблицы пересобираются — проходим раз в 3 с.
@@ -105,3 +107,4 @@
   }
   if(location.pathname!=='/' && location.pathname!=='/board.html'){ linkify(document); setInterval(function(){ linkify(document); },3000); }
 })();
+

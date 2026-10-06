@@ -24,7 +24,9 @@ def enqueue(root, msg):
 
 
 def pending(root):
-    return [(p, json.loads(p.read_text('utf-8'))) for p in sorted((Path(root)/'controls').glob('*.json'))]
+    from src.trade.atomic_store import processed
+    paths=sorted((Path(root)/'controls').glob('*.json'));done=processed(root,paths)
+    return [(p, json.loads(p.read_text('utf-8'))) for p in paths if str(p) not in done]
 
 
 def apply(commands, state, broker, ledger, now_ms):
@@ -50,3 +52,4 @@ def apply(commands, state, broker, ledger, now_ms):
 
         events.append(f"{position.symbol}: {msg['op']}; причина: {msg['reason']}; стоп {position.stop:.7g}, цель {position.target:.7g}")
     return events
+

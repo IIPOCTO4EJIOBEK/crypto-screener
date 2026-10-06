@@ -464,7 +464,8 @@ def to_json(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 def _write(out: Path, text: str) -> Path:
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(out.suffix + ".tmp")
+    import uuid
+    tmp = out.with_suffix(out.suffix + "." + uuid.uuid4().hex + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(out)
     return out
@@ -508,3 +509,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
