@@ -411,3 +411,13 @@ def test_audit_reconciles_partial_cash_and_detects_damage(tmp_path):
     assert r['reconciled'] and r['fees']==pytest.approx(.201)
     st.cash+=1;save_state(d/'state.json',st)
     assert not profile(d)['reconciled']
+
+
+def test_capacity_records_reason_without_consuming_signal(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1))
+    result=run(st,broker,ledger,data,[row(symbol='API3USDT')],T0+MIN,Config(max_open=1))
+    events=[r for r in ledger.journal() if r['kind']=='capacity']
+    assert events[-1]['symbols']==['API3USDT']
+    assert not any('API3USDT' in key for key in st.seen)
+    assert result['events']

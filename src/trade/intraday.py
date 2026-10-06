@@ -477,7 +477,14 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             if key in st.seen:
                 continue
             if len(st.positions) >= cfg.max_open:
-                break                          # места нет; сигнал ещё свежий — посмотрим в следующий круг
+                pending = [r for r in rows if r.get("triggered")
+                           and signal_key(r) not in st.seen
+                           and (r.get("age_candles") or 0) <= cfg.max_age]
+                ledger.log("capacity", reason="достигнут лимит открытых позиций",
+                           max_open=cfg.max_open, pending=len(pending),
+                           symbols=sorted({r["symbol"] for r in pending}))
+                out["events"].append(f"Лимит {cfg.max_open} позиций: {len(pending)} свежих сигналов ждут места")
+                break                          # don't consume signals; retry if a slot becomes free
             st.seen[key] = now_ms
             manual = bool(row.get("manual"))     # ручной / вебхук: решение трейдера
             why = eligible(row, policy="all" if manual else cfg.policy, max_age=cfg.max_age)
