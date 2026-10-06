@@ -46,3 +46,11 @@ def test_levels_already_reached_at_publication_are_not_new_hits(tmp_path):
     assert a.tracks[0]['hit']==[1,2]
     assert a.tracks[0]['published_price']==104.1
     assert not a.tracks[0]['done']
+
+
+def test_event_alert_keeps_its_original_ready_time(tmp_path,monkeypatch):
+    a=bare(tmp_path)
+    a.signals=[dict(symbol='API3USDT',tf='5m',ts=300000,ready_ms=300000,added=310000)]
+    monkeypatch.setattr('tools.live.alerts.time.time',lambda:900)
+    a._write_signals()
+    assert json.loads((tmp_path/'alert_signals.json').read_text())['signals']==[]

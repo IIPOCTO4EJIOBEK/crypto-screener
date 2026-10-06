@@ -272,7 +272,9 @@ class Alerts:
             duration = tfms.get(x["tf"], 300_000)
             # Formation ts is the OPEN time of its closed candle; age 0 starts at CLOSE.
             t0 = x.get("ts")
-            ready = t0 + duration if isinstance(t0, (int, float)) else x["added"]
+            ready = x.get("ready_ms")
+            if ready is None:
+                ready = t0 + duration if isinstance(t0, (int, float)) else x["added"]
             age = max(0, int((now - ready) // duration))
             if age <= 1:
                 keep.append(dict(x, age_candles=max(age, 0)))
@@ -439,6 +441,7 @@ class Alerts:
         self.signals.append({"kind": "alert", "title": title, "tf": tf, "symbol": sym, "exchange": "binance_futures",
                              "direction": t["direction"], "entry": t["entry"], "stop": t["stop"], "target": t["target"],
                              "rr": t["rr"], "triggered": True, "ts": int(time.time() * 1000) // 300_000 * 300_000,
+                             "ready_ms": int(time.time() * 1000) // 300_000 * 300_000,
                              "reasons": [t.get("why", "")], "measured": None, "exp_net": None,
                              "added": int(time.time() * 1000)})
         self._write_signals()
