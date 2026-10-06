@@ -34,7 +34,9 @@ class Store:
   with closing(sqlite3.connect(self.path,timeout=10)) as c:
    c.execute('BEGIN IMMEDIATE')
    if c.execute('SELECT count(*) FROM items').fetchone()[0]>=100 and not c.execute('SELECT 1 FROM items WHERE id=?',(ident,)).fetchone():raise ValueError('limit 100 drawings')
-   c.execute('INSERT OR REPLACE INTO items VALUES(?,?,?,NULL)',(ident,json.dumps(row,ensure_ascii=False),int(kind=='level')));c.commit()
+   previous=c.execute('SELECT active FROM items WHERE id=?',(ident,)).fetchone()
+   active=int(kind=='level' and (previous[0] if previous else True))
+   c.execute('INSERT OR REPLACE INTO items VALUES(?,?,?,NULL)',(ident,json.dumps(row,ensure_ascii=False),active));c.commit()
   return row
  def change(self,op,ident):
   with closing(sqlite3.connect(self.path,timeout=10)) as c:

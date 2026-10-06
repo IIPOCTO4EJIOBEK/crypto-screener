@@ -49,6 +49,7 @@ def _group(closed: list[dict], key) -> list[str]:
 def settings(cfg: Config) -> list[str]:
     """Включённые правила ведения позиции — словами, для блока «Что делает бот»."""
     out = [f"До {cfg.max_attempts_5m} попыток входа 5m на одно событие; затем ожидание следующего сигнала 5m", "Выход по времени выключен" if cfg.no_timeout else "Выход по времени включён"]
+    out += [f"до {cfg.max_open} одновременно открытых позиций", f"капитал в позициях не выше {cfg.capital_fraction:.0%}", f"остановка входов при просадке от пика {cfg.max_drawdown:.0%}"]
     if cfg.parallel_timeframes:
         out.append("отдельные позиции одной монеты на разных таймфреймах")
     if cfg.exit_on_opposite:
@@ -67,7 +68,7 @@ def settings(cfg: Config) -> list[str]:
     if cfg.stop_on_close:
         out.append("стоп по закрытию минутной свечи, а не по касанию")
     if cfg.no_target:
-        out.append("без цели формации: выход стопом, трейлингом или по времени")
+        out.append("без цели формации: выход стопом или трейлингом" if cfg.no_timeout else "без цели формации: выход стопом, трейлингом или по времени")
     if cfg.daily_loss:
         out.append(f"дневной лимит убытка {cfg.daily_loss:.1%} капитала")
     if cfg.cooldown_min:

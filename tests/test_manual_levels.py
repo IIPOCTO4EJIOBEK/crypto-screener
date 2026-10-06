@@ -1,6 +1,19 @@
 from src.data.manual_levels import Store
 import pytest
 
+def test_moving_level_resets_baseline_without_rearming_fired_level(tmp_path):
+ s=Store(tmp_path/'levels.db');item=s.save(dict(symbol='USUSDT',price=1,kind='level'))
+ s.observe({'USUSDT':.9},1)
+ moved=s.save(dict(item,price=.8))
+ assert not s.observe({'USUSDT':.9},2)
+ assert len(s.observe({'USUSDT':.7},3))==1
+ s.save(dict(moved,price=.6))
+ assert not s.snapshot()['items'][0]['active']
+ assert not s.observe({'USUSDT':.5},4)
+ s.change('rearm',item['id'])
+ assert not s.observe({'USUSDT':.5},5)
+ assert len(s.observe({'USUSDT':.7},6))==1
+
 
 def test_level_is_one_shot_and_survives_restart(tmp_path):
  p=tmp_path/'levels.db';s=Store(p);x=s.save(dict(symbol='USUSDT',price=.012,kind='level',direction='up'))
