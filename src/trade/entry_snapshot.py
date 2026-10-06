@@ -4,10 +4,11 @@ from src.trade.broker import PaperBroker,fetch_book
 from src.trade.intraday import signal_key
 
 class EntryBroker(PaperBroker):
- def __init__(self,market='future',books=None,clock=time.time):
-  self.books=books or {};self.clock=clock
+ def __init__(self,market='future',books=None,clock=time.time,live=None):
+  self.books=books or {};self.clock=clock;self.live_cache=live
   super().__init__(market,book=self.cached_book)
  def cached_book(self,symbol,market):
+  if self.live_cache is not None:return self.live_cache.get(symbol)
   item=self.books.get(symbol)
   if not item or not 0<=self.clock()-item[0]<=5:
    raise ValueError('fresh entry order book unavailable; retry next pass')
@@ -16,9 +17,12 @@ class EntryBroker(PaperBroker):
   if reduce:
    return PaperBroker(self.market).execute(symbol,side,qty,reduce=True)
   try:return super().execute(symbol,side,qty,reduce=False)
-  except ValueError:return None
+  except (ValueError,OSError,KeyError,TypeError):return None
 
-def prepare(rows,state,cfg,books=None,fetch=fetch_book,clock=time.time):
+def prepare(rows,state,cfg,books=None,fetch=fetch_book,clock=time.time,book_root=None):
+ if book_root is not None:
+  from src.trade.book_cache import BookCache
+  return EntryBroker(clock=clock,live=BookCache(book_root,clock))
  books=books if books is not None else {}
  slots=max(0,cfg.max_open-len(state.positions))
  if not slots or state.equity()*cfg.capital_fraction<=sum(p.qty*(p.mark or p.entry) for p in state.pos()):return EntryBroker(books=books,clock=clock)
