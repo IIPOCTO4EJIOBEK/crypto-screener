@@ -1,0 +1,42 @@
+{
+  "experimental": true,
+  "orders_enabled": false,
+  "disputed_rule": "Both models take nonzero opposite directions on the same fixed test origin.",
+  "capital_each": 1000,
+  "notional_each": 1000,
+  "stop_pct": 0.01,
+  "target_pct": 0.02,
+  "horizon_candles": 8,
+  "n": 23,
+  "pair_pnl_sum": -54.44483016556189,
+  "long_pnl_sum": -16.850503667493903,
+  "short_pnl_sum": -37.59432649806798,
+  "fees_sum": 46.00955120374055,
+  "both_stop": 4,
+  "limitations": [
+    "Independent hypothetical trades; results summed, not a sequential portfolio equity curve.",
+    "No parameter tuning; stop checked before target when OHLC is ambiguous.",
+    "Funding cut at the exit candle opening; intrabar ordering unknown.",
+    "Fixed slippage; historical executable depth is unavailable.",
+    "Small recent sample; not suitable for real trading approval."
+  ],
+  "protection_comparison": {
+    "close_after_stop": {
+      "pair_pnl_sum": -50.87170011233584,
+      "fees_sum": 45.974648093807005,
+      "triggers": 19,
+      "worst_pair": -13.587116596828222
+    },
+    "basket_trail": {
+      "pair_pnl_sum": -54.44483016556189,
+      "fees_sum": 46.00955120374055,
+      "triggers": 0,
+      "worst_pair": -22.200001000000086
+    }
+  },
+  "protection_parameters": {
+    "activation_net_usdt": 5,
+    "giveback_net_usdt": 3,
+    "decision": "candle close only; gap and within-candle losses may exceed the intended floor"
+  }
+}

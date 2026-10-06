@@ -40,6 +40,18 @@ def test_recovery_fetch_runs_outside_position_lock(tmp_path):
  result=round_once(trade,tmp_path/'kl',tmp_path/'repair',fetch)
  assert result['repaired']==['AAAUSDT'] and not result['errors']
  assert round_once(trade,tmp_path/'kl',tmp_path/'repair',lambda *a:(_ for _ in ()).throw(AssertionError('repeat REST')))['repaired']==[]
+ assert json.loads((trade/'position-symbols.json').read_text())['symbols']==['AAAUSDT']
+
+def test_live_1m_timestamp_not_refreshed_by_other_timeframes(tmp_path):
+ now=int(time.time()*1000)
+ (tmp_path/'AAAUSDT.live.json').write_text(json.dumps(dict(t=now,quote_ms={'1m':now-30000,'1h':now},k={'1m':[0,100,101,99,100,1]})))
+ assert MinuteCache(tmp_path,None).live(['AAAUSDT'],now)=={}
+
+def test_books_include_held_symbols(tmp_path,monkeypatch):
+ from tools.trade.book_feed import symbols
+ universe=tmp_path/'u';pin=tmp_path/'p';universe.write_text('{"symbols":["BTCUSDT"]}');pin.write_text('{"symbols":["1000BONKUSDT"]}')
+ monkeypatch.setenv('SCREENER_POSITION_SYMBOLS',str(pin))
+ assert symbols(universe)==['1000BONKUSDT','BTCUSDT']
 
 def test_exit_main_never_polls_telegram(tmp_path,monkeypatch):
  from tools.trade import screener_bot,tg_control

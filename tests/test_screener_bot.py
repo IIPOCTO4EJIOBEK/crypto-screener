@@ -69,6 +69,12 @@ def test_вход_размер_и_цель(tmp_path):
     assert cl["reason"] == "target" and cl["r"] == pytest.approx(2.0)
     assert st.cash == pytest.approx(1000 + 2 * 4 - 0.1 - 2 * 104 * 0.0005)
 
+def test_exhausted_capital_does_not_open_dust_position(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    st.cash=1e-10
+    result=run(st,broker,ledger,data,[row()],T0)
+    assert result['opened']==0 and not st.positions
+
 
 def test_стоп_раньше_цели_и_гэп(tmp_path):
     p_book, broker, ledger, st, data = setup(tmp_path)
@@ -447,7 +453,7 @@ def test_minimum_net_rr_rejects_late_entry(tmp_path):
 def test_opposite_structural_signal_closes_old_position(tmp_path):
     book,broker,ledger,st,data=setup(tmp_path)
     run(st,broker,ledger,data,[row()],T0)
-    opposite=row(direction='short',kind='breakout',entry=100,stop=102,target=94)
+    opposite=row(direction='short',kind='breakout',entry=100,stop=102,target=94,ts=T0-4*MIN,trigger_level=101,_latest_closed=100)
     result=run(st,broker,ledger,data,[opposite],T0+MIN,Config(exit_on_opposite=True))
     closes=[r for r in ledger.journal() if r['kind']=='close']
     assert result['closed']==1 and closes[-1]['reason']=='invalidation'

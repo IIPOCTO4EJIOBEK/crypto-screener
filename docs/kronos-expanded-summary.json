@@ -1,0 +1,183 @@
+{
+  "created_unix": 1791310083.7101755,
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "model_revisions": {
+    "Kronos-Tokenizer-base": {
+      "repo": "NeoQuasar/Kronos-Tokenizer-base",
+      "revision": "0e0117387f39004a9016484a186a908917e22426"
+    },
+    "Kronos-small": {
+      "repo": "NeoQuasar/Kronos-small",
+      "revision": "901c26c1332695a2a8f243eb2f37243a37bea320"
+    },
+    "Kronos-base": {
+      "repo": "NeoQuasar/Kronos-base",
+      "revision": "2b554741eca47781b64468546e77fef3e85130e6"
+    }
+  },
+  "parameters": {
+    "context": 400,
+    "horizon": 8,
+    "origins": 24,
+    "validation_origins": 8,
+    "test_origins": 16,
+    "samples": 3,
+    "fee_each": 0.0005,
+    "slippage_each": 0.0001,
+    "threshold": 0.0012000000000000001
+  },
+  "limitations": [
+    "Small recent sample; not proof of profitability.",
+    "Frozen pretrained models; no fine tuning or parameter selection.",
+    "Funding approximates mark-price notional by entry notional.",
+    "OHLCV next-open fills plus fixed slippage; no historical L2 execution.",
+    "32-bar momentum is a simple baseline, not the existing daily 28/5 strategy.",
+    "Prospective forecast validity is measured from candle timestamps; stale files must be ignored."
+  ],
+  "scores": [
+    {
+      "model": "small",
+      "symbol": "APTUSDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 12,
+      "kronos_compounded_pct": 0.610177086717445,
+      "momentum_compounded_pct": -4.186870846498469,
+      "flat_pct": 0,
+      "kronos_mae": 0.003960890910502963,
+      "last_price_mae": 0.003788443633748166
+    },
+    {
+      "model": "small",
+      "symbol": "APTUSDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 12,
+      "kronos_compounded_pct": 5.285117908086057,
+      "momentum_compounded_pct": -2.4100742104010475,
+      "flat_pct": 0,
+      "kronos_mae": 0.0076376351452015255,
+      "last_price_mae": 0.007564120085303093
+    },
+    {
+      "model": "small",
+      "symbol": "API3USDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 16,
+      "kronos_compounded_pct": 4.35560761888949,
+      "momentum_compounded_pct": 10.693976032288631,
+      "flat_pct": 0,
+      "kronos_mae": 0.029057865880253476,
+      "last_price_mae": 0.014424157522632774
+    },
+    {
+      "model": "small",
+      "symbol": "API3USDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 14,
+      "kronos_compounded_pct": -15.397619414337715,
+      "momentum_compounded_pct": -8.194451850041407,
+      "flat_pct": 0,
+      "kronos_mae": 0.027685869459829312,
+      "last_price_mae": 0.018062898743800876
+    },
+    {
+      "model": "small",
+      "symbol": "GTCUSDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 16,
+      "kronos_compounded_pct": 2.78879176344613,
+      "momentum_compounded_pct": 4.563976020944871,
+      "flat_pct": 0,
+      "kronos_mae": 0.014602501720537526,
+      "last_price_mae": 0.012242990873451173
+    },
+    {
+      "model": "small",
+      "symbol": "GTCUSDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 16,
+      "kronos_compounded_pct": 32.051622570745344,
+      "momentum_compounded_pct": -1.960171763003049,
+      "flat_pct": 0,
+      "kronos_mae": 0.03569830898655625,
+      "last_price_mae": 0.02717058094059984
+    },
+    {
+      "model": "base",
+      "symbol": "APTUSDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 11,
+      "kronos_compounded_pct": -4.202932119973424,
+      "momentum_compounded_pct": -4.186870846498469,
+      "flat_pct": 0,
+      "kronos_mae": 0.004310961249680258,
+      "last_price_mae": 0.003788443633748166
+    },
+    {
+      "model": "base",
+      "symbol": "APTUSDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 14,
+      "kronos_compounded_pct": -2.5518037182730158,
+      "momentum_compounded_pct": -2.4100742104010475,
+      "flat_pct": 0,
+      "kronos_mae": 0.008927703559270212,
+      "last_price_mae": 0.007564120085303093
+    },
+    {
+      "model": "base",
+      "symbol": "API3USDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 16,
+      "kronos_compounded_pct": 0.7794846742755324,
+      "momentum_compounded_pct": 10.693976032288631,
+      "flat_pct": 0,
+      "kronos_mae": 0.02383105657036371,
+      "last_price_mae": 0.014424157522632774
+    },
+    {
+      "model": "base",
+      "symbol": "API3USDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 14,
+      "kronos_compounded_pct": 4.770580961709481,
+      "momentum_compounded_pct": -8.194451850041407,
+      "flat_pct": 0,
+      "kronos_mae": 0.030333729924820592,
+      "last_price_mae": 0.018062898743800876
+    },
+    {
+      "model": "base",
+      "symbol": "GTCUSDT",
+      "tf": "5m",
+      "n": 16,
+      "trades": 15,
+      "kronos_compounded_pct": -3.910900610720236,
+      "momentum_compounded_pct": 4.563976020944871,
+      "flat_pct": 0,
+      "kronos_mae": 0.014298505199790711,
+      "last_price_mae": 0.012242990873451173
+    },
+    {
+      "model": "base",
+      "symbol": "GTCUSDT",
+      "tf": "15m",
+      "n": 16,
+      "trades": 15,
+      "kronos_compounded_pct": 24.310435663638664,
+      "momentum_compounded_pct": -1.960171763003049,
+      "flat_pct": 0,
+      "kronos_mae": 0.03166850402950938,
+      "last_price_mae": 0.02717058094059984
+    }
+  ]
+}

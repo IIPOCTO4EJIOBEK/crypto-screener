@@ -38,7 +38,7 @@ class MinuteCache:
   out={}
   for symbol in symbols:
    try:
-    x=json.loads((self.root/(symbol+'.live.json')).read_text('utf-8'));stamp=int(x['t']);price=float(x['k']['1m'][4])
+    x=json.loads((self.root/(symbol+'.live.json')).read_text('utf-8'));stamp=int(x.get('quote_ms',{}).get('1m',x['t']));price=float(x['k']['1m'][4])
     if math.isfinite(price) and price>0 and 0<=now-stamp<=10_000:
      trace=[];last=0
      for item in x.get('ticks',[]):

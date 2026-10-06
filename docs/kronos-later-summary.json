@@ -1,0 +1,111 @@
+{
+  "created_unix": 1791310821.8012726,
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "model_revisions": {
+    "Kronos-Tokenizer-base": {
+      "repo": "NeoQuasar/Kronos-Tokenizer-base",
+      "revision": "0e0117387f39004a9016484a186a908917e22426"
+    },
+    "Kronos-small": {
+      "repo": "NeoQuasar/Kronos-small",
+      "revision": "901c26c1332695a2a8f243eb2f37243a37bea320"
+    },
+    "Kronos-base": {
+      "repo": "NeoQuasar/Kronos-base",
+      "revision": "2b554741eca47781b64468546e77fef3e85130e6"
+    }
+  },
+  "parameters": {
+    "context": 400,
+    "horizon": 8,
+    "origins": 4,
+    "validation_origins": 0,
+    "test_origins": 4,
+    "samples": 3,
+    "fee_each": 0.0005,
+    "slippage_each": 0.0001,
+    "threshold": 0.0012000000000000001
+  },
+  "limitations": [
+    "Small recent sample; not proof of profitability.",
+    "Frozen pretrained models; no fine tuning or parameter selection.",
+    "Funding approximates mark-price notional by entry notional.",
+    "OHLCV next-open fills plus fixed slippage; no historical L2 execution.",
+    "32-bar momentum is a simple baseline, not the existing daily 28/5 strategy.",
+    "Prospective forecast validity is measured from candle timestamps; stale files must be ignored."
+  ],
+  "scores": [
+    {
+      "model": "small",
+      "symbol": "BTCUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 2,
+      "kronos_compounded_pct": -0.01181547305025843,
+      "momentum_compounded_pct": -0.7871467189755177,
+      "flat_pct": 0,
+      "kronos_mae": 0.0021800084210563363,
+      "last_price_mae": 0.001904155735208209
+    },
+    {
+      "model": "small",
+      "symbol": "ETHUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 2,
+      "kronos_compounded_pct": -0.1333025950585931,
+      "momentum_compounded_pct": -0.6493815385919643,
+      "flat_pct": 0,
+      "kronos_mae": 0.0014886456073816869,
+      "last_price_mae": 0.0016442714483161768
+    },
+    {
+      "model": "small",
+      "symbol": "SOLUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 4,
+      "kronos_compounded_pct": -1.332418452464279,
+      "momentum_compounded_pct": -0.3772455896385085,
+      "flat_pct": 0,
+      "kronos_mae": 0.0028365528267166817,
+      "last_price_mae": 0.002923436657530145
+    },
+    {
+      "model": "base",
+      "symbol": "BTCUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 3,
+      "kronos_compounded_pct": 0.29556767350762403,
+      "momentum_compounded_pct": -0.7871467189755177,
+      "flat_pct": 0,
+      "kronos_mae": 0.0022613071857716886,
+      "last_price_mae": 0.001904155735208209
+    },
+    {
+      "model": "base",
+      "symbol": "ETHUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 2,
+      "kronos_compounded_pct": -0.33263997378514265,
+      "momentum_compounded_pct": -0.6493815385919643,
+      "flat_pct": 0,
+      "kronos_mae": 0.0020551951120054207,
+      "last_price_mae": 0.0016442714483161768
+    },
+    {
+      "model": "base",
+      "symbol": "SOLUSDT",
+      "tf": "15m",
+      "n": 4,
+      "trades": 1,
+      "kronos_compounded_pct": -0.11347689509796366,
+      "momentum_compounded_pct": -0.3772455896385085,
+      "flat_pct": 0,
+      "kronos_mae": 0.002354467174690819,
+      "last_price_mae": 0.002923436657530145
+    }
+  ]
+}
