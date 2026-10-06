@@ -21,7 +21,11 @@ class MinuteCache:
      merged={int(r[0]):r for r in repair};merged.update({int(r[0]):r for r in data});data=sorted(merged.values(),key=lambda r:r[0]);source='websocket+recovery'
     except (OSError,ValueError,TypeError,IndexError,KeyError):pass
    if not isinstance(data,list) or not data:raise ValueError('empty local minute history')
-   cs=[Candle(int(r[0]),float(r[1]),float(r[2]),float(r[3]),float(r[4]),0,float(r[5]),0) for r in data]
+   # Only the interval at/after the position cursor can affect its exits.
+   # Old WS bars may be separated from a complete recent REST repair.
+   start=since//60_000*60_000
+   cs=[Candle(int(r[0]),float(r[1]),float(r[2]),float(r[3]),float(r[4]),0,float(r[5]),0) for r in data if int(r[0])>=start]
+   if not cs:raise ValueError('empty required minute history')
    if cs[0].ts>since//60_000*60_000 or cs[-1].ts<(now//60_000-1)*60_000:raise ValueError('local recovery range incomplete')
    if any(b.ts-a.ts!=60_000 for a,b in zip(cs,cs[1:])):raise ValueError('gap in local minute history')
    if any(not all(math.isfinite(x) and x>0 for x in (c.open,c.high,c.low,c.close)) for c in cs):raise ValueError('invalid local price')

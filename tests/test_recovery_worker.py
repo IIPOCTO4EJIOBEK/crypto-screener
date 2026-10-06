@@ -48,6 +48,16 @@ def test_exit_main_never_polls_telegram(tmp_path,monkeypatch):
  monkeypatch.setattr(screener_bot,'run_one',lambda *a:0)
  assert screener_bot.main(['--exits-only'])==0
 
+def test_old_ws_gap_before_cursor_does_not_block_complete_repair(tmp_path):
+ data=bars();market=tmp_path/'kl';repair=tmp_path/'repair';market.mkdir();repair.mkdir()
+ old=[data[0][0]-180000,100,102,99,101,10]
+ (market/'AAAUSDT_1m.json').write_text(json.dumps([old]))
+ (repair/'AAAUSDT.json').write_text(json.dumps(data))
+ cache=MinuteCache(market,None,recovery_root=repair,local_only=True)
+ assert [c.ts for c in cache.candles('AAAUSDT',data[0][0]+1000)]==[r[0] for r in data]
+ # An earlier cursor still requires the missing minutes, even in the same cache.
+ with pytest.raises(RecoveryPending):cache.candles('AAAUSDT',old[0])
+
 def test_real_exit_profile_retains_cursor_without_network_on_gap(tmp_path,monkeypatch):
  from tools.trade import screener_bot,screener_page
  from tests.test_fast_monitor import initial,position
