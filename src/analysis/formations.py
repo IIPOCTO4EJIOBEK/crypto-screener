@@ -90,6 +90,7 @@ class Formation:
     invalid: str = ""    # при каком условии разбор отменяется
     style: str = ""      # скальпинг / среднесрок / долгосрок
     age_candles: int = 0  # сколько свечей назад произошло событие
+    trigger_level: float = 0.0  # точный уровень подтверждения пробоя/ретеста
 
     def __post_init__(self) -> None:
         if not self.style:
@@ -463,7 +464,7 @@ def detect_retest(candles: list[Candle], tf: str, symbol: str,
             last.ts, last.close, last.close, stop, targets, True,
             _confidence(conf), reasons,
             f"закрепление цены за уровнем с обратной стороны "
-            f"({'ниже' if direction == 'long' else 'выше'} {lv.price:.4f})"))
+            f"({'ниже' if direction == 'long' else 'выше'} {lv.price:.4f})", trigger_level=lv.price))
     return out
 
 
