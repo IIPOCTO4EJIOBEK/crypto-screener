@@ -333,10 +333,17 @@ def profile_kw(args: list[str]) -> dict:
 
 def tab_label(ledger: Ledger, name: str) -> tuple[str, str]:
     """Подпись вкладки: имя бота и под ним капитал с доходностью от старта."""
-    eq = [r for r in ledger.journal() if r["kind"] == "equity"]
+    journal=ledger.journal()
+    eq = [r for r in journal if r["kind"] == "equity"]
     if not eq:
         return name, "ещё не запускался"
     first, last = eq[0]["equity"], eq[-1]["equity"]
+    if any(r['kind']=='capital_flow' for r in journal):
+        from src.trade.atomic_store import read_state
+        from src.trade.capital_flow import performance
+        state=read_state(ledger.root)
+        perf=performance(state['start_equity'],journal,last)
+        return name,f"{last:.2f} USDT · {pct(perf['return_fraction'])} без пополнений"
     return name, f"{last:.2f} USDT · {pct(last / first - 1.0 if first else None)}"
 
 
@@ -509,4 +516,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -15,6 +15,7 @@ def profile(d):
  st,j=snapshot(d);intraday=d.name.startswith('screener-');cash=st['start_equity'];partial={};entry={};fees=0;funding=0
  for r in j:
   kind=r['kind'];key=r.get('key')
+  if kind=='capital_flow':cash+=r['amount']
   if intraday:
    if kind=='open':entry[key]=r.get('fee',0);partial[key]=0;cash-=entry[key];fees+=entry[key]
    elif kind=='partial':delta=r['pnl']-r['fee'];cash+=delta;partial[key]=partial.get(key,0)+delta;fees+=r['fee']
@@ -32,8 +33,13 @@ def profile(d):
   prices=latest.get('prices',{});equity=st['cash']+sum(q*prices.get(s,0) for s,q in st['positions'].items())
  values.append(equity)
  for v in values:peak=max(peak,v);dd=max(dd,1-v/peak)
+ deposits=sum(r['amount'] for r in j if r['kind']=='capital_flow')
+ ret=equity/st['start_equity']-1
+ if intraday:
+  from src.trade.capital_flow import performance
+  perf=performance(st['start_equity'],j,equity);ret=perf['return_fraction'];dd=-perf['drawdown_fraction']
  closes=[r for r in j if r['kind']=='close'];rs=[r['r_net'] for r in closes]
- return dict(profile=d.name,mode=st.get('mode','paper'),equity=round(equity,6),return_pct=round((equity/st['start_equity']-1)*100,3),cash=st['cash'],replayed_cash=cash,cash_delta=st['cash']-cash,reconciled=abs(st['cash']-cash)<0.0001,positions=len(st['positions']),closed=len(closes),fills=sum(r['kind']=='fill' for r in j),mean_r=sum(rs)/len(rs) if rs else None,max_drawdown_pct=round(dd*100,3),fees=fees,funding=funding,state_age_seconds=round(time.time()-(d/'state.json').stat().st_mtime),valuation_age_seconds=round(time.time()-j[-1]['ts']/1000) if j else None,last_errors=[{'where':r.get('where'), 'symbol':r.get('symbol'),'ts':r['ts']} for r in j if r['kind']=='error'][-5:],halted=(d/'HALT').exists(),paused=(d/'PAUSE').exists())
+ return dict(profile=d.name,mode=st.get('mode','paper'),equity=round(equity,6),net_deposits=deposits,trading_pnl=equity-st['start_equity']-deposits,return_pct=round(ret*100,3),cash=st['cash'],replayed_cash=cash,cash_delta=st['cash']-cash,reconciled=abs(st['cash']-cash)<0.0001,positions=len(st['positions']),closed=len(closes),fills=sum(r['kind']=='fill' for r in j),mean_r=sum(rs)/len(rs) if rs else None,max_drawdown_pct=round(dd*100,3),fees=fees,funding=funding,state_age_seconds=round(time.time()-(d/'state.json').stat().st_mtime),valuation_age_seconds=round(time.time()-j[-1]['ts']/1000) if j else None,last_errors=[{'where':r.get('where'), 'symbol':r.get('symbol'),'ts':r['ts']} for r in j if r['kind']=='error'][-5:],halted=(d/'HALT').exists(),paused=(d/'PAUSE').exists())
 
 def write(path,text):
  path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp');tmp.write_text(text,encoding='utf-8');os.replace(tmp,path)
