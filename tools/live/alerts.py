@@ -559,7 +559,7 @@ class Alerts:
                 self.signals.append({"kind": ff["kind"], "title": ff.get("title") or ff["kind"], "tf": tf,
                                      "symbol": sym, "exchange": "binance_futures", "direction": ff["direction"],
                                      "entry": ff["entry"], "stop": ff["stop"], "target": ff["target"], "rr": ff["rr"],
-                                     "triggered": True, "ts": ff.get("ts"), "reasons": (ff.get("reasons") or [])[:4],
+                                     "triggered": True, "ts": ff.get("ts"), "trigger_level":ff.get('trigger_level'), "reasons": (ff.get("reasons") or [])[:4],
                                      "measured": ff.get("measured"),
                                      "exp_net": (ff.get("measured") or {}).get("exp_net"),
                                      "added": int(time.time() * 1000)})
@@ -582,3 +582,4 @@ class Alerts:
         self._write_signals()
         if len(self.forms_seen) > 5000:
             self.forms_seen = set(list(self.forms_seen)[-2000:])
+

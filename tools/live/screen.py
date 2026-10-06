@@ -76,6 +76,8 @@ class Row:
     spread_bps: float = 0.0
     imbalance: float = 0.0
     band_usdt: float = 0.0            # объём на стороне входа в полосе 10 б.п.
+    ts: int = 0
+    trigger_level: float = 0.0
 
     @property
     def exp_net(self) -> float | None:
@@ -168,7 +170,7 @@ def rank(found: list[Formation], stats: dict, conn, costs: Costs,
             exchange=exchange, direction=f.direction, entry=f.entry,
             stop=f.stop, target=f.targets[0], rr=f.rr,
             stop_pct=risk / f.entry * 100, confidence=f.confidence,
-            triggered=f.triggered, age_candles=f.age_candles,
+            triggered=f.triggered, age_candles=f.age_candles, ts=f.ts, trigger_level=f.trigger_level,
             reasons=list(f.reasons),
             measured=stats.get((f.kind, f.tf)),
             cost_now=cost_now,
@@ -442,3 +444,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

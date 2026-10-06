@@ -84,6 +84,9 @@ def positions(live_dir: Path) -> int:
                                                    "opened_ms", "expires_ms", "title", "mark", "reasons", "key")} | {"bot": bot})
             try:
                 data = json.loads((st.parent / "bot.json").read_text(encoding="utf-8"))
+                for r in data.get('open', []):
+                    current=next((p for p in out if p['bot']==bot and p.get('key')==r.get('key')),None)
+                    if current is not None:current.update({k:r.get(k) for k in ('pnl_usdt','pnl_pct','exposure_pct')})
                 trades.extend(dict(r, bot=bot, phase="open") for r in data.get("open", []))
                 trades.extend(dict(r, bot=bot, phase="closed") for r in data.get("closed", [])[-50:])
             except (OSError, ValueError):

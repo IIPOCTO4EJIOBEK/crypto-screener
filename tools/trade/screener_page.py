@@ -153,8 +153,9 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
     pos_rows = []
     for p in sorted(st.pos(), key=lambda p: p.opened_ms):
         now_r = p.r_of(p.mark or p.entry)
-        pnl_now = (1 if p.side=="long" else -1)*p.qty*((p.mark or p.entry)-p.entry)
-        pnl_net = p.realized + pnl_now - p.fee_in - p.qty*(p.mark or p.entry)*.0005
+        from src.trade.position_metrics import metrics
+        pm=metrics(p,st.equity());pnl_net=pm['pnl_usdt']
+        exposure=f"{pm['exposure_pct']:.2f}%" if pm['exposure_pct'] is not None else '—'
         pos_rows.append(
             f"<tr><td class={p.side}>{'ЛОНГ' if p.side == 'long' else 'ШОРТ'}</td>"
             f"<td>{e(p.symbol)}</td><td>{e(p.title)} · {e(p.tf)}</td>"
@@ -162,18 +163,20 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<td class=num>{p.target:.6g}</td><td class=num>{(p.mark or p.entry):.6g}</td>"
             f"<td class='num {'long' if now_r > 0 else 'short'}'>{now_r:+.2f}</td>"
             f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pnl_net:+.2f}</td>"
+            f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pm['pnl_pct']:+.2f}%</td><td class=num>{exposure}</td>"
             f"<td><button data-action=edit data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}' data-stop='{p.stop}' data-target='{p.target}'>Стоп / тейк</button> <button data-action=close data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}'>Выйти</button></td>"
             f"<td>{e(p.trend or '—')}</td><td>{t(p.opened_ms)}</td><td>{"выключен" if cfg.no_timeout else t(p.expires_ms)}</td></tr>")
 
     tr_rows = []
     for r in reversed(closed[-40:]):
+        result_pct=f"{100*_net(r)/(r['entry']*r['qty']):+.2f}%" if r.get('qty') else '—'
         tr_rows.append(
             f"<tr><td>{t(r['ts'])}</td><td class={r['side']}>{'ЛОНГ' if r['side'] == 'long' else 'ШОРТ'}</td>"
             f"<td>{e(r['symbol'])}</td><td>{e(r.get('title') or r['kind'])} · {e(r['tf'])}</td>"
             f"<td class=num>{r['entry']:.6g}</td><td class=num>{r['exit']:.6g}</td>"
             f"<td>{e(REASON.get(r['reason'], r['reason']) + (' · '+r.get('manual_reason','') if r.get('manual_reason') else ''))}</td>"
             f"<td class='num {'long' if r['r_net'] > 0 else 'short'}'>{r['r_net']:+.2f}</td>"
-            f"<td class=num>{_net(r):+.2f}</td><td>{e(r.get('trend') or '—')}</td></tr>")
+            f"<td class=num>{_net(r):+.2f}</td><td class=num>{result_pct}</td><td>{e(r.get('trend') or '—')}</td></tr>")
 
     skip_count = defaultdict(int)
     for r in skips:
@@ -264,14 +267,14 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 <h2>Открытые позиции</h2><p class=sub>PnL учитывает частичные выходы, комиссию входа и оценку комиссии выхода; funding будет уточнён при закрытии. Цена обновляется на цикле бота, время обновления указано выше.</p>
 <div class="wrap"><table>
 <thead><tr><th></th><th>монета</th><th>формация</th><th>вход</th><th>стоп</th><th>цель</th>
-<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th>Управление</th><th>тренд</th><th>открыта</th><th>Выход по времени</th></tr></thead>
+<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th title="PnL с частичными выходами и комиссиями / первоначальный номинал позиции">PnL % ≈</th><th title="Текущий номинал оставшейся позиции / equity этого бота">Доля капитала %</th><th>Управление</th><th>тренд</th><th>открыта</th><th>Выход по времени</th></tr></thead>
 <tbody>{''.join(pos_rows) or '<tr><td colspan=13 class=sub>позиций нет</td></tr>'}</tbody>
 </table></div>
 
 <h2>Закрытые сделки</h2>
 <div class="wrap"><table>
 <thead><tr><th>время МСК</th><th></th><th>монета</th><th>формация</th><th>вход</th><th>выход</th>
-<th>причина</th><th>R</th><th>USDT</th><th>тренд</th></tr></thead>
+<th>причина</th><th>R</th><th>USDT</th><th>PnL %</th><th>тренд</th></tr></thead>
 <tbody>{''.join(tr_rows) or '<tr><td colspan=10 class=sub>сделок ещё нет</td></tr>'}</tbody>
 </table></div>
 
@@ -307,6 +310,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
 
     open_rows = []
     for p in st.pos():
+        from src.trade.position_metrics import metrics
         o = opens.get(p.key, {})
         open_rows.append({
             "key": p.key, "symbol": p.symbol, "tf": p.tf, "side": p.side,
@@ -316,6 +320,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
                                                           "stop_now": p.stop,
                                                           "target": p.target or None},
             "mark": p.mark, "r_now": p.r_of(p.mark or p.entry),
+            **metrics(p,st.equity()),
             "measured_r": p.measured_r, "measured_n": p.measured_n,
             "partials": partials.get(p.key, [])})
     closed_rows = []
@@ -327,7 +332,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
             "reasons": o.get("reasons", []), "book": o.get("book", {}), "trend": r.get("trend"),
             "opened_ms": r.get("opened_ms"), "closed_ms": r.get("exit_ts") or r["ts"],
             "market_context": o.get("market_context", []), "rules_at_entry": o.get("rules", {}), "levels": dict(levels(o), stop_final=r.get("stop_final")), "exit": r["exit"], "exit_reason": r["reason"],
-            "r_net": r["r_net"], "pnl_usdt": _net(r), "measured_r": r.get("measured_r"),
+            "r_net": r["r_net"], "pnl_usdt": _net(r), "pnl_pct":100*_net(r)/(r['entry']*r['qty']) if r.get('qty') else None, "measured_r": r.get("measured_r"),
             "partials": partials.get(r["key"], [])})
     eq = st.equity()
     return {

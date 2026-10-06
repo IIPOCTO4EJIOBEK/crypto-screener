@@ -14,7 +14,11 @@ def run(argv=None):
   try:
    if a.notify_only:
     roots=sorted(p for p in (ROOT/'data/trade').glob('screener-*') if p.is_dir())
-    if roots:drain_one(roots[rotation%len(roots)]);rotation+=1
+    if roots:
+     for offset in range(len(roots)):
+      index=(rotation+offset)%len(roots)
+      if drain_one(roots[index]):rotation=index+1;break
+     else:rotation+=1
    else:
     ok=main(['--exits-only'])==0
     index=ROOT/'data/trade/bots.html'

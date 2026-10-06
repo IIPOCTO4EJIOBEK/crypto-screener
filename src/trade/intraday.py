@@ -524,7 +524,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                    r=p.r_of(price), r_net=r_net, pnl=total + fee + funding + p.fee_in,
                    fee=fee + p.fee_in, funding=funding, partial=p.realized,
                    slippage_bp=slip, measured_r=p.measured_r, measured_n=p.measured_n,
-                   trend=p.trend, stop_final=p.stop, target_final=p.target, rules=p.entry_rules, market_context=p.market_context, manual_reason=p.manual_reason, attempt_key=p.attempt_key)
+                   trend=p.trend, stop_final=p.stop, target_final=p.target, no_target=not p.target, reasons=p.reasons, rules=p.entry_rules, market_context=p.market_context, manual_reason=p.manual_reason, attempt_key=p.attempt_key)
 
     # 2. капитал и стоп по просадке
     eq = st.equity()
@@ -589,7 +589,8 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                     mid = broker.mid(row["symbol"])
                 except Exception as exc:                    # noqa: BLE001
                     why = f"стакан не получен: {str(exc)[:80]}"
-            why = why or entry_ok(side, mid, row["stop"], row["target"])
+            from src.trade.confirmation import entry_confirmation
+            why = why or entry_confirmation(row,mid) or entry_ok(side, mid, row["stop"], row["target"])
             if why:
                 st.seen.pop(key, None)
                 out["skipped"] += 1
@@ -611,7 +612,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                            tf=row["tf"], side=side, reason="глубины стакана не хватило", trend=tr)
                 continue
             # Paper execute simulates a fill without moving cash or sending an order.
-            why = entry_ok(side, fill.price, row["stop"], row["target"])
+            why = entry_confirmation(row,fill.price) or entry_ok(side, fill.price, row["stop"], row["target"])
             if why:
                 st.seen.pop(key, None)
                 out["skipped"] += 1
@@ -627,7 +628,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                     break
                 fill = broker.execute(row["symbol"], OPEN[side], allowed) if allowed > 0 else None
                 if fill is None: break
-            if fill is None or entry_ok(side, fill.price, row["stop"], row["target"]) or fill.qty*fill.price > remaining_notional + 1e-7 or fill.qty > size(eq, fill.price, row["stop"], risk_pct=cfg.risk_pct, max_open=cfg.max_open) + 1e-10:
+            if fill is None or entry_confirmation(row,fill.price) or entry_ok(side, fill.price, row["stop"], row["target"]) or fill.qty*fill.price > remaining_notional + 1e-7 or fill.qty > size(eq, fill.price, row["stop"], risk_pct=cfg.risk_pct, max_open=cfg.max_open) + 1e-10:
                 st.seen.pop(key, None)
                 out["skipped"] += 1
                 ledger.log("skip", key=key, symbol=row["symbol"], formation=row["kind"], tf=row["tf"], side=side,

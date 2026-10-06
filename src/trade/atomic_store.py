@@ -60,6 +60,9 @@ class Transaction:
    if notify and events:
     text='Бот по скринеру ('+self.ledger.root.name+'):\n'+'\n'.join(events)
     for offset in range(0,len(text),3500):c.execute('INSERT INTO outbox(id,text) VALUES(?,?)',(uuid.uuid4().hex,text[offset:offset+3500]))
+    from src.trade.photo_reports import event_media
+    for media in event_media(self.ledger.root.name, state, self.rows):
+     c.execute('INSERT INTO outbox(id,text,media) VALUES(?,?,?)',(uuid.uuid4().hex,media['caption'],json.dumps(media,ensure_ascii=False)))
   self.committed=True
   # Files are derived views; after a crash the database remains authoritative.
   payload=c.execute('SELECT payload FROM state WHERE id=1').fetchone()[0]
@@ -78,6 +81,8 @@ def transaction(ledger):
   with closing(sqlite3.connect(database(ledger.root),timeout=5)) as c:
    c.execute('PRAGMA journal_mode=WAL');c.execute('PRAGMA synchronous=FULL')
    c.executescript('CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY,payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS journal(id INTEGER PRIMARY KEY,payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS consumed(path TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,text TEXT NOT NULL,sent INTEGER DEFAULT 0,attempts INTEGER DEFAULT 0,next_attempt REAL DEFAULT 0,last_error TEXT); CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);')
+   if 'media' not in {r[1] for r in c.execute('PRAGMA table_info(outbox)')}:
+    c.execute('ALTER TABLE outbox ADD COLUMN media TEXT');c.commit()
    if not c.execute("SELECT 1 FROM meta WHERE key='imported'").fetchone():
     with c:
      if ledger.state_path.exists():c.execute('INSERT OR REPLACE INTO state VALUES(1,?)',(ledger.state_path.read_text('utf-8'),))

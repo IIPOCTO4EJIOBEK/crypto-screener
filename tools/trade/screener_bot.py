@@ -298,7 +298,9 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
             except Exception:
                 pass  # execute_profile logs a failed recovery; no state is changed here
         from src.trade.entry_snapshot import prepare
+        from src.trade.confirmation import annotate
         cache['_entry_broker'] = prepare(rows, snapshot, cfg, cache.setdefault('_entry_books', {}))
+        rows=annotate(rows,Path(a.trend_src).parent/'kl')
     from src.trade.atomic_store import transaction, Busy
     try:
         with transaction(ledger) as tx:

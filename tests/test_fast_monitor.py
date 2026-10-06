@@ -129,3 +129,39 @@ def test_entry_book_snapshot_never_requests_network_during_execution():
  with pytest.raises(ValueError):broker.mid('AAAUSDT')
  assert broker.execute('AAAUSDT','buy',1) is None and len(calls)==1
 
+def test_trade_event_stages_chart_atomically_and_retries_photo(tmp_path,monkeypatch):
+ import src.trade.photo_reports as photos
+ ledger=Ledger(tmp_path);st=initial();st.put(position())
+ with transaction(ledger) as tx:
+  ledger.log('open',key='p',symbol='AAAUSDT');tx.commit(st,['open'],notify=True)
+ with sqlite3.connect(database(tmp_path)) as db:
+  media=json.loads(db.execute('SELECT media FROM outbox WHERE media IS NOT NULL').fetchone()[0])
+ assert media['position']['entry']==100 and media['position']['stop']==98 and media['position']['target']==104
+ assert media['event']=='open' and 'Бумажная' in media['caption']
+ def image(media,path):path.parent.mkdir(exist_ok=True);path.write_bytes(b'png');return path
+ monkeypatch.setattr(photos,'chart',image)
+ assert drain_one(tmp_path,lambda *a:(True,'200',0),now=100)
+ assert drain_one(tmp_path,lambda *a:(True,'200',0),now=101,send_photo=lambda *a:(False,'429',10))
+ assert not drain_one(tmp_path,lambda *a:(True,'200',0),now=110)
+ assert drain_one(tmp_path,lambda *a:(True,'200',0),now=112,send_photo=lambda text,path:(path.exists(),'200',0))
+ assert not drain_one(tmp_path,lambda *a:(True,'200',0),now=200)
+
+def test_position_percent_uses_initial_size_after_partial_take():
+ from src.trade.position_metrics import metrics
+ p=position();p.qty0=1;p.qty=.5;p.realized=5;p.mark=110
+ result=metrics(p,1100)
+ assert result['pnl_usdt']==pytest.approx(9.9225)
+ assert result['pnl_pct']==pytest.approx(9.9225)
+ assert result['exposure_pct']==pytest.approx(5)
+ p.side='short';p.mark=90;p.realized=5
+ assert metrics(p,1000)['pnl_pct']==pytest.approx(9.9275)
+ assert metrics(p,0)['exposure_pct'] is None
+
+def test_chart_capture_merges_observed_live_bar_without_future_data(tmp_path):
+ from src.trade.photo_reports import capture
+ (tmp_path/'AAAUSDT_5m.json').write_text(json.dumps([[0,100,103,99,101,10]]))
+ path=tmp_path/'AAAUSDT.live.json';path.write_text(json.dumps(dict(t=90,k={'5m':[0,100,107,98,106,20]})))
+ assert capture('AAAUSDT','5m',100,tmp_path)[-1][2]==107
+ path.write_text(json.dumps(dict(t=101,k={'5m':[0,100,110,98,109,20]})))
+ assert capture('AAAUSDT','5m',100,tmp_path)[-1][2]==103
+
