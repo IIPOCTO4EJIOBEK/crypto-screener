@@ -34,7 +34,9 @@ class Store:
   with closing(sqlite3.connect(self.path,timeout=10)) as c:
    c.execute('BEGIN IMMEDIATE')
    if c.execute('SELECT count(*) FROM items').fetchone()[0]>=100 and not c.execute('SELECT 1 FROM items WHERE id=?',(ident,)).fetchone():raise ValueError('limit 100 drawings')
-   c.execute('INSERT OR REPLACE INTO items VALUES(?,?,?,NULL)',(ident,json.dumps(row,ensure_ascii=False),int(kind=='level')));c.commit()
+   previous=c.execute('SELECT active FROM items WHERE id=?',(ident,)).fetchone()
+   active=int(kind=='level' and (previous[0] if previous else True))
+   c.execute('INSERT OR REPLACE INTO items VALUES(?,?,?,NULL)',(ident,json.dumps(row,ensure_ascii=False),active));c.commit()
   return row
  def change(self,op,ident):
   with closing(sqlite3.connect(self.path,timeout=10)) as c:
@@ -62,3 +64,4 @@ class Store:
     else:c.execute('UPDATE items SET last_price=? WHERE id=?',(current,ident))
    c.execute('DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT 1000) AND delivered=1 AND ack=1');c.commit()
   return events
+
