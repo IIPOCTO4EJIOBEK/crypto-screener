@@ -97,7 +97,7 @@
     [].forEach.call(doc.querySelectorAll('td'),function(td){
       if(td.dataset.gnl || td.querySelector('a')) return;
       var m=SYM.exec((td.textContent||'').trim()); if(!m) return;
-      var row=td.closest('tr'), tf=/\b(1m|5m|15m|1h|4h)\b/.exec(row?row.textContent:'');
+      var row=td.closest('tr'), tf=/\b(1m|5m|15m|1h|4h)\b/.exec(row?[].map.call(row.cells,function(c){return c.textContent.trim();}).join(' '):'');
       var a=doc.createElement('a'); a.href='/#chart='+m[2]+'&tf='+(tf?tf[1]:'15m'); a.target='_top'; a.textContent=m[2];
       a.style.cssText='color:#4c8dff;text-decoration:none;font-weight:600'; a.title='Открыть график в скринере';
       td.textContent=''; if(m[1]){ td.appendChild(doc.createTextNode(m[1]+' ')); } td.appendChild(a); td.dataset.gnl='1';
@@ -107,4 +107,3 @@
   }
   if(location.pathname!=='/' && location.pathname!=='/board.html'){ linkify(document); setInterval(function(){ linkify(document); },3000); }
 })();
-

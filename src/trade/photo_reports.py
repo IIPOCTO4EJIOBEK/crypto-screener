@@ -19,6 +19,7 @@ def event_media(profile,state,rows):
   p['equity_at_snapshot']=state.equity()
   p['event_reason']=row.get('manual_reason') or row.get('reason') or ''
   p['closed_net']=row.get('pnl',0)-row.get('fee',0)-row.get('funding',0) if event=='close' else None
+  p['funding_pending']=bool(row.get('funding_pending'))
   goal='ведение трейлингом' if p.get('no_target') else f"{p.get('target',0):.7g}"
   caption=f"{LABELS[event]} · {profile} · {p['symbol']} · {p.get('tf','')} · {p.get('side','')}\nВход {p['entry']:.7g} · стоп {p.get('stop',0):.7g} · цель {goal}\nБумажная позиция"
   media=dict(kind='position',profile=profile,position=p,event=event,when=row['ts'],caption=caption[:1000])
@@ -82,7 +83,7 @@ def chart(media,destination,market_root=None):
  pm=metrics(p,p.get('equity_at_snapshot',0));pct=100*pnl/((p.get('qty0') or qty)*p['entry']) if qty else 0
  share=f"{pm['exposure_pct']:.2f}%" if pm['exposure_pct'] is not None else '—'
  if media.get('event')=='close':share='0.00% (закрыта)'
- costs='Итог после комиссий и funding.' if p.get('closed_net') is not None else 'Комиссия выхода оценочная; funding уточняется при закрытии.'
+ costs='PnL предварительный: funding ожидает расчёта.' if p.get('funding_pending') else 'Итог после комиссий и funding.' if p.get('closed_net') is not None else 'Комиссия выхода оценочная; funding уточняется при закрытии.'
  note=f"PnL {pnl:+.2f} USDT ({pct:+.2f}%) · доля капитала {share} · qty {qty:.7g}\n{costs} Почему вход: {why}"
  if p.get('event_reason'):note+='\nПричина события: '+str(p['event_reason'])
  note+='\nВремя снимка: '+datetime.fromtimestamp(media['when']/1000,timezone(timedelta(hours=3))).strftime('%d.%m.%Y %H:%M:%S МСК')+' · бумажная торговля'
@@ -117,4 +118,3 @@ def summary(media,destination):
  fig.text(.03,.04,f'{stamp}\nНезависимые профили. PnL с частичными выходами и комиссиями; funding уточняется при закрытии.',fontsize=11,color='#ccd8e8')
  fig.subplots_adjust(left=.03,right=.98,top=.85,bottom=.16)
  dest=Path(destination);dest.parent.mkdir(parents=True,exist_ok=True);tmp=dest.with_suffix('.tmp');fig.savefig(tmp,format='png',facecolor=fig.get_facecolor());plt.close(fig);os.replace(tmp,dest);return dest
-

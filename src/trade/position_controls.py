@@ -29,17 +29,22 @@ def pending(root):
     return [(p, json.loads(p.read_text('utf-8'))) for p in paths if str(p) not in done]
 
 
-def apply(commands, state, broker, ledger, now_ms):
+def apply(commands, state, broker, ledger, now_ms, consumed=None):
     if broker.live: raise ValueError('paper only')
     events=[]
     for path, msg in commands:
         position = next((p for p in state.pos() if p.key == msg['key']), None)
+        if msg['op']=='edit' and position:
+            try: price = broker.mid(position.symbol)
+            except Exception as exc:
+                ledger.log('control_deferred',command=path.name,reason='свежий стакан недоступен: '+type(exc).__name__)
+                continue
+        if consumed is not None:consumed.append(path)
         if not position:
             ledger.log('control_rejected', command=path.name, reason='позиция уже закрыта'); events.append('Команда отклонена: позиция уже закрыта'); continue
         if msg['op'] == 'close':
             position.pending_exit_reason = 'manual'; position.manual_reason = msg['reason']; position.expires_ms = 0
         else:
-            price = broker.mid(position.symbol)
             stop, target = msg['stop'], msg['target']
             valid = stop < price < target if position.side == 'long' else target < price < stop
             if not valid:
@@ -52,4 +57,3 @@ def apply(commands, state, broker, ledger, now_ms):
 
         events.append(f"{position.symbol}: {msg['op']}; причина: {msg['reason']}; стоп {position.stop:.7g}, цель {position.target:.7g}")
     return events
-

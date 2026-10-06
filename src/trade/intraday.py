@@ -250,6 +250,7 @@ class BotState:
     cooldown: dict[str, int] = field(default_factory=dict)   # монета → до какого момента пауза
     attempts: dict[str, int] = field(default_factory=dict)
     streak: int = 0                  # убыточных сделок подряд
+    pending_funding: int = 0         # durable closed trades awaiting accounting; exits continue
 
     def pos(self) -> list[Position]:
         return [Position(**p) for p in self.positions.values()]
@@ -443,7 +444,8 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             p.mark = tick[0]
         funding = 0.0
         full_exit = next((e for e in exits if not e.qty), None)
-        if cfg.funding and full_exit is not None:
+        defer_funding=bool(cfg.funding and full_exit is not None and getattr(broker,'defer_funding',False))
+        if cfg.funding and full_exit is not None and not defer_funding:
             try:
                 rate = broker.funding(p.symbol, p.opened_ms, full_exit.ts)
                 weighted = p.qty * rate
@@ -492,6 +494,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         total = p.realized + pnl - fee - funding - p.fee_in
         st.day_pnl += pnl - fee - funding
         st.drop(p.key)
+        if defer_funding:st.pending_funding+=1
         if p.tf == "5m" and p.attempt_key and ex.reason == "stop":
             count = st.attempts.get(p.attempt_key, 1)
             if count < cfg.max_attempts_5m:
@@ -517,12 +520,13 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         r_net = total / (q0 * p.risk) if p.risk and q0 else 0.0
         out["events"].append(
             f"ВЫХОД {SIDE_RU[p.side]} {p.symbol} {p.title} {p.tf}: {REASON_RU.get(ex.reason, ex.reason)}, "
-            f"{price:.6g}, {r_net:+.2f} R, {total:+.2f} USDT" + (f"; причина: {p.manual_reason}" if p.manual_reason else ""))
+            f"{price:.6g}, {r_net:+.2f} R, {total:+.2f} USDT" + ('; funding ожидает расчёта, PnL предварительный' if defer_funding else '') + (f"; причина: {p.manual_reason}" if p.manual_reason else ""))
         ledger.log("close", key=p.key, symbol=p.symbol, formation=p.kind, title=p.title,
                    tf=p.tf, side=p.side, qty=q0, entry=p.entry, exit=price,
                    reason=ex.reason, exit_ts=ex.ts, opened_ms=p.opened_ms,
                    r=p.r_of(price), r_net=r_net, pnl=total + fee + funding + p.fee_in,
                    fee=fee + p.fee_in, funding=funding, partial=p.realized,
+                   funding_pending=defer_funding,funding_legs=p.funding_legs+[dict(qty=p.qty,end_ms=ex.ts)],funding_risk_quote=q0*p.risk,funding_dd_limit=cfg.max_drawdown,
                    slippage_bp=slip, measured_r=p.measured_r, measured_n=p.measured_n,
                    trend=p.trend, stop_final=p.stop, target_final=p.target, no_target=not p.target, reasons=p.reasons, rules=p.entry_rules, market_context=p.market_context, manual_reason=p.manual_reason, attempt_key=p.attempt_key)
 
@@ -545,7 +549,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         out["events"].append(f"Дневной лимит убытка: {st.day_pnl:+.2f} USDT, входы до конца суток МСК остановлены")
     st.cooldown = {k: v for k, v in st.cooldown.items() if k == "__day__" or v > now_ms}
     open_cool = {k for k in st.cooldown if not k.startswith("__")}
-    paused = st.cooldown.get("__all__", 0) > now_ms or (ledger.root / "PAUSE").exists()
+    paused = st.cooldown.get("__all__", 0) > now_ms or (ledger.root / "PAUSE").exists() or st.pending_funding>0
     if not ledger.halted and not day_stop and not paused:
         open_syms = {p.symbol for p in st.pos()}
         open_tfs = {(p.symbol, p.tf) for p in st.pos()}
@@ -689,4 +693,3 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
     st.seen = {k: v for k, v in st.seen.items() if now_ms - v < 3 * 86_400_000}
     out["equity"] = st.equity()
     return out
-

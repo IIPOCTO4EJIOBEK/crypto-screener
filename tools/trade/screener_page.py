@@ -13,6 +13,7 @@ from pathlib import Path
 from src.trade.intraday import HORIZON, BotState, Config
 from src.trade.ledger import Ledger
 from tools.trade.page import e, max_drawdown, pct, sparkline, t
+from src.trade import trend_display
 
 TREND_TEXT = {
     "off": "без фильтра по тренду (тренд монеты записывается для сверки)",
@@ -89,6 +90,7 @@ def _r(x) -> str:
 def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
           now_ms: int, signals: int = 0, trend_err: str | None = None) -> str:
     j = ledger.journal()
+    current_trend=trend_display.load(now_ms)
     closed = [r for r in j if r["kind"] == "close"]
     skips = [r for r in j if r["kind"] == "skip"]
     errors = [r for r in j if r["kind"] == "error"][-10:]
@@ -165,7 +167,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pnl_net:+.2f}</td>"
             f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pm['pnl_pct']:+.2f}%</td><td class=num>{exposure}</td>"
             f"<td><button data-action=edit data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}' data-stop='{p.stop}' data-target='{p.target}'>Стоп / тейк</button> <button data-action=close data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}'>Выйти</button></td>"
-            f"<td>{e(p.trend or '—')}</td><td>{t(p.opened_ms)}</td><td>{"выключен" if cfg.no_timeout else t(p.expires_ms)}</td></tr>")
+            f"<td>{e(trend_display.text(p,current_trend))}</td><td>{t(p.opened_ms)}</td><td>{"выключен" if cfg.no_timeout else t(p.expires_ms)}</td></tr>")
 
     tr_rows = []
     for r in reversed(closed[-40:]):
@@ -174,7 +176,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<tr><td>{t(r['ts'])}</td><td class={r['side']}>{'ЛОНГ' if r['side'] == 'long' else 'ШОРТ'}</td>"
             f"<td>{e(r['symbol'])}</td><td>{e(r.get('title') or r['kind'])} · {e(r['tf'])}</td>"
             f"<td class=num>{r['entry']:.6g}</td><td class=num>{r['exit']:.6g}</td>"
-            f"<td>{e(REASON.get(r['reason'], r['reason']) + (' · '+r.get('manual_reason','') if r.get('manual_reason') else ''))}</td>"
+            f"<td>{e(REASON.get(r['reason'], r['reason']) + (' · '+r.get('manual_reason','') if r.get('manual_reason') else '') + (' · funding ожидает расчёта; PnL предварительный' if r.get('funding_pending') else ''))}</td>"
             f"<td class='num {'long' if r['r_net'] > 0 else 'short'}'>{r['r_net']:+.2f}</td>"
             f"<td class=num>{_net(r):+.2f}</td><td class=num>{result_pct}</td><td>{e(r.get('trend') or '—')}</td></tr>")
 
@@ -230,6 +232,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 по фьючерсам Binance. Берёт {e(POLICY_TEXT.get(policy, policy))}, {e(TREND_TEXT.get(trend, trend))}.
 Вход — рыночной заявкой по живому стакану, стоп и цель — из разбора формации,
 {"Выход по стопу / тейку; закрытие по времени выключено." if cfg.no_timeout else f"Выход по стопу, цели или через {HORIZON} свечей."}
+<p class=sub>{f'Funding ожидает расчёта: {st.pending_funding} сделок. Их PnL предварительный; новые входы профиля приостановлены, выходы продолжаются.' if st.pending_funding else ''}</p>
 Лимит использования капитала — {cfg.capital_fraction:.0%}. Риск на сделку — {cfg.risk_pct:.2%} капитала, позиций не больше {cfg.max_open},
 плеча нет. При просадке {cfg.max_drawdown:.0%} от пика новые входы прекращаются.
 <ul>
@@ -267,7 +270,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 <h2>Открытые позиции</h2><p class=sub>PnL учитывает частичные выходы, комиссию входа и оценку комиссии выхода; funding будет уточнён при закрытии. Цена обновляется на цикле бота, время обновления указано выше.</p>
 <div class="wrap"><table>
 <thead><tr><th></th><th>монета</th><th>формация</th><th>вход</th><th>стоп</th><th>цель</th>
-<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th title="PnL с частичными выходами и комиссиями / первоначальный номинал позиции">PnL % ≈</th><th title="Текущий номинал оставшейся позиции / equity этого бота">Доля капитала %</th><th>Управление</th><th>тренд</th><th>открыта</th><th>Выход по времени</th></tr></thead>
+<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th title="PnL с частичными выходами и комиссиями / первоначальный номинал позиции">PnL % ≈</th><th title="Текущий номинал оставшейся позиции / equity этого бота">Доля капитала %</th><th>Управление</th><th>тренд: на входе / сейчас</th><th>открыта</th><th>Выход по времени</th></tr></thead>
 <tbody>{''.join(pos_rows) or '<tr><td colspan=13 class=sub>позиций нет</td></tr>'}</tbody>
 </table></div>
 
@@ -298,6 +301,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
     """
     j = ledger.journal()
     opens = {r["key"]: r for r in j if r["kind"] == "open"}
+    current_trend=trend_display.load(now_ms)
     partials = defaultdict(list)
     for r in j:
         if r["kind"] == "partial":
@@ -315,7 +319,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
         open_rows.append({
             "key": p.key, "symbol": p.symbol, "tf": p.tf, "side": p.side,
             "formation": p.kind, "title": p.title, "reasons": p.reasons, "book": p.book,
-            "trend": p.trend, "opened_ms": p.opened_ms, "expires_ms": p.expires_ms,
+            "trend": p.trend, **trend_display.fields(p,current_trend),"opened_ms": p.opened_ms, "expires_ms": p.expires_ms,
             "market_context": p.market_context, "rules_at_entry": p.entry_rules, "qty": p.qty, "qty0": p.qty0 or p.qty, "levels": {**levels(o), "entry": p.entry,
                                                           "stop_now": p.stop,
                                                           "target": p.target or None},
@@ -332,6 +336,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
             "reasons": o.get("reasons", []), "book": o.get("book", {}), "trend": r.get("trend"),
             "opened_ms": r.get("opened_ms"), "closed_ms": r.get("exit_ts") or r["ts"],
             "market_context": o.get("market_context", []), "rules_at_entry": o.get("rules", {}), "levels": dict(levels(o), stop_final=r.get("stop_final")), "exit": r["exit"], "exit_reason": r["reason"],
+            "funding_pending":bool(r.get('funding_pending')),"funding":r.get('funding',0),
             "r_net": r["r_net"], "pnl_usdt": _net(r), "pnl_pct":100*_net(r)/(r['entry']*r['qty']) if r.get('qty') else None, "measured_r": r.get("measured_r"),
             "partials": partials.get(r["key"], [])})
     eq = st.equity()
@@ -339,7 +344,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
         "bot": ledger.root.name, "mode": "paper", "market": "binance_futures",
         "updated_ms": now_ms, "policy": policy, "trend_filter": trend,
         "rules": settings(cfg), "halted": ledger.halted,
-        "paused": (ledger.root / "PAUSE").exists(),
+        "paused": (ledger.root / "PAUSE").exists() or st.pending_funding>0,"pending_funding":st.pending_funding,
         "equity": eq, "start_equity": st.start_equity, "peak": st.peak,
         "day_pnl": st.day_pnl, "signals_last_round": signals, "trend_error": trend_err,
         "equity_curve": [[r["ts"], r["equity"]] for r in j if r["kind"] == "equity"][-2000:],
@@ -360,4 +365,3 @@ def write(ledger: Ledger, st: BotState, out: Path, **kw) -> Path:
     tmp.write_text(json.dumps(to_json(ledger, st, **kw), ensure_ascii=False), encoding="utf-8")
     tmp.replace(js)
     return out
-
