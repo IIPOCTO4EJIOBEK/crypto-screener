@@ -61,6 +61,7 @@ class Position:
     tp1_done: bool = False
     be_after_tp1: bool = False           # после первого тейка стоп — в безубыток
     realized: float = 0.0                # P&L частичных выходов за вычетом их комиссий
+    funding_legs: list = field(default_factory=list)  # quantity and end time of partial exits
     qty0: float = 0.0                    # начальный объём
     reasons: list = field(default_factory=list)   # почему скринер нашёл формацию
     book: dict = field(default_factory=dict)      # стакан на входе: спред, перекос, плотность
@@ -376,6 +377,19 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         if closed:
             p.mark = closed[-1].close
             p.last_check_ms = closed[-1].ts + 60_000
+        funding = 0.0
+        full_exit = next((e for e in exits if not e.qty), None)
+        if cfg.funding and full_exit is not None:
+            try:
+                rate = broker.funding(p.symbol, p.opened_ms, full_exit.ts)
+                weighted = p.qty * rate
+                legs = p.funding_legs + [{"qty": e.qty, "end_ms": e.ts} for e in exits if e.qty]
+                for leg in legs:
+                    weighted += leg["qty"] * broker.funding(p.symbol, p.opened_ms, leg["end_ms"])
+                funding = (1 if p.side == "long" else -1) * p.entry * weighted
+            except Exception as exc:
+                ledger.log("error", where="funding", symbol=p.symbol, error=str(exc)[:200])
+                continue  # no cash/cursor changes: replay these candles on the next cycle
         ex = None
         for e in exits:
             if e.qty:                                   # частичный тейк — по уровню
@@ -384,6 +398,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                 st.cash += part - fee
                 st.day_pnl += part - fee
                 p.realized += part - fee
+                p.funding_legs.append({"qty": e.qty, "end_ms": e.ts})
                 ledger.log("partial", key=p.key, symbol=p.symbol, side=p.side, qty=e.qty,
                            price=e.price, reason=e.reason, pnl=part, fee=fee,
                            stop=p.stop, left=p.qty)
@@ -406,17 +421,10 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         else:
             # стоп и цель — по уровню (стоп при гэпе — по открытию свечи), комиссия тейкера
             price, fee, slip = ex.price, p.qty * ex.price * broker.fee, None
-        funding = 0.0
-        if cfg.funding:
-            try:
-                rate = broker.funding(p.symbol, p.opened_ms, ex.ts)
-                funding = (1 if p.side == "long" else -1) * p.qty * p.entry * rate
-            except Exception as exc:                        # noqa: BLE001
-                ledger.log("error", where="funding", symbol=p.symbol, error=str(exc)[:200])
         pnl = _pnl(p, price)
         st.cash += pnl - fee - funding
         total = p.realized + pnl - fee - funding - p.fee_in
-        st.day_pnl += pnl - fee - funding - p.fee_in
+        st.day_pnl += pnl - fee - funding
         st.drop(p.key)
         out["closed"] += 1
         if ex.reason == "stop" and cfg.cooldown_min:
@@ -451,7 +459,8 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         ledger.log("equity", equity=eq, cash=st.cash, open=len(st.positions))
 
     # 3. входы
-    day_stop = bool(cfg.daily_loss) and st.day_pnl <= -cfg.daily_loss * max(eq, 0.0)
+    day_stop = bool(cfg.daily_loss) and (st.cooldown.get("__day__") == today
+                                      or st.day_pnl <= -cfg.daily_loss * max(eq, 0.0))
     if day_stop and st.cooldown.get("__day__") != today:
         st.cooldown["__day__"] = today
         ledger.log("day_stop", day_pnl=st.day_pnl, equity=eq)
@@ -523,6 +532,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             if cfg.no_target:
                 p.target = 0.0
             st.cash -= fill.fee
+            st.day_pnl -= fill.fee
             st.put(p)
             open_syms.add(p.symbol)
             out["opened"] += 1

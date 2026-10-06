@@ -96,7 +96,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
     gross_loss = -sum(x for x in nets if x < 0)
     pf = gross_win / gross_loss if gross_loss > 0 else None
     funding = sum(r.get("funding") or 0 for r in closed)
-    fees = sum(r.get("fee") or 0 for r in closed) + sum(p.fee_in for p in st.pos())
+    fees = sum(r.get("fee") or 0 for r in closed) + sum(p.fee_in for p in st.pos()) + sum(r.get("fee") or 0 for r in j if r["kind"] == "partial")
     slips = [r["slippage_bp"] for r in j if r["kind"] in ("open", "close")
              and r.get("slippage_bp") is not None]
     stats = [

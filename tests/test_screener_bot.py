@@ -326,3 +326,88 @@ def test_вебхук_секрет_и_очередь(tmp_path):
     assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1, "token": "s" * 20}) == 200
     assert call({"symbol": "BTCUSDT"}, "s" * 20, "/hook?bot=nope") == 404
     assert len(list((bot / "inbox").glob("*.json"))) == 1
+
+def test_entry_fee_belongs_to_entry_day(tmp_path):
+    from src.trade.intraday import msk_day
+    book, broker, ledger, st, data = setup(tmp_path)
+    run(st, broker, ledger, data, [row()], T0)
+    assert st.day_pnl == pytest.approx(-0.1)
+    tomorrow = (msk_day(T0) + 1) * 86_400_000 - 3 * 3600_000
+    # Empty history deliberately exercises the market timeout across midnight.
+    book.prices['AAAUSDT'] = 100
+    run(st, broker, ledger, data, [], tomorrow + MIN)
+    assert not st.positions
+    assert st.day_pnl == pytest.approx(-0.1)  # exit fee only, entry paid yesterday
+
+
+def test_daily_stop_latched_until_midnight(tmp_path):
+    from src.trade.intraday import msk_day
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(daily_loss=0.03)
+    st.day = msk_day(T0); st.day_pnl = -31
+    assert run(st, broker, ledger, data, [row()], T0, cfg)['opened'] == 0
+    st.day_pnl = 20  # another existing position realizes a gain
+    assert run(st, broker, ledger, data, [row()], T0+MIN, cfg)['opened'] == 0
+    tomorrow = (msk_day(T0)+1)*86_400_000-3*3600_000
+    assert run(st, broker, ledger, data, [row()], tomorrow+MIN, cfg)['opened'] == 1
+
+
+def test_funding_uses_original_quantity_until_partial_exit(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(tp1_r=1, be_after_tp1=True, funding=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    broker.funding = lambda symbol,start,end: 0.01  # one charge before first partial
+    data['c'] = [c(T0+MIN,100,102.5,99.5,102)]
+    run(st, broker, ledger, data, [], T0+2*MIN, cfg)
+    save_state(ledger.state_path,st); st=load_state(ledger.state_path,1000,T0)
+    data['c'] = [c(T0+2*MIN,101,101,99.9,100)]
+    run(st, broker, ledger, data, [], T0+3*MIN,cfg)
+    cl = [r for r in ledger.journal() if r['kind']=='close'][-1]
+    assert cl['funding'] == pytest.approx(2)  # two coins held at the charge
+    assert st.cash == pytest.approx(999.799)
+
+
+def test_funding_failure_replays_partial_and_close_once(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg=Config(tp1_r=1,be_after_tp1=True,funding=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    data['c']=[c(T0+MIN,100,102.5,99.5,102),c(T0+2*MIN,101,101,99.9,100)]
+    def fail(*args):raise RuntimeError('offline')
+    broker.funding=fail
+    before=st.cash
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    assert st.cash==before and st.pos()[0].qty==2
+    broker.funding=lambda *args:0.01
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    assert len([r for r in ledger.journal() if r['kind']=='partial'])==1
+    assert len([r for r in ledger.journal() if r['kind']=='close'])==1
+
+
+def test_minute_history_recovers_beyond_1500(monkeypatch):
+    from tools.trade import screener_bot as cli
+    now=T0+1600*MIN
+    monkeypatch.setattr(cli.time,'time',lambda:now/1000)
+    def fetch(symbol, interval, limit, end_ms):
+        end=(end_ms//MIN)*MIN
+        return [c(ts,100,101,99,100) for ts in range(end-(limit-1)*MIN,end+1,MIN)]
+    monkeypatch.setattr(cli.md,'binance_futures_ohlcv',fetch)
+    cs=cli.candles_1m('AAAUSDT',T0)
+    assert len(cs)==1601 and cs[0].ts==T0 and cs[-1].ts==now
+
+
+def test_audit_reconciles_partial_cash_and_detects_damage(tmp_path):
+    from tools.trade.audit import profile
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(tp1_r=1,be_after_tp1=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    data['c']=[c(T0+MIN,100,102.5,99.5,102),c(T0+2*MIN,101,101,99.9,100)]
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    save_state(ledger.state_path,st)
+    # Name identifies intraday schema; copy into a realistic profile directory.
+    import shutil
+    d=tmp_path/'screener-audit';d.mkdir()
+    for name in ['state.json','journal.jsonl']:shutil.copy(tmp_path/name,d/name)
+    r=profile(d)
+    assert r['reconciled'] and r['fees']==pytest.approx(.201)
+    st.cash+=1;save_state(d/'state.json',st)
+    assert not profile(d)['reconciled']

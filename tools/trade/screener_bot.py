@@ -82,9 +82,29 @@ def load_trend(src: str, now_s: float) -> tuple[dict | None, str | None]:
 
 
 def candles_1m(symbol: str, since_ms: int) -> list:
-    """Минутные свечи с момента последней проверки (не больше 1500 — ~25 часов)."""
-    n = int((time.time() * 1000 - since_ms) // 60_000) + 3
-    return md.binance_futures_ohlcv(symbol, "1m", limit=max(3, min(n, 1500)))
+    """Read every minute since the cursor, including an outage longer than 25h."""
+    end = int(time.time() * 1000)
+    found = {}
+    for _ in range(100):
+        n = max(3, min(int((end - since_ms) // 60_000) + 3, 1500))
+        page = md.binance_futures_ohlcv(symbol, "1m", limit=n, end_ms=end)
+        if not page:
+            raise RuntimeError("empty minute history during recovery")
+        for c in page:
+            if c.ts >= since_ms:
+                found[c.ts] = c
+        oldest = min(c.ts for c in page)
+        if oldest <= since_ms:
+            result = sorted(found.values(), key=lambda c: c.ts)
+            if result and result[0].ts > ((since_ms + 59_999) // 60_000) * 60_000:
+                raise RuntimeError("minute history starts after recovery cursor")
+            if any(b.ts - a.ts != 60_000 for a, b in zip(result, result[1:])):
+                raise RuntimeError("gap in minute history during recovery")
+            return result
+        if oldest - 1 >= end:
+            raise RuntimeError("minute history pagination did not advance")
+        end = oldest - 1
+    raise RuntimeError("minute history recovery exceeds 100 pages")
 
 
 def data_dir(a, base: Path = ROOT / "data" / "trade") -> Path:

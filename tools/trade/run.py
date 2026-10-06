@@ -59,10 +59,12 @@ def notify(text: str) -> None:
         return
     try:
         import requests
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+        response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                       json={"chat_id": chat, "text": text}, timeout=15)
+        if not response.ok or not response.json().get("ok"):
+            print(f"telegram: delivery failed HTTP {response.status_code}", file=sys.stderr)
     except Exception as e:
-        print(f"telegram: {e}", file=sys.stderr)
+        print(f"telegram: {type(e).__name__}", file=sys.stderr)
 
 
 def fetch_series(symbols: list[str], source: str, lookback: int) -> dict:

@@ -30,6 +30,15 @@ DEFAULT_STOP_PCT = None          # стоп обязателен — молча 
 
 def parse(msg: dict, mid: float) -> tuple[dict | None, str | None]:
     """Сигнал → строка в формате скринера (или причина отказа)."""
+    now_ms = int(time.time() * 1000)
+    if msg.get("expires_ms") is not None and now_ms >= int(msg["expires_ms"]):
+        return None, "срок действия внешнего сигнала истёк"
+    if msg.get("max_age_s") is not None:
+        if not msg.get("ts"):
+            return None, "для max_age_s нужно время ts в миллисекундах"
+        age = now_ms - int(msg["ts"])
+        if age < -60_000 or age > float(msg["max_age_s"]) * 1000:
+            return None, "внешний сигнал не свежий"
     sym = str(msg.get("symbol") or msg.get("ticker") or "").upper().replace(".P", "")
     sym = sym.split(":")[-1]                    # BINANCE:BTCUSDT.P → BTCUSDT
     side = SIDES.get(str(msg.get("side") or msg.get("action") or "").lower())
