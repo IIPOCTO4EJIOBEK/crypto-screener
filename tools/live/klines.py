@@ -48,8 +48,8 @@ SILENT = 30.0               # столько секунд без сообщен�
 TFS = ("5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
-STATS_EVERY = 120.0         # пауза между проходами рыночных метрик, с
-DENS_EVERY = 90.0           # пауза между сверками плотностей со стаканом, с
+STATS_EVERY = float(os.environ.get("SCREENER_STATS_EVERY", "120"))         # пауза между проходами рыночных метрик, с
+DENS_EVERY = float(os.environ.get("SCREENER_DENS_EVERY", "90"))           # пауза между сверками плотностей со стаканом, с
 
 
 def _write(path: Path, obj) -> None:
@@ -73,6 +73,9 @@ class Feed:
         self.syms: list[str] = []
         self.alerts = None
         self.first_seen: dict[str, float] = {}
+        self.live_prices = {}
+        self.manual_queued = set()
+        self.manual_retry = {}
 
     def read_symbols(self) -> list[str]:
         try:
@@ -83,6 +86,7 @@ class Feed:
             return self.syms
 
     def merge(self, sym: str, tf: str, c: list) -> None:
+        self.live_prices[sym] = (float(c[4]), time.time())
         key = (sym, tf)
         cs = self.hist.get(key)
         if cs is None:
@@ -110,8 +114,13 @@ class Feed:
             await asyncio.sleep(0.25)               # история на старте: не больше ~12 запросов в секунду
             for attempt in range(3):
                 try:
+                    from src.data import binance_limits
+                    await asyncio.to_thread(binance_limits.acquire, REST, {"limit": LIMIT})
                     async with http.get(REST, params={"symbol": sym, "interval": tf,
                                                       "limit": LIMIT}) as r:
+                        await asyncio.to_thread(binance_limits.observe, REST, r.status, dict(r.headers))
+                        if r.status in (418, 429):
+                            raise RuntimeError("-1003 shared Binance cooldown")
                         data = await r.json()
                     if isinstance(data, list):
                         break
@@ -152,6 +161,36 @@ class Feed:
                 self.flush()
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: запись не удалась: {type(e).__name__} {e}")
+
+    async def manual_loop(self) -> None:
+        import html, os
+        from src.data.manual_levels import Store
+        store = Store(os.environ.get("MANUAL_LEVELS_DB", "/var/lib/screener/manual-levels.db"))
+        while True:
+            await asyncio.sleep(5)
+            try:
+                now = time.time()
+                prices = {s:p for s,(p,t) in self.live_prices.items() if now-t < 15}
+                await asyncio.to_thread(store.observe, prices, int(now*1000))
+                pending = (await asyncio.to_thread(store.snapshot))["events"]
+                for e in reversed(pending):
+                    ident = e["id"]
+                    if e["delivered"] or ident in self.manual_queued or now < self.manual_retry.get(ident, 0) or not self.alerts.token:
+                        continue
+                    text = ("🔔 <b>" + html.escape(e["symbol"].removesuffix("USDT")) + "</b>: сигнальный уровень "
+                            + str(e["price"]) + (" пересечён вверх" if e["direction"] == "up" else " пересечён вниз")
+                            + "\n" + html.escape(e["label"]) + " · " + e["tf"]
+                            + "\nhttps://vpn.markus.tw1.su/ · уведомление об уровне")
+                    self.manual_queued.add(ident)
+                    def done(mid, ident=ident):
+                        try:
+                            if mid: store.change("delivered", ident)
+                        finally:
+                            self.manual_queued.discard(ident)
+                            self.manual_retry[ident] = time.time()+60
+                    self.alerts.q.put(("manual|"+ident, lambda text=text, done=done: (text,b"",None,None,done)))
+            except Exception as exc:
+                print("manual levels:", type(exc).__name__, flush=True)
 
     async def stats_loop(self) -> None:
         """Раз в минуту — funding, OI, long/short, сделки, хай/лой (kl/stats.json)."""
@@ -272,6 +311,7 @@ class Feed:
         from tools.live.alerts import Alerts
         self.alerts = Alerts(self.out, candles=lambda sym, tf: list(self.hist.get((sym, tf)) or []))
         asyncio.get_running_loop().create_task(self.flusher())
+        asyncio.get_running_loop().create_task(self.manual_loop())
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())
         asyncio.get_running_loop().create_task(self.dens_loop())

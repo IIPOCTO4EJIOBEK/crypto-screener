@@ -150,6 +150,9 @@ class Alerts:
             trade = res[2] if len(res) > 2 else None
             reply_to = res[3] if len(res) > 3 else None
             mid = self._post(text, png, reply_to=reply_to)
+            if len(res) > 4 and callable(res[4]):
+                try: res[4](mid)
+                except Exception as exc: print("manual delivery:", type(exc).__name__, flush=True)
             if mid and trade and trade.get("ok"):
                 self._track(mid, trade)
 
