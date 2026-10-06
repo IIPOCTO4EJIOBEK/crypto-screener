@@ -1,0 +1,15 @@
+"""Diagnostics from authoritative records; retry counts are not unique setups."""
+from collections import defaultdict
+
+def summarize(rows):
+    groups=defaultdict(list);skips=defaultdict(list)
+    for r in rows:
+        if r['kind']=='close':groups[(r.get('formation','?'),r.get('tf','?'),r.get('side','?'))].append(r)
+        if r['kind']=='skip':skips[r.get('reason','?')].append(r)
+    results=[]
+    for (formation,tf,side),items in sorted(groups.items()):
+        settled=[r for r in items if not r.get('funding_pending')];net=[r['pnl']-r['fee']-(r.get('funding') or 0) for r in settled]
+        gains=sum(x for x in net if x>0);loss=-sum(x for x in net if x<0)
+        results.append(dict(formation=formation,tf=tf,side=side,closed=len(items),settled=len(settled),pending=len(items)-len(settled),net=sum(net),wins=sum(x>0 for x in net),profit_factor=gains/loss if loss else None,avg_r=sum(r.get('r_net',0) for r in settled)/len(settled) if settled else None,rules_known=sum(bool(r.get('rules')) for r in settled)))
+    reasons=[dict(reason=reason,retries=len(items),unique_signals=len({r.get('key') for r in items if r.get('key')})) for reason,items in skips.items()]
+    return dict(results=results,reasons=sorted(reasons,key=lambda r:-r['retries']),capacity_events=sum(r['kind']=='capacity' for r in rows))

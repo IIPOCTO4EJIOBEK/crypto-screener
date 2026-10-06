@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         from tools.trade import tg_control
         from tools.trade.run import load_env
         load_env()
-        if os.environ.get("TELEGRAM_CONTROL_ENABLED") == "1":
+        if os.environ.get("TELEGRAM_CONTROL_ENABLED") == "1" and os.environ.get('SCREENER_CONTROL_WORKER')!='1' and not exits_only:
             tg_control.run(ROOT / "data" / "trade")
     except Exception as exc:                               # noqa: BLE001
         print(f"telegram: {exc}", file=sys.stderr)
@@ -290,7 +290,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         from src.trade.monitor_market import MinuteCache
         cache = cache if cache is not None else {}
         if '_minute_cache' not in cache:
-            cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m)
+            cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m,recovery_root=os.environ.get('SCREENER_RECOVERY_DIR'),local_only=bool(os.environ.get('SCREENER_RECOVERY_DIR')))
         snapshot = load_state(ledger.state_path, a.capital, int(time.time()*1000))
         for p in snapshot.pos():
             try:
@@ -320,7 +320,7 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
     from src.trade.monitor_market import MinuteCache
     cache = cache if cache is not None else {}
     if '_minute_cache' not in cache:
-        cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m)
+        cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m,recovery_root=os.environ.get('SCREENER_RECOVERY_DIR'),local_only=bool(os.environ.get('SCREENER_RECOVERY_DIR')))
     market_cache = cache['_minute_cache']
     live = market_cache.live([p.symbol for p in st.pos()], now_ms)
     if os.environ.get('SCREENER_BOOK_DIR'):
