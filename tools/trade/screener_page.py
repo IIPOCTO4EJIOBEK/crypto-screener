@@ -95,8 +95,10 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
     skips = [r for r in j if r["kind"] == "skip"]
     errors = [r for r in j if r["kind"] == "error"][-10:]
     eq_rows = [r for r in j if r["kind"] == "equity"]
-    values = [st.start_equity] + [r["equity"] for r in eq_rows] + [st.equity()]
     eq = st.equity()
+    from src.trade.capital_flow import performance
+    perf=performance(st.start_equity,j,eq)
+    values=perf['curve']
 
     rs = [r["r_net"] for r in closed]
     wins = sum(1 for r in rs if r > 0)
@@ -110,7 +112,10 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
              and r.get("slippage_bp") is not None]
     stats = [
         ("капитал, USDT", f"{eq:.2f}"),
-        ("результат", pct(eq / st.start_equity - 1 if st.start_equity else None)),
+        ("внесённый капитал, USDT", f"{perf['funded_capital']:.2f}"),
+        ("пополнения, USDT", f"{perf['deposits']:.2f}"),
+        ("торговый результат, USDT", f"{perf['pnl']:+.2f}"),
+        ("доходность без пополнений", pct(perf['return_fraction'])),
         ("просадка от пика", pct(eq / st.peak - 1 if st.peak else None)),
         ("макс. просадка", pct(max_drawdown(values))),
         ("сделок закрыто", f"{len(closed)}"),
@@ -340,12 +345,15 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
             "r_net": r["r_net"], "pnl_usdt": _net(r), "pnl_pct":100*_net(r)/(r['entry']*r['qty']) if r.get('qty') else None, "measured_r": r.get("measured_r"),
             "partials": partials.get(r["key"], [])})
     eq = st.equity()
+    from src.trade.capital_flow import performance
+    perf=performance(st.start_equity,j,eq)
     return {
         "bot": ledger.root.name, "mode": "paper", "market": "binance_futures",
         "updated_ms": now_ms, "policy": policy, "trend_filter": trend,
         "rules": settings(cfg), "halted": ledger.halted,
         "paused": (ledger.root / "PAUSE").exists() or st.pending_funding>0,"pending_funding":st.pending_funding,
         "equity": eq, "start_equity": st.start_equity, "peak": st.peak,
+        "net_deposits":perf['deposits'],"funded_capital":perf['funded_capital'],"trading_pnl":perf['pnl'],"return_fraction":perf['return_fraction'],
         "day_pnl": st.day_pnl, "signals_last_round": signals, "trend_error": trend_err,
         "equity_curve": [[r["ts"], r["equity"]] for r in j if r["kind"] == "equity"][-2000:],
         "open": open_rows, "closed": closed_rows,
