@@ -68,3 +68,4 @@ def observe(url,status,headers):
             c.execute('BEGIN IMMEDIATE')
             c.execute('UPDATE rate SET blocked_until=max(blocked_until,?) WHERE id=1',(until,))
             c.commit()
+
