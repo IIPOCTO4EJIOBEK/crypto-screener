@@ -1,12 +1,21 @@
 """Publish per-profile setup results and refusal reasons from SQL journals."""
-import json,html,os,time
+import json,html,os,time,datetime
 from src.trade.atomic_store import database,read_journal
-from src.trade.execution_stats import summarize
+from src.trade.execution_stats import summarize,cohort
 from tools.trade.screener_bot import ROOT
 
 def publish(root=ROOT/'data/trade'):
-    profiles={p.name:summarize(read_journal(p)) for p in sorted(root.glob('screener-*')) if database(p).exists()}
-    data=dict(updated_ms=int(time.time()*1000),profiles=profiles);parts=['<h1>Разбор исполнения ботов</h1><p>Бумажная торговля. Исторические правила смешаны: это диагностика, не доказательство доходности новой версии. Ожидающий funding исключён из итогов. Повторы отказа считаются отдельно от уникальных ключей сигналов. Ключ без времени старого события может объединять разные сетапы.</p>']
+    journals={p.name:read_journal(p) for p in sorted(root.glob('screener-*')) if database(p).exists()}
+    profiles={name:summarize(rows) for name,rows in journals.items()}
+    since=int(os.environ.get('SCREENER_STATS_FROM_MS','1791307067000'))
+    recent={name:summarize(cohort(rows,since)) for name,rows in journals.items()}
+    data=dict(updated_ms=int(time.time()*1000),profiles=profiles,recent_from_ms=since,recent_profiles=recent);parts=['<h1>Разбор исполнения ботов</h1><p>Бумажная торговля. Исторические правила смешаны: это диагностика, не доказательство доходности новой версии. Ожидающий funding исключён из итогов. Повторы отказа считаются отдельно от уникальных ключей сигналов. Ключ без времени старого события может объединять разные сетапы.</p>']
+    since_label=datetime.datetime.fromtimestamp(since/1000,datetime.timezone(datetime.timedelta(hours=3))).strftime('%d.%m.%Y %H:%M:%S')
+    parts.append('<h2>Новые входы с '+since_label+' МСК</h2><p>Отдельная выборка после установки восстановления истории. Старые позиции, закрытые позднее, сюда не входят. Система исполнения обновлялась в течение дня; это не отдельная торговая стратегия.</p><table><tr><th>Профиль</th><th>Закрыто новых / ждёт funding</th><th>Net USDT</th><th>Отказов / уникальных ключей по причинам</th></tr>')
+    for name,stats in recent.items():
+        reasons='; '.join(f"{r['reason']}: {r['retries']} / {r['unique_signals']}" for r in stats['reasons'][:5]) or 'нет'
+        parts.append(f"<tr><td>{html.escape(name)}</td><td>{sum(r['closed'] for r in stats['results'])} / {sum(r['pending'] for r in stats['results'])}</td><td>{sum(r['net'] for r in stats['results']):+.4f}</td><td>{html.escape(reasons)}</td></tr>")
+    parts.append('</table><h2>Вся история</h2>')
     for name,stats in profiles.items():
         parts.append('<h2>'+html.escape(name)+'</h2><table><tr><th>Сетап / ТФ / сторона</th><th>Закрыто / ожидает funding</th><th>Net USDT</th><th>Плюсовых</th><th>Средний R</th><th>PF</th><th>Правила записаны</th></tr>')
         for r in stats['results']:

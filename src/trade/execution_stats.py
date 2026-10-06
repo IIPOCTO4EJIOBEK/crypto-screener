@@ -1,6 +1,10 @@
 """Diagnostics from authoritative records; retry counts are not unique setups."""
 from collections import defaultdict
 
+def cohort(rows,since_ms):
+    # Older positions closed today still belong to their earlier entry rules.
+    return [r for r in rows if (r.get('opened_ms',0) if r['kind']=='close' else r.get('ts',0))>=since_ms]
+
 def summarize(rows):
     groups=defaultdict(list);skips=defaultdict(list)
     for r in rows:
