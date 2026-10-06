@@ -23,11 +23,12 @@ def test_target_is_before_next_confirmed_resistance():
 
 
 def test_page_and_paper_share_the_same_setups_and_event_keys():
- f=dict(symbol='USUSDT',tf='15m',kind='retest',title='Retest',dir='long',entry=100,stop=98,target=110,rr=5,triggered=True,plan_ok=True,age=0,exp=-.2,n=100,sig=True,ts=123,reasons=['level held'])
+ f=dict(symbol='USUSDT',tf='15m',kind='retest',title='Retest',dir='long',entry=100,stop=98,target=110,rr=5,triggered=True,plan_ok=True,age=0,exp=-.2,n=100,sig=True,ts=123,reasons=['level held'],trigger_level=99.7654321)
  d=dict(rows=[dict(symbol='USUSDT',price=101,trend={'15m':{'side':'long'}})],forms=[f,dict(f,kind='bounce',exp=-.3)])
  selected=select(d);rows=bot_rows(selected)
  assert len(rows)==1 and rows[0]['kind']=='retest' and rows[0]['direction']=='long'
  assert rows[0]['key_suffix']=='page:123'
+ assert rows[0]['trigger_level']==99.7654321
  assert not select(dict(d,forms=[dict(f,plan_ok=False)]))
 
 

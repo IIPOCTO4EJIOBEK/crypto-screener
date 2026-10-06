@@ -9,7 +9,11 @@ def confirmed(position,row,price,now):
     if not duration or duration<INTERVALS[position.tf]*1000:return False
     if row.get('kind') not in ('breakout','retest','structure_break') or not row.get('triggered'):return False
     ts=row.get('ts');ready=(row.get('ready_ms') or ts+duration) if isinstance(ts,(int,float)) else 0
-    if not position.opened_ms<ready<=now or now-ready>=duration:return False
+    if not position.opened_ms<ready<=now:return False
+    if row.get('_persistent_invalidation'):
+        if row.get('_position_key')!=position.key or row.get('_opened_ms')!=position.opened_ms:return False
+        if (row.get('_latest_closed_ts') or 0)+duration!=now//duration*duration:return False
+    elif now-ready>=duration:return False
     level=row.get('trigger_level');closed=row.get('_latest_closed')
     if not level or closed is None:return False
     sign=1 if row['direction']=='long' else -1
@@ -31,3 +35,9 @@ def load(path,market,now):
             row['_latest_closed']=float(last[4]);rows.append(row)
         except (OSError,ValueError,KeyError,IndexError,TypeError):continue
     return rows
+
+def load_thesis(path,now):
+    try:
+        data=json.loads(Path(path).read_text('utf-8'))
+        return data['signals'] if 0<=now-data['updated_ms']<=30000 else []
+    except (OSError,ValueError,KeyError,TypeError):return []

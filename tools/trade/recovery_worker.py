@@ -29,7 +29,7 @@ def round_once(trade_root,market_root,recovery_root,fetch=candles_1m):
                 path=recovery_root/(s+'.json');tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,path)
                 # Reject incomplete REST recovery too; leave cursor untouched.
                 cache.candles(s,since);repaired.append(s)
-            except Exception as exc:errors.append(dict(symbol=s,error=type(exc).__name__))
+            except Exception as exc:errors.append(dict(symbol=s,error=type(exc).__name__,detail=str(exc)[:120] if isinstance(exc,ValueError) else ''))
     return dict(repaired=repaired,errors=errors,symbols=len(needed))
 
 def run():
