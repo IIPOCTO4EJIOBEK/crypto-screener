@@ -13,6 +13,7 @@ from pathlib import Path
 from src.trade.intraday import HORIZON, BotState, Config
 from src.trade.ledger import Ledger
 from tools.trade.page import e, max_drawdown, pct, sparkline, t
+from src.trade import trend_display
 
 TREND_TEXT = {
     "off": "без фильтра по тренду (тренд монеты записывается для сверки)",
@@ -89,6 +90,7 @@ def _r(x) -> str:
 def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
           now_ms: int, signals: int = 0, trend_err: str | None = None) -> str:
     j = ledger.journal()
+    current_trend=trend_display.load(now_ms)
     closed = [r for r in j if r["kind"] == "close"]
     skips = [r for r in j if r["kind"] == "skip"]
     errors = [r for r in j if r["kind"] == "error"][-10:]
@@ -165,7 +167,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pnl_net:+.2f}</td>"
             f"<td class='num {'long' if pnl_net >= 0 else 'short'}'>{pm['pnl_pct']:+.2f}%</td><td class=num>{exposure}</td>"
             f"<td><button data-action=edit data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}' data-stop='{p.stop}' data-target='{p.target}'>Стоп / тейк</button> <button data-action=close data-key='{e(p.key)}' data-bot='{e(ledger.root.name.removeprefix("screener-"))}'>Выйти</button></td>"
-            f"<td>{e(p.trend or '—')}</td><td>{t(p.opened_ms)}</td><td>{"выключен" if cfg.no_timeout else t(p.expires_ms)}</td></tr>")
+            f"<td>{e(trend_display.text(p,current_trend))}</td><td>{t(p.opened_ms)}</td><td>{"выключен" if cfg.no_timeout else t(p.expires_ms)}</td></tr>")
 
     tr_rows = []
     for r in reversed(closed[-40:]):
@@ -268,7 +270,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 <h2>Открытые позиции</h2><p class=sub>PnL учитывает частичные выходы, комиссию входа и оценку комиссии выхода; funding будет уточнён при закрытии. Цена обновляется на цикле бота, время обновления указано выше.</p>
 <div class="wrap"><table>
 <thead><tr><th></th><th>монета</th><th>формация</th><th>вход</th><th>стоп</th><th>цель</th>
-<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th title="PnL с частичными выходами и комиссиями / первоначальный номинал позиции">PnL % ≈</th><th title="Текущий номинал оставшейся позиции / equity этого бота">Доля капитала %</th><th>Управление</th><th>тренд</th><th>открыта</th><th>Выход по времени</th></tr></thead>
+<th>сейчас</th><th>R</th><th>PnL USDT ≈</th><th title="PnL с частичными выходами и комиссиями / первоначальный номинал позиции">PnL % ≈</th><th title="Текущий номинал оставшейся позиции / equity этого бота">Доля капитала %</th><th>Управление</th><th>тренд: на входе / сейчас</th><th>открыта</th><th>Выход по времени</th></tr></thead>
 <tbody>{''.join(pos_rows) or '<tr><td colspan=13 class=sub>позиций нет</td></tr>'}</tbody>
 </table></div>
 
@@ -299,6 +301,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
     """
     j = ledger.journal()
     opens = {r["key"]: r for r in j if r["kind"] == "open"}
+    current_trend=trend_display.load(now_ms)
     partials = defaultdict(list)
     for r in j:
         if r["kind"] == "partial":
@@ -316,7 +319,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
         open_rows.append({
             "key": p.key, "symbol": p.symbol, "tf": p.tf, "side": p.side,
             "formation": p.kind, "title": p.title, "reasons": p.reasons, "book": p.book,
-            "trend": p.trend, "opened_ms": p.opened_ms, "expires_ms": p.expires_ms,
+            "trend": p.trend, **trend_display.fields(p,current_trend),"opened_ms": p.opened_ms, "expires_ms": p.expires_ms,
             "market_context": p.market_context, "rules_at_entry": p.entry_rules, "qty": p.qty, "qty0": p.qty0 or p.qty, "levels": {**levels(o), "entry": p.entry,
                                                           "stop_now": p.stop,
                                                           "target": p.target or None},
