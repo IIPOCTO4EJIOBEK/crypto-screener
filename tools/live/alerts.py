@@ -52,7 +52,7 @@ PLAY_NATR = 1.5             # или NATR 1ч от, %
 PLAY_SPIKE = 3.0            # или 5м свеча за последний час с оборотом от N× среднего
 DIGEST_MIN = 30
 DAY_LIMIT = 60
-SCREENER_URL = "http://10.1.222.59"
+SCREENER_URL = "https://vpn.markus.tw1.su"
 
 
 def _env() -> dict[str, str]:
@@ -192,9 +192,16 @@ class Alerts:
         return f"https://t.me/c/{c[4:] if c.startswith('-100') else c.lstrip('-')}/{mid}"
 
     def _track(self, mid: int, t: dict) -> None:
+        observed = self.candles(t["sym"], "5m")
+        price = observed[-1][4] if observed else t["entry"]
+        sign = 1 if t["direction"] == "long" else -1
+        risk = abs(t["entry"] - t["stop"])
+        reached = sign * (price - t["entry"]) / risk if risk else 0
+        hit = [n for n in (1, 2) if reached >= n]
+        done = sign * (price - t["stop"]) <= 0 or sign * (price - t["target"]) >= 0
         self.tracks.append({"mid": mid, "sym": t["sym"], "tf": t.get("tf", "5m"), "dir": t["direction"],
                             "entry": t["entry"], "stop": t["stop"], "target": t["target"], "rr": t["rr"],
-                            "t": int(time.time() * 1000), "hit": [], "done": False})
+                            "t": int(time.time() * 1000), "published_price": price, "hit": hit, "done": done})
         self._save_tracks()
 
     def _save_tracks(self) -> None:
@@ -219,12 +226,16 @@ class Alerts:
             if now - tr["t"] > 24 * 3600_000:
                 tr["done"] = True; changed = True
                 continue
-            cs = [c for c in self.candles(tr["sym"], "5m") if c[0] + 300_000 > tr["t"]]
-            if not cs:
+            observed = self.candles(tr["sym"], "5m")
+            if not observed:
                 continue
+            # A candle overlapping publication contains extrema from before the alert.
+            # Only later candles and the current observed price are causal evidence.
+            cs = [c for c in observed if c[0] >= tr["t"]]
+            prices = [observed[-1][4]]
             up, R = tr["dir"] == "long", abs(tr["entry"] - tr["stop"])
-            best = max(c[2] for c in cs) if up else min(c[3] for c in cs)
-            worst = min(c[3] for c in cs) if up else max(c[2] for c in cs)
+            best = max(prices + [c[2] for c in cs]) if up else min(prices + [c[3] for c in cs])
+            worst = min(prices + [c[3] for c in cs]) if up else max(prices + [c[2] for c in cs])
             mins = (now - tr["t"]) // 60000
             name, ent = tr["sym"].removesuffix("USDT"), tr["entry"]
             def pc(x: float) -> str:
@@ -247,7 +258,7 @@ class Alerts:
             if msg:
                 changed = True
                 link = self.link(tr["mid"])
-                text = msg + f"\n<a href=\"{link}\">сигнал</a> · вход {_fmt(ent)} · стоп {_fmt(tr['stop'])} · цель {_fmt(tr['target'])}"
+                text = msg + "\nРасчётные уровни сигнала; исполнение ботом не подтверждено." + f"\n<a href=\"{link}\">сигнал</a> · вход {_fmt(ent)} · стоп {_fmt(tr['stop'])} · цель {_fmt(tr['target'])}"
                 self.q.put((f"follow|{tr['mid']}|{msg[:2]}", lambda text=text, mid=tr["mid"]: (text, b"", None, mid)))
         if changed:
             self._save_tracks()
@@ -258,8 +269,11 @@ class Alerts:
         tfms = {"5m": 300_000, "15m": 900_000, "1h": 3_600_000}
         keep = []
         for x in self.signals:
-            t0 = x.get("ts") or x["added"]
-            age = int((now - t0) // tfms.get(x["tf"], 300_000)) if isinstance(t0, (int, float)) else 0
+            duration = tfms.get(x["tf"], 300_000)
+            # Formation ts is the OPEN time of its closed candle; age 0 starts at CLOSE.
+            t0 = x.get("ts")
+            ready = t0 + duration if isinstance(t0, (int, float)) else x["added"]
+            age = max(0, int((now - ready) // duration))
             if age <= 1:
                 keep.append(dict(x, age_candles=max(age, 0)))
         self.signals = [x for x in self.signals if any(k["added"] == x["added"] and k["symbol"] == x["symbol"] for k in keep)]
