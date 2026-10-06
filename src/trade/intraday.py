@@ -48,6 +48,7 @@ class Position:
     measured_r: float | None = None     # измеренная ожидаемость типа, R net
     measured_n: int = 0
     last_check_ms: int = 0
+    last_tick_ms: int = 0
     trend: str = ""                     # тренд монеты по скринеру на входе
     mark: float = 0.0                    # последняя цена — для капитала
     risk0: float = 0.0                   # начальный риск: R считается от него, даже когда стоп сдвинут
@@ -188,7 +189,7 @@ def _reached(pos: Position, c: Candle, level: float) -> bool:
 
 
 def check_exits(pos: Position, candles: list[Candle], now_ms: int,
-                bar_ms: int = 60_000) -> list[Exit]:
+                bar_ms: int = 60_000, update_trailing: bool = True) -> list[Exit]:
     """Пройти закрытые минутные свечи после последней проверки; выходы по порядку.
 
     Частичный выход (первый тейк) — Exit с qty > 0, позиция уменьшается на месте;
@@ -218,7 +219,8 @@ def check_exits(pos: Position, candles: list[Candle], now_ms: int,
         if pos.target and _reached(pos, c, pos.target):
             out.append(Exit("target", pos.target, c.ts))
             return out
-        move_stop(pos, c)
+        if update_trailing:
+            move_stop(pos, c)
     if now_ms >= pos.expires_ms:
         out.append(Exit("timeout", 0.0, now_ms))      # цена — по стакану в момент выхода
     return out
@@ -270,6 +272,10 @@ def _pnl(p: Position, price: float) -> float:
 
 
 def load_state(path: Path, capital: float, now_ms: int) -> BotState:
+    from src.trade.atomic_store import read_state
+    authoritative = read_state(Path(path).parent)
+    if authoritative is not None:
+        return BotState(**authoritative)
     if Path(path).exists():
         return BotState(**json.loads(Path(path).read_text(encoding="utf-8")))
     return BotState(cash=capital, peak=capital, start_equity=capital, start_ts=now_ms)
@@ -357,7 +363,8 @@ OPEN = {"long": "buy", "short": "sell"}
 
 def cycle(rows: list[dict], st: BotState, *, broker, ledger,
           candles: Callable[[str, int], list[Candle]], now_ms: int,
-          cfg: Config, trend: dict | None = None, exit_rows: list[dict] | None = None) -> dict:
+          cfg: Config, trend: dict | None = None, exit_rows: list[dict] | None = None,
+          live_prices: dict | None = None) -> dict:
     """Проверить выходы открытых позиций, затем открыть новые по свежим сигналам.
 
     rows — строки скринера (как в `tools/live/screen.py --json`), в порядке
@@ -379,7 +386,9 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
             p.pending_exit_reason = "manual"
             p.manual_reason = "команда закрыть все позиции"
             st.put(p)
-        closeall.unlink()
+        tx = getattr(ledger, '_transaction', None)
+        if tx: tx.consumed.append(closeall)
+        else: closeall.unlink()
         ledger.log("closeall", positions=len(st.positions))
 
     # 1. выходы
@@ -406,7 +415,32 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
         closed = [c for c in cs if c.ts + 60_000 <= now_ms]
         if closed:
             p.mark = closed[-1].close
-            p.last_check_ms = closed[-1].ts + 60_000
+            accepted = [c for c in closed if c.ts >= max(p.last_check_ms, p.opened_ms)]
+            if accepted:
+                p.last_check_ms = max(p.last_check_ms, accepted[-1].ts + 60_000)
+        tick = (live_prices or {}).get(p.symbol)
+        if tick and not any(not e.qty for e in exits) and not p.stop_on_close:
+            price, stamp = tick[:2]
+            if p.opened_ms <= stamp <= now_ms and now_ms-stamp <= 10_000:
+                points = list(tick[2]) if len(tick) > 2 else []
+                points.append((stamp, price))
+                for observed_ms, observed_price in points:
+                    if observed_ms <= p.last_tick_ms or observed_ms < max(p.opened_ms, p.last_check_ms) or observed_ms > now_ms:
+                        continue
+                    point = Candle(observed_ms, observed_price, observed_price, observed_price, observed_price, 0, 0, 0)
+                    legs = check_exits(p, [point], now_ms, bar_ms=0, update_trailing=False)
+                    p.last_tick_ms = observed_ms
+                    exits += legs
+                    # A partial take changes the stop now, never retroactively
+                    # against the earlier low/high of this unfinished minute.
+                    if any(e.qty for e in legs):
+                        p.last_check_ms = max(p.last_check_ms, observed_ms)
+                    if any(not e.qty for e in legs):
+                        break
+        if closed:
+            p.last_check_ms = max(p.last_check_ms, closed[-1].ts + 60_000)
+        if tick and 0 <= now_ms-tick[1] <= 10_000:
+            p.mark = tick[0]
         funding = 0.0
         full_exit = next((e for e in exits if not e.qty), None)
         if cfg.funding and full_exit is not None:

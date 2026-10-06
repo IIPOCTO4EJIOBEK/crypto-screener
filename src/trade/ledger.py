@@ -56,19 +56,36 @@ class Ledger:
         os.replace(tmp, self.state_path)
 
     def log(self, kind: str, **data) -> dict:
+        if getattr(self, '_transaction', None):
+            return self._transaction.log(kind, **data)
         row = {"ts": int(time.time() * 1000), "kind": kind, **data}
+        from src.trade.atomic_store import database, append_journal
+        if database(self.root).exists():
+            append_journal(self.root, row)
+            return row
         with self.journal_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         return row
 
     def journal(self) -> list[dict]:
+        from src.trade.atomic_store import database, read_journal
+        if database(self.root).exists():
+            tx = getattr(self, '_transaction', None)
+            return read_journal(self.root) + (tx.rows if tx and not tx.committed else [])
         if not self.journal_path.exists():
             return []
         return [json.loads(l) for l in self.journal_path.read_text(encoding="utf-8").splitlines() if l]
 
     @property
     def halted(self) -> str | None:
+        tx = getattr(self, '_transaction', None)
+        if tx and tx.halt_reason:
+            return tx.halt_reason
         return self.halt_path.read_text(encoding="utf-8") if self.halt_path.exists() else None
 
     def halt(self, reason: str) -> None:
+        tx = getattr(self, '_transaction', None)
+        if tx:
+            tx.halt_reason = reason
+            return
         self.halt_path.write_text(reason, encoding="utf-8")

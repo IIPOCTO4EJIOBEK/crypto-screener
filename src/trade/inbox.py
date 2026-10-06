@@ -69,7 +69,7 @@ def parse(msg: dict, mid: float) -> tuple[dict | None, str | None]:
     }, None
 
 
-def take(root: Path, mid_of) -> tuple[list[dict], list[tuple[str, str]]]:
+def take(root: Path, mid_of, transaction=None) -> tuple[list[dict], list[tuple[str, str]]]:
     """Забрать файлы из inbox/: (строки сигналов, [(файл, причина отказа)]).
 
     Файл удаляется сразу после чтения: один сигнал — одна попытка.
@@ -79,6 +79,9 @@ def take(root: Path, mid_of) -> tuple[list[dict], list[tuple[str, str]]]:
     if not box.is_dir():
         return rows, bad
     for f in sorted(box.glob("*.json")):
+        if transaction:
+            from src.trade.atomic_store import processed
+            if str(f) in processed(root,[f]): continue
         try:
             msg = json.loads(f.read_text(encoding="utf-8"))
             mid = mid_of(str(msg.get("symbol") or msg.get("ticker") or "").upper()
@@ -86,7 +89,8 @@ def take(root: Path, mid_of) -> tuple[list[dict], list[tuple[str, str]]]:
             row, why = parse(msg, mid)
         except Exception as exc:                               # noqa: BLE001
             row, why = None, f"не разобран: {str(exc)[:100]}"
-        f.unlink(missing_ok=True)
+        if transaction: transaction.inbox_files.append(f)
+        else: f.unlink(missing_ok=True)
         if row:
             row["key_suffix"] = f.stem
             rows.append(row)
