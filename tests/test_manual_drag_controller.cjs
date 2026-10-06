@@ -19,5 +19,9 @@ box.listeners.pointerdown(event(30,50));box.listeners.pointerup(event(30,50));as
 context.items[0]={id:'a',symbol:'USUSDT',tf:'5m',kind:'trend',points:[[base+300,30],[base+1500,60]]};
 box.listeners.pointerdown(event(50,60));box.listeners.pointermove(event(60,70));box.listeners.pointerup(event(60,70));await new Promise(resolve=>setImmediate(resolve));
 assert.deepEqual(saved[1].points,[[base+300,30],[base+1800,70]]);
+context.items[0]={id:'a',symbol:'USUSDT',tf:'5m',kind:'trend',points:[[base+300,30],[base+1500,60]]};
+context.chart.timeScale=()=>({width:()=>200,timeToCoordinate:t=>(t-base)/30+20,logicalToCoordinate:n=>n*10,coordinateToLogical:x=>x/10});
+box.listeners.pointerdown(event(70,60));box.listeners.pointermove(event(80,70));box.listeners.pointerup(event(80,70));await new Promise(resolve=>setImmediate(resolve));
+assert.deepEqual(saved[2].points,[[base+300,30],[base+1800,70]]);
 console.log('Pointer drag persistence, cancellation, click-only and endpoint adjustment passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
