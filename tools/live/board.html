@@ -934,7 +934,7 @@ function drawChart(kl){
         var up=x.side!=='short', R=x.risk0||Math.abs(x.entry-x.stop), px0=LASTPX!=null?LASTPX:cs[cs.length-1][4];
         var nowR=R?((up?px0-x.entry:x.entry-px0)/R):0, tag='бот '+x.bot+' '+(up?'лонг':'шорт');
         var el=cand.createPriceLine({price:x.entry,color:'#22d3ee',lineWidth:2,lineStyle:0,axisLabelVisible:true,
-          title:tag+' · вход · сейчас '+(nowR>0?'+':'')+nowR.toFixed(2)+'R'});
+          title:tag+' · вход · '+(x.pnl_pct==null?'':Number(x.pnl_pct).toFixed(2)+'% · ')+(nowR>0?'+':'')+nowR.toFixed(2)+'R'});
         POSL.push(el); POSE.push({line:el,x:x,up:up,R:R,tag:tag});
         if(x.stop) POSL.push(cand.createPriceLine({price:x.stop,color:'#ef4f5a',lineWidth:2,lineStyle:2,axisLabelVisible:true,title:tag+' · стоп'}));
         if(x.target) POSL.push(cand.createPriceLine({price:x.target,color:'#1fbf75',lineWidth:2,lineStyle:2,axisLabelVisible:true,title:tag+' · цель'}));
