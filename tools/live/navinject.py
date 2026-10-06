@@ -51,6 +51,14 @@ def ensure(live_dir: Path) -> int:
         except Exception:                           # noqa: BLE001
             pass
     positions(live_dir)
+    monitor = TRADE / 'monitor-status.json'
+    if monitor.exists():
+        try:
+            tmp = live_dir / 'monitor-status.json.tmp'
+            shutil.copyfile(monitor, tmp)
+            os.replace(tmp, live_dir / 'monitor-status.json')
+        except OSError:
+            pass
     n = sum(inject(live_dir / p) for p in PAGES if (live_dir / p).exists())
     if TRADE.exists():
         n += sum(inject(p) for p in TRADE.glob("*/bot.html"))

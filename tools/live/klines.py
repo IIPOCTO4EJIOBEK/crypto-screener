@@ -45,7 +45,7 @@ REST = "https://fapi.binance.com/fapi/v1/klines"
 # принимает, но данных не шлёт
 WS = "wss://fstream.binance.com/market/stream?streams="
 SILENT = 30.0               # столько секунд без сообщений — переподключение
-TFS = ("5m", "15m", "1h")
+TFS = ("1m", "5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
 UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
 STATS_EVERY = float(os.environ.get("SCREENER_STATS_EVERY", "120"))         # пауза между проходами рыночных метрик, с
@@ -74,6 +74,7 @@ class Feed:
         self.alerts = None
         self.first_seen: dict[str, float] = {}
         self.live_prices = {}
+        self.ticks = {}
         self.manual_queued = set()
         self.manual_retry = {}
 
@@ -85,8 +86,13 @@ class Feed:
             print(f"klines: состав не прочитан ({type(e).__name__}), остаюсь на старом")
             return self.syms
 
-    def merge(self, sym: str, tf: str, c: list) -> None:
+    def merge(self, sym: str, tf: str, c: list, quote_ms: int = 0) -> None:
         self.live_prices[sym] = (float(c[4]), time.time())
+        if tf == '1m' and quote_ms:
+            trace = self.ticks.setdefault(sym, [])
+            if not trace or (quote_ms > trace[-1][0] and c[4] != trace[-1][1]):
+                trace.append([quote_ms, float(c[4])])
+                del trace[:-512]
         key = (sym, tf)
         cs = self.hist.get(key)
         if cs is None:
@@ -152,7 +158,7 @@ class Feed:
             k = {tf: self.hist[(sym, tf)][-1] for tf in self.tfs
                  if self.hist.get((sym, tf))}
             if k:
-                _write(self.out / f"{sym}.live.json", {"t": now, "k": k})
+                _write(self.out / f"{sym}.live.json", {"t": now, "k": k, "ticks": self.ticks.get(sym, [])})
 
     async def flusher(self) -> None:
         while True:
@@ -295,7 +301,7 @@ class Feed:
                         k = d.get("k")
                         if k:
                             self.merge(k["s"], k["i"], [int(k["t"]), float(k["o"]), float(k["h"]),
-                                                        float(k["l"]), float(k["c"]), float(k["q"])])
+                                                        float(k["l"]), float(k["c"]), float(k["q"])], int(d.get('E') or 0))
                     if time.monotonic() - checked > UNIVERSE_EVERY:
                         checked = time.monotonic()
                         fresh = self.read_symbols()
