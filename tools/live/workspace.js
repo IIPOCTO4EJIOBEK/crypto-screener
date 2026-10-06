@@ -37,7 +37,7 @@
     });
   }
   // A bot tab grows to its content: one page scrollbar instead of an 85vh nested iframe.
-  document.querySelectorAll('iframe.bot').forEach(function(frame){
+  document.querySelectorAll('iframe.bot:not([data-autosize])').forEach(function(frame){
     var observer;
     function attach(){try{
       if(observer)observer.disconnect();var doc=frame.contentDocument;if(!doc||!doc.body)return;
