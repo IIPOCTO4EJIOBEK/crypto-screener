@@ -4,6 +4,9 @@
 (function(){
   if(window.__gnav || window.self!==window.top) return;   // во вкладках ботов (встроенные окна) меню не нужно
   window.__gnav=1;
+  var theme=document.createElement('link');theme.rel='stylesheet';theme.href='/workspace.css?v=20261006-1';document.head.appendChild(theme);
+  function workspace(){var script=document.createElement('script');script.src='/workspace.js?v=20261006-1';document.body.appendChild(script);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',workspace,{once:true});else workspace();
   var G=[
     ['Торговля',[['Можно торговать','/#trade','trade'],['Монеты','/#coins','coins']]],
     ['Анализ',[['Формации','/#forms','forms'],['Плотности','/#dens','dens'],['Сигналы скринера','/screener.html'],['Структуры и уровни','/structures.html'],['Стаканы подробно','/densities.html']]],
