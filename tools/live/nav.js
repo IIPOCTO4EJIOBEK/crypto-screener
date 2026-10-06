@@ -8,7 +8,7 @@
     ['Торговля',[['Можно торговать','/#trade','trade'],['Монеты','/#coins','coins']]],
     ['Анализ',[['Формации','/#forms','forms'],['Плотности','/#dens','dens'],['Сигналы скринера','/screener.html'],['Структуры и уровни','/structures.html'],['Стаканы подробно','/densities.html']]],
     ['Боты',[['Все боты','/bots.html'],['Можно торговать','/bots.html#screener-can-trade'],['Краткосрок 5/15m','/bots.html#screener-structure-fast'],['Алерты','/bots.html#screener-alerts'],['Спот','/bots.html#paper-spot'],['Фьючерсы','/bots.html#paper-future'],['Лонг/шорт','/bots.html#paper-future-longshort'],
-             ['По скринеру','/bots.html#screener-all'],['Скринер + тренд','/bots.html#screener-all-trend-tf'],['Управляемый','/bots.html#screener-managed']]],
+             ['По скринеру','/bots.html#screener-all'],['Скринер + тренд','/bots.html#screener-all-trend-tf'],['Управляемый','/bots.html#screener-managed'],['Статистика исполнения','/execution-stats.html']]],
     ['Алерты',[['Лента алертов','/alerts.html']]],
     ['Методика',[['Разбор и статус работ','/bot-review.html'],['Исследование и Kronos','/research.html'],['Сверка бумажного учёта','/paper-audit.html'],['Как устроен скринер','/index.html']]]
   ];
