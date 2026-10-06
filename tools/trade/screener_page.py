@@ -281,8 +281,8 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 <tbody>{''.join(tr_rows) or '<tr><td colspan=10 class=sub>сделок ещё нет</td></tr>'}</tbody>
 </table></div>
 
-{f'<h2>Почему сигналы не взяты</h2><div class="box"><ul>{skip_html}</ul></div>' if skip_html else ''}
-{f'<h2>Ошибки</h2><div class="box"><ul>{err_html}</ul></div>' if err_html else ''}
+{f'<h2>Почему сигналы не взяты · история попыток</h2><div class="box"><p class="sub">Счётчики за весь журнал этого профиля. Повторные проверки одного сигнала учитываются отдельно. Уникальные сигналы и свежий период — в <a href="/execution-stats.html" target="_top">статистике исполнения</a>.</p><ul>{skip_html}</ul></div>' if skip_html else ''}
+{f'<h2>Журнал ошибок · последние 10 записей</h2><div class="box"><p class="sub">Записи сохраняются после восстановления. Наличие записи здесь не означает, что ошибка продолжается сейчас. Текущий статус сопровождения — в индикаторе контроля ботов в верхнем меню.</p><ul>{err_html}</ul></div>' if err_html else ''}
 <p class="sub">Источник: журнал {e(ledger.journal_path)}. Код: src/trade/intraday.py, tools/trade/screener_bot.py.</p>
 {f"<h2>Команды и разбор попыток</h2><ul>{controls_html}</ul>" if controls_html else ""}
 {control_script}
