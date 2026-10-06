@@ -43,7 +43,7 @@ def inject(path: Path) -> bool:
 
 
 def ensure(live_dir: Path) -> int:
-    for name in ("nav.js", "alerts.html", "manual-levels.js", "manual-drag.js", "trade-overlay.js", "tradingview.html"):
+    for name in ("nav.js", "workspace.css", "workspace.js", "alerts.html", "manual-levels.js", "manual-drag.js", "trade-overlay.js", "tradingview.html"):
         src, dst = HERE / name, live_dir / name
         try:
             if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
@@ -99,4 +99,3 @@ def positions(live_dir: Path) -> int:
     except Exception:                               # noqa: BLE001
         pass
     return len(out)
-

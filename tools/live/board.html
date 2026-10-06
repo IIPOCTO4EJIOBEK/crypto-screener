@@ -579,7 +579,7 @@ function openChart(sym,tf){
   document.getElementById('ctv').href='tradingview.html?symbol='+encodeURIComponent(sym)+'&tf='+encodeURIComponent(C.tf);
   document.getElementById('cfull').href='structures.html#tf='+encodeURIComponent(C.tf)+'&sym='+encodeURIComponent(sym)+'&embed=1';
   [].forEach.call(document.querySelectorAll('#ctf button'),function(b){b.classList.toggle('on',b.dataset.v===C.tf);});
-  document.getElementById('chart').classList.add('open'); paused=true;
+  document.getElementById('chart').classList.add('open'); document.body.classList.add('chart-active'); paused=true;
   var want=++C.seq;   // быстрые клики: рисует только последний
   loadCharts(function(){
     // свечи — родные kline этого ТФ, их держит ВМ (tools/live/klines.py);
@@ -588,7 +588,7 @@ function openChart(sym,tf){
       .then(function(kl){ if(want!==C.seq) return; try{drawChart(kl);}catch(e){document.getElementById('cbox').innerHTML='<div style="padding:20px" class="mute">Ошибка графика: '+esc(e.message)+'</div>';} });
   });
 }
-function closeChart(){ document.getElementById('chart').classList.remove('open'); liveStop(); if(CH){CH.remove();CH=null;} paused=false; }
+function closeChart(){ document.getElementById('chart').classList.remove('open'); document.body.classList.remove('chart-active'); ++C.seq; liveStop(); if(CH){CH.remove();CH=null;} paused=false; }
 /* ---------- живые свечи: файл kl/<SYM>.live.json с ВМ, раз в 1/3/5 с ----------
    Браузер к Binance напрямую не ходит: через прокси биржа отвечает «restricted
    location». ВМ держит WebSocket kline_<tf> и пишет текущую свечу каждого ТФ. */
@@ -1096,4 +1096,3 @@ setInterval(function(){
 </script>
 </body>
 </html>
-
