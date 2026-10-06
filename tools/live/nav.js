@@ -10,7 +10,7 @@
     ['Боты',[['Все боты','/bots.html'],['Спот','/bots.html#paper-spot'],['Фьючерсы','/bots.html#paper-future'],['Лонг/шорт','/bots.html#paper-future-longshort'],
              ['По скринеру','/bots.html#screener-all'],['Скринер + тренд','/bots.html#screener-all-trend-tf'],['Управляемый','/bots.html#screener-managed']]],
     ['Алерты',[['Лента алертов','/alerts.html']]],
-    ['Методика',[['Как устроен скринер','/index.html']]]
+    ['Методика',[['Исследование и Kronos','/research.html'],['Сверка бумажного учёта','/paper-audit.html'],['Как устроен скринер','/index.html']]]
   ];
   var css='.gn{display:flex;align-items:center;gap:2px;flex-wrap:wrap;font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'+
     '.gn-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:8px 16px;background:#161a21;border-bottom:1px solid #262c37}'+
