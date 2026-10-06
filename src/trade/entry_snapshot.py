@@ -14,7 +14,7 @@ class EntryBroker(PaperBroker):
    raise ValueError('fresh entry order book unavailable; retry next pass')
   return item[1]
  def execute(self,symbol,side,qty,reduce=False):
-  if reduce:
+  if reduce and self.live_cache is None:
    return PaperBroker(self.market).execute(symbol,side,qty,reduce=True)
   try:return super().execute(symbol,side,qty,reduce=False)
   except (ValueError,OSError,KeyError,TypeError):return None

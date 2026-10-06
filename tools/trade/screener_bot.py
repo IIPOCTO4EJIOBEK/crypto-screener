@@ -323,10 +323,15 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
         cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m)
     market_cache = cache['_minute_cache']
     live = market_cache.live([p.symbol for p in st.pos()], now_ms)
-    broker = PaperBroker("future") if a.exits_only else cache.get('_entry_broker', PaperBroker("future"))
+    if os.environ.get('SCREENER_BOOK_DIR'):
+        from src.trade.entry_snapshot import prepare
+        broker=prepare([],st,cfg,book_root=os.environ['SCREENER_BOOK_DIR'])
+    else:
+        broker = PaperBroker("future") if a.exits_only else cache.get('_entry_broker', PaperBroker("future"))
+    broker.defer_funding = os.environ.get('SCREENER_DEFER_FUNDING')=='1'
     # ручные сделки и вебхук: идут первыми, мимо фильтра тренда
     from src.trade import inbox
-    manual, bad = ([], []) if a.exits_only else inbox.take(ledger.root, PaperBroker('future').mid, transaction=tx)
+    manual, bad = ([], []) if a.exits_only else inbox.take(ledger.root, broker.mid, transaction=tx,retry_market=True)
     for name, why in bad:
         ledger.log("skip", key=name, symbol="?", formation="inbox", tf="-", side="-",
                    reason=f"внешний сигнал не принят: {why}", trend="")
@@ -346,16 +351,19 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
     commands = pending(ledger.root)
     before = None
     control_events=[]
+    consumed_commands=[]
     if commands:
         before = cycle([], st, broker=broker, ledger=ledger, candles=market_cache.candles, now_ms=now_ms, cfg=cfg, trend=trend, live_prices=live)
-        control_events=apply(commands, st, broker, ledger, now_ms)
+        control_events=apply(commands, st, broker, ledger, now_ms,consumed=consumed_commands)
     res = cycle(rows, st, broker=broker, ledger=ledger, exit_rows=exit_rows,
                 candles=market_cache.candles, now_ms=now_ms, cfg=cfg, trend=trend, live_prices=live)
     res["events"] = control_events + res["events"]
     if before:
         res["events"] = before["events"] + res["events"]
         res["closed"] += before["closed"]
-    tx.commit(st, events=res["events"], notify=a.notify, commands=[p for p, msg in commands])
+    from src.trade.intraday import signal_key
+    tx.inbox_files += [Path(r['_inbox_path']) for r in manual if signal_key(r) in st.seen]
+    tx.commit(st, events=res["events"], notify=a.notify, commands=consumed_commands)
     if not a.exits_only and os.environ.get('SCREENER_TRACE_SLOW') == '1':
         import faulthandler
         faulthandler.cancel_dump_traceback_later()

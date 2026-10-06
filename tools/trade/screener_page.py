@@ -174,7 +174,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
             f"<tr><td>{t(r['ts'])}</td><td class={r['side']}>{'ЛОНГ' if r['side'] == 'long' else 'ШОРТ'}</td>"
             f"<td>{e(r['symbol'])}</td><td>{e(r.get('title') or r['kind'])} · {e(r['tf'])}</td>"
             f"<td class=num>{r['entry']:.6g}</td><td class=num>{r['exit']:.6g}</td>"
-            f"<td>{e(REASON.get(r['reason'], r['reason']) + (' · '+r.get('manual_reason','') if r.get('manual_reason') else ''))}</td>"
+            f"<td>{e(REASON.get(r['reason'], r['reason']) + (' · '+r.get('manual_reason','') if r.get('manual_reason') else '') + (' · funding ожидает расчёта; PnL предварительный' if r.get('funding_pending') else ''))}</td>"
             f"<td class='num {'long' if r['r_net'] > 0 else 'short'}'>{r['r_net']:+.2f}</td>"
             f"<td class=num>{_net(r):+.2f}</td><td class=num>{result_pct}</td><td>{e(r.get('trend') or '—')}</td></tr>")
 
@@ -230,6 +230,7 @@ def build(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Config,
 по фьючерсам Binance. Берёт {e(POLICY_TEXT.get(policy, policy))}, {e(TREND_TEXT.get(trend, trend))}.
 Вход — рыночной заявкой по живому стакану, стоп и цель — из разбора формации,
 {"Выход по стопу / тейку; закрытие по времени выключено." if cfg.no_timeout else f"Выход по стопу, цели или через {HORIZON} свечей."}
+<p class=sub>{f'Funding ожидает расчёта: {st.pending_funding} сделок. Их PnL предварительный; новые входы профиля приостановлены, выходы продолжаются.' if st.pending_funding else ''}</p>
 Лимит использования капитала — {cfg.capital_fraction:.0%}. Риск на сделку — {cfg.risk_pct:.2%} капитала, позиций не больше {cfg.max_open},
 плеча нет. При просадке {cfg.max_drawdown:.0%} от пика новые входы прекращаются.
 <ul>
@@ -332,6 +333,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
             "reasons": o.get("reasons", []), "book": o.get("book", {}), "trend": r.get("trend"),
             "opened_ms": r.get("opened_ms"), "closed_ms": r.get("exit_ts") or r["ts"],
             "market_context": o.get("market_context", []), "rules_at_entry": o.get("rules", {}), "levels": dict(levels(o), stop_final=r.get("stop_final")), "exit": r["exit"], "exit_reason": r["reason"],
+            "funding_pending":bool(r.get('funding_pending')),"funding":r.get('funding',0),
             "r_net": r["r_net"], "pnl_usdt": _net(r), "pnl_pct":100*_net(r)/(r['entry']*r['qty']) if r.get('qty') else None, "measured_r": r.get("measured_r"),
             "partials": partials.get(r["key"], [])})
     eq = st.equity()
@@ -339,7 +341,7 @@ def to_json(ledger: Ledger, st: BotState, *, policy: str, trend: str, cfg: Confi
         "bot": ledger.root.name, "mode": "paper", "market": "binance_futures",
         "updated_ms": now_ms, "policy": policy, "trend_filter": trend,
         "rules": settings(cfg), "halted": ledger.halted,
-        "paused": (ledger.root / "PAUSE").exists(),
+        "paused": (ledger.root / "PAUSE").exists() or st.pending_funding>0,"pending_funding":st.pending_funding,
         "equity": eq, "start_equity": st.start_equity, "peak": st.peak,
         "day_pnl": st.day_pnl, "signals_last_round": signals, "trend_error": trend_err,
         "equity_curve": [[r["ts"], r["equity"]] for r in j if r["kind"] == "equity"][-2000:],

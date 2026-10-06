@@ -69,7 +69,7 @@ def parse(msg: dict, mid: float) -> tuple[dict | None, str | None]:
     }, None
 
 
-def take(root: Path, mid_of, transaction=None) -> tuple[list[dict], list[tuple[str, str]]]:
+def take(root: Path, mid_of, transaction=None, retry_market=False) -> tuple[list[dict], list[tuple[str, str]]]:
     """Забрать файлы из inbox/: (строки сигналов, [(файл, причина отказа)]).
 
     Файл удаляется сразу после чтения: один сигнал — одна попытка.
@@ -84,12 +84,18 @@ def take(root: Path, mid_of, transaction=None) -> tuple[list[dict], list[tuple[s
             if str(f) in processed(root,[f]): continue
         try:
             msg = json.loads(f.read_text(encoding="utf-8"))
-            mid = mid_of(str(msg.get("symbol") or msg.get("ticker") or "").upper()
-                         .replace(".P", "").split(":")[-1])
+            try:
+                mid = mid_of(str(msg.get("symbol") or msg.get("ticker") or "").upper()
+                             .replace(".P", "").split(":")[-1])
+            except Exception:
+                if retry_market:
+                    bad.append((f.name,'свежий стакан недоступен; сигнал оставлен в очереди'));continue
+                raise
             row, why = parse(msg, mid)
         except Exception as exc:                               # noqa: BLE001
             row, why = None, f"не разобран: {str(exc)[:100]}"
-        if transaction: transaction.inbox_files.append(f)
+        if transaction and row and retry_market:row['_inbox_path']=str(f)
+        elif transaction: transaction.inbox_files.append(f)
         else: f.unlink(missing_ok=True)
         if row:
             row["key_suffix"] = f.stem

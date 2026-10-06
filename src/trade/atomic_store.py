@@ -48,12 +48,14 @@ def replace_json(path,payload):
  os.replace(tmp,path)
 
 class Transaction:
- def __init__(self,ledger):self.ledger=ledger;self.rows=[];self.halt_reason=None;self.consumed=[];self.inbox_files=[];self.committed=False
+ def __init__(self,ledger):self.ledger=ledger;self.rows=[];self.updates=[];self.halt_reason=None;self.consumed=[];self.inbox_files=[];self.committed=False
  def log(self,kind,**data):
   row=dict(ts=int(time.time()*1000),kind=kind,event_id=uuid.uuid4().hex,**data);self.rows.append(row);return row
  def commit(self,state,events=(),notify=False,commands=()):
   c=self.connection
   with c:
+   for ident,payload in self.updates:
+    if c.execute('UPDATE journal SET payload=? WHERE id=?',(json.dumps(payload,ensure_ascii=False),ident)).rowcount!=1:raise RuntimeError('journal update missing')
    for row in self.rows:c.execute('INSERT INTO journal(payload) VALUES(?)',(json.dumps(row,ensure_ascii=False),))
    c.execute('INSERT OR REPLACE INTO state VALUES(1,?)',(json.dumps(asdict(state),ensure_ascii=False),))
    for path in list(commands)+self.inbox_files:c.execute('INSERT OR IGNORE INTO consumed VALUES(?)',(str(path),))
@@ -67,7 +69,7 @@ class Transaction:
   # Files are derived views; after a crash the database remains authoritative.
   payload=c.execute('SELECT payload FROM state WHERE id=1').fetchone()[0]
   replace_json(self.ledger.state_path,payload)
-  if self.rows or not self.ledger.journal_path.exists():
+  if self.rows or self.updates or not self.ledger.journal_path.exists():
    replace_json(self.ledger.journal_path,''.join(row+'\n' for row, in c.execute('SELECT payload FROM journal ORDER BY id')))
   if self.halt_reason:self.ledger.halt_path.write_text(self.halt_reason,encoding='utf-8')
   for path in commands:

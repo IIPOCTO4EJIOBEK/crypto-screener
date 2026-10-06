@@ -18,6 +18,7 @@ def test_execution_rereads_book_and_never_calls_rest(tmp_path):
  assert broker.live is False and broker.mid('AAAUSDT')==100
  d=payload();d['a']=[['103','2']];p.write_text(json.dumps(d))
  assert broker.execute('AAAUSDT','buy',1).price==103
+ assert broker.execute('AAAUSDT','sell',1,reduce=True).price==99
  assert broker.execute('AAAUSDT','buy',10) is None
  now[0]=106;assert broker.execute('AAAUSDT','buy',1) is None
  p.unlink();assert broker.execute('AAAUSDT','buy',1) is None
