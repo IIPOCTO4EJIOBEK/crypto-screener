@@ -81,29 +81,35 @@ def _execute(orders, broker, state: State, ledger: Ledger, res: StepResult) -> N
 
 
 def _charge_funding(state: State, broker, prices: dict[str, float], now_ms: int,
-                    ledger: Ledger, res: StepResult) -> None:
+                    ledger: Ledger, res: StepResult) -> bool:
     """Фандинг перпетуала с прошлого шага: лонг платит при положительной ставке.
 
     На споте `broker.funding` возвращает 0. Сумма считается по текущей цене —
     приближение: биржа считает по марк-цене в момент каждого начисления.
     """
     start = state.last_funding_ts
-    state.last_funding_ts = now_ms
     if start is None or not state.positions or getattr(broker, "market", "spot") != "future":
-        return
+        state.last_funding_ts = now_ms
+        return True
     paid = {}
+    failed = False
     for sym, q in state.positions.items():
         try:
             rate = broker.funding(sym, start, now_ms)
         except Exception as e:
             res.problems.append(f"{sym}: фандинг не получен ({type(e).__name__})")
+            failed = True
             continue
         if rate:
             paid[sym] = q * prices[sym] * rate
+    if failed:
+        return False  # retry the complete unchanged interval before changing quantities
+    state.last_funding_ts = now_ms
     if paid:
         state.cash -= sum(paid.values())
         ledger.log("funding", paid={k: round(v, 6) for k, v in paid.items()},
                    total=round(sum(paid.values()), 6), since=start)
+    return True
 
 
 def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
@@ -129,7 +135,11 @@ def step(series, *, broker, ledger: Ledger, limits: Limits, now_ms: int,
         ledger.log("skip", reason="no_price", symbols=missing)
         return res
 
-    _charge_funding(state, broker, prices, now_ms, ledger, res)
+    if not _charge_funding(state, broker, prices, now_ms, ledger, res):
+        res.equity = state.equity(prices)
+        ledger.log("skip", reason="funding_unavailable", since=state.last_funding_ts)
+        ledger.save(state)
+        return res
     equity = state.equity(prices)
     state.peak = max(state.peak, equity)
     res.equity = equity

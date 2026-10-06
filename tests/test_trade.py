@@ -334,3 +334,29 @@ def test_шорт_на_споте_запрещён(tmp_path, monkeypatch):
     from tools.trade import run as cli
     monkeypatch.setattr(cli, "load_env", lambda *a, **k: None)
     assert cli.run_one(["--side", "longshort", "--data", str(tmp_path)]) == 2
+
+def test_daily_funding_failure_preserves_cursor_and_cash(tmp_path):
+    from src.trade.engine import _charge_funding, StepResult
+    from src.trade.ledger import State
+    state=State('paper',1000,positions={'A':1,'B':1},last_funding_ts=100)
+    broker=PaperBroker('future',book=book_at({'A':100,'B':100}))
+    ledger=Ledger(tmp_path)
+    def fail_one(symbol,start,end):
+        if symbol=='B':raise RuntimeError('offline')
+        return 0.01
+    broker.funding=fail_one
+    res=StepResult(state,1000)
+    assert not _charge_funding(state,broker,{'A':100,'B':100},200,ledger,res)
+    assert state.last_funding_ts==100 and state.cash==1000
+    broker.funding=lambda *args:0.01
+    assert _charge_funding(state,broker,{'A':100,'B':100},200,ledger,res)
+    assert state.last_funding_ts==200 and state.cash==pytest.approx(998)
+
+def test_external_expiry_and_age(monkeypatch):
+    from src.trade import inbox
+    monkeypatch.setattr(inbox.time,'time',lambda:1000)
+    msg={'symbol':'BTCUSDT','side':'long','stop':99,'target':102}
+    assert inbox.parse({**msg,'expires_ms':999999},100)[0] is None
+    assert inbox.parse({**msg,'expires_ms':1000001},100)[0] is not None
+    assert inbox.parse({**msg,'ts':900000,'max_age_s':30},100)[0] is None
+    assert inbox.parse({**msg,'ts':999000,'max_age_s':30},100)[0] is not None

@@ -43,11 +43,20 @@ def make_handler(token: str, trade_root: Path, default_bot: str = "managed"):
             self.end_headers()
             self.wfile.write(body)
 
+        def do_GET(self):
+            if urlparse(self.path).path.rstrip("/") != "/api/levels":
+                return self._send(404, {"ok": False})
+            if not hmac.compare_digest(self.headers.get("X-Token", "").encode(), token.encode()):
+                return self._send(403, {"ok": False})
+            from src.data.manual_levels import Store
+            self._send(200, dict(ok=True, **Store(os.environ.get("MANUAL_LEVELS_DB", "/var/lib/screener/manual-levels.db")).snapshot()))
+
         def do_POST(self):                                     # noqa: N802
             url = urlparse(self.path)
-            if url.path.rstrip("/") not in ("/hook", "/api/hook"):
+            if url.path.rstrip("/") not in ("/hook", "/api/hook", "/api/levels", "/api/position"):
                 return self._send(404, {"ok": False, "error": "нет такого адреса"})
-            n = int(self.headers.get("Content-Length") or 0)
+            try: n = int(self.headers.get("Content-Length") or 0)
+            except ValueError: return self._send(400, {"ok": False, "error": "неверный размер тела"})
             if n <= 0 or n > MAX_BODY:
                 return self._send(400, {"ok": False, "error": "пустое или слишком большое тело"})
             try:
@@ -58,12 +67,28 @@ def make_handler(token: str, trade_root: Path, default_bot: str = "managed"):
             got = self.headers.get("X-Token") or str(msg.pop("token", ""))
             if not hmac.compare_digest(got.encode(), token.encode()):
                 return self._send(403, {"ok": False, "error": "неверный секрет"})
+            if url.path.rstrip("/") == "/api/levels":
+                from src.data.manual_levels import Store
+                store = Store(os.environ.get("MANUAL_LEVELS_DB", "/var/lib/screener/manual-levels.db"))
+                try:
+                    op = msg.get("op")
+                    if op == "save": result = store.save(msg.get("item") or {})
+                    elif op in ("delete", "rearm", "ack"): store.change(op, str(msg.get("id", ""))); result = {}
+                    else: raise ValueError("unknown operation")
+                except (ValueError, TypeError, KeyError):
+                    return self._send(400, {"ok": False, "error": "проверьте цену, монету и параметры уровня"})
+                return self._send(200, {"ok": True, "item": result})
             bot = (parse_qs(url.query).get("bot") or [default_bot])[0]
             if not re.fullmatch(r"[a-z0-9-]{1,40}", bot):
                 return self._send(400, {"ok": False, "error": "плохое имя бота"})
             root = trade_root / f"screener-{bot}"
             if not (root / "state.json").exists():
                 return self._send(404, {"ok": False, "error": f"бота {bot} нет"})
+            if url.path.rstrip("/") == "/api/position":
+                from src.trade.position_controls import enqueue
+                try: queued = enqueue(root, msg)
+                except (ValueError, TypeError, KeyError): return self._send(400, {"ok": False, "error": "проверьте уровни и укажите причину (3–300 символов)"})
+                return self._send(200, {"ok": True, "queued": queued, "note": "команда в очереди; бот проверит цену и сохранит причину на ближайшем цикле"})
             if not msg.get("symbol") and not msg.get("ticker"):
                 return self._send(400, {"ok": False, "error": "нет symbol"})
             msg.setdefault("source", "webhook")

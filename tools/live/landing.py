@@ -333,6 +333,15 @@ def cards(live: dict, trend: dict | None, link: dict) -> list[dict]:
         "figures": ["вердикт по каждой формации", "строка FDR в отчёте"],
         "note": "обновляется прогоном tools/live/screen.py",
     })
+    from tools.live.board import BOTS       # страницы бумажного бота
+    if BOTS[0][2].exists():
+        out.append({
+            "href": "bot.html", "title": "Торговый бот",
+            "what": "Бумажная торговля: позиции, сделки "
+                    "и счёт. Реальных денег нет, шаг раз в сутки.",
+            "figures": ["paper, спот", "шаг в 00:05 UTC"],
+            "note": "страница пересобирается ботом после каждого шага",
+        })
     if trend:
         hist, alls = trend.get("hist") or {}, trend.get("all") or {}
         if hist:
