@@ -209,6 +209,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
     ap.add_argument("--min-entry-rr", type=float, default=0.0, help="минимум чистого R:R после исполнения и комиссий")
     ap.add_argument("--max-fee-r", type=float, default=0.0, help="не входить, если комиссия входа и выхода по стопу больше N R (0 — выкл.)")
     ap.add_argument("--skip-kinds", nargs="*", default=[], help="формации, которые профиль не берёт")
+    ap.add_argument("--kronos-filter", type=float, default=0.0, help="эксперимент: не входить, если доля прогнозов Kronos в сторону сделки >= N (воркер tools/trade/kronos_worker.py)")
     ap.add_argument("--learn", action="store_true", help="самообучение: убыточные по своим сделкам сетапы — с уменьшенным риском (src/trade/learning.py)")
     ap.add_argument("--exit-on-opposite", action="store_true", help="выход при подтверждённом противоположном пробое/ретесте/сломе на том же или старшем ТФ")
     ap.add_argument("--risk-pct", type=float, default=0.01)
@@ -259,7 +260,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         return 0
 
     if not 0 < a.capital_fraction <= 1: ap.error("capital-fraction must be in (0,1]")
-    cfg = Config(no_timeout=a.no_timeout, max_attempts_5m=a.max_attempts_5m, capital_fraction=a.capital_fraction, parallel_timeframes=a.parallel_timeframes, min_entry_rr=a.min_entry_rr, max_fee_r=a.max_fee_r, skip_kinds=tuple(a.skip_kinds), learn=a.learn, exit_on_opposite=a.exit_on_opposite, policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
+    cfg = Config(no_timeout=a.no_timeout, max_attempts_5m=a.max_attempts_5m, capital_fraction=a.capital_fraction, parallel_timeframes=a.parallel_timeframes, min_entry_rr=a.min_entry_rr, max_fee_r=a.max_fee_r, skip_kinds=tuple(a.skip_kinds), learn=a.learn, kronos_filter=a.kronos_filter, exit_on_opposite=a.exit_on_opposite, policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
                  max_open=a.max_open, max_age=a.max_age, max_drawdown=a.max_drawdown,
                  breakeven_r=a.breakeven, trail_r=a.trail, daily_loss=a.daily_loss,
                  cooldown_min=a.cooldown, max_side=a.max_side,
@@ -310,6 +311,11 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
                 cache['_learning'] = learning.refresh(ROOT / "data" / "trade")
             model = cache['_learning']
             rows = [dict(r, _learn_mult=learning.multiplier(model, r.get("kind", ""), r.get("tf", ""), r.get("direction", ""))) for r in rows]
+        if a.kronos_filter:
+            from src.trade.intraday import signal_key
+            from tools.trade import kronos_worker
+            fcs = kronos_worker.read_forecasts(ROOT / "data" / "trade" / "kronos")
+            rows = [dict(r, _kronos=fcs.get(signal_key(r))) for r in rows]
     from src.trade.atomic_store import transaction, Busy
     try:
         with transaction(ledger) as tx:
@@ -361,6 +367,9 @@ def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
         control_events=apply(commands, st, broker, ledger, now_ms,consumed=consumed_commands)
     res = cycle(rows, st, broker=broker, ledger=ledger, exit_rows=exit_rows,
                 candles=market_cache.candles, now_ms=now_ms, cfg=cfg, trend=trend, live_prices=live)
+    if res.get("kronos_requests"):
+        from tools.trade import kronos_worker
+        kronos_worker.add_requests(ROOT / "data" / "trade" / "kronos", res["kronos_requests"], now_ms)
     res["events"] = control_events + res["events"]
     if before:
         res["events"] = before["events"] + res["events"]

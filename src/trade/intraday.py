@@ -330,6 +330,9 @@ class Config:
     max_fee_r: float = 0.0         # комиссия входа и выхода по стопу в долях риска (0 — выкл.)
     skip_kinds: tuple = ()         # формации, которые бот не берёт
     learn: bool = False            # риск по сегменту из самообучения (`src.trade.learning`)
+    # Эксперимент 10.10.2026: на 1954 сигналах ботов входы, где Kronos уверенно
+    # прогнозировал движение в нашу сторону, были хуже (обе модели, обе половины периода).
+    kronos_filter: float = 0.0     # не входить, если доля сэмплов Kronos в сторону сделки >= N (0 — выкл.)
     exit_on_opposite: bool = False # experimental: fresh opposite structural signal
     policy: str = "all"            # all | measured
     trend: str = "off"             # off | tf | overall
@@ -624,6 +627,22 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                 ledger.log("skip", key=key, symbol=row["symbol"], formation=row["kind"], tf=row["tf"], side=side,
                            reason="выделенный капитал уже занят открытыми позициями", trend=tr)
                 continue
+            if cfg.kronos_filter and not manual:
+                # прогноз просим только для сигнала, который прошёл все прочие проверки
+                fc = row.get("_kronos")
+                if fc is None:
+                    st.seen.pop(key, None)     # прогноз ещё считается: вернёмся на следующем круге
+                    out.setdefault("kronos_requests", []).append(
+                        {"key": key, "symbol": row["symbol"], "tf": row["tf"], "side": side, "ts": row.get("ts")})
+                    continue
+                agree = fc["up_share"] if side == "long" else 1 - fc["up_share"]
+                if agree >= cfg.kronos_filter:
+                    st.seen.pop(key, None)
+                    out["skipped"] += 1
+                    ledger.log("skip", key=key, symbol=row["symbol"], formation=row["kind"], tf=row["tf"], side=side,
+                               reason=f"Kronos уверенно за сделку ({agree:.0%} прогнозов): по замеру такие входы хуже",
+                               kronos=fc, trend=tr)
+                    continue
             qty = min(size(eq, mid, row["stop"], risk_pct=risk_pct, max_open=cfg.max_open), remaining_notional / mid)
             fill = broker.execute(row["symbol"], OPEN[side], qty) if qty > 0 else None
             if fill is None:
@@ -709,7 +728,7 @@ def cycle(rows: list[dict], st: BotState, *, broker, ledger,
                        measured_n=p.measured_n, trend=tr, expires_ms=p.expires_ms,
                        reasons=p.reasons, book=p.book, risk0=p.risk0,
                        tp1=(p.entry + (1 if side == "long" else -1) * p.tp1_r * p.risk0)
-                       if p.tp1_r else None, rules=p.entry_rules, market_context=p.market_context, manual_reason=p.manual_reason, attempt_key=p.attempt_key, rr_net_entry=rr_net, signal_ts=p.signal_ts, learn_mult=learn_mult)
+                       if p.tp1_r else None, rules=p.entry_rules, market_context=p.market_context, manual_reason=p.manual_reason, attempt_key=p.attempt_key, rr_net_entry=rr_net, signal_ts=p.signal_ts, learn_mult=learn_mult, kronos=row.get("_kronos") if cfg.kronos_filter else None)
             out["events"].append(
                 f"ВХОД {SIDE_RU[side]} {p.symbol} {p.title} {p.tf}: {p.entry:.6g}, "
                 f"стоп {p.stop:.6g}, цель {p.target:.6g}"
