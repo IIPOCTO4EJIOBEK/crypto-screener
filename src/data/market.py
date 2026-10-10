@@ -101,10 +101,15 @@ def _get(url: str, params: dict | None = None, use_proxy: bool = False) -> objec
     for s in routes:
         for attempt in range(2):
             try:
+                from src.data import binance_limits
+                binance_limits.acquire(url, params)
                 r = s.get(url, params=params, timeout=TIMEOUT)
+                binance_limits.observe(url, r.status_code, r.headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:  # сеть биржи нестабильна
+                if isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code in (418, 429):
+                    raise RuntimeError("Binance rate limited; shared cooldown recorded") from e
                 last = e
                 time.sleep(0.4 * (attempt + 1))
     raise RuntimeError(f"{url}: {last}")
