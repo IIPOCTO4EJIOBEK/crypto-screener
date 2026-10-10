@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -53,7 +54,19 @@ def open_db(path: str) -> sqlite3.Connection:
 def screener_rows(a) -> tuple[list[dict], list[str]]:
     if a.signals_json:
         data = json.loads(Path(a.signals_json).read_text())
-        return data.get("signals", []), data.get("notes", [])
+        if data.get("built_unix") and time.time()-float(data["built_unix"]) > 900:
+            return [], ["файл сигналов устарел"]
+        from src.data.market import INTERVALS
+        rows=[]
+        for r in data.get("signals", []):
+            r=dict(r)
+            if r.get("page_setups") and r.get("tf") not in a.tfs: continue
+            ts=r.get("ts");duration=INTERVALS.get(r.get("tf"),300)*1000
+            if isinstance(ts,(int,float)):
+                ready=r.get("ready_ms") or ts+duration
+                r["age_candles"]=max(0,int((time.time()*1000-ready)//duration))
+            rows.append(r)
+        return rows, data.get("notes", [])
     from src.backtest.costs import Costs
     from src.storage import db
     from tools.live import screen, universe
@@ -82,9 +95,29 @@ def load_trend(src: str, now_s: float) -> tuple[dict | None, str | None]:
 
 
 def candles_1m(symbol: str, since_ms: int) -> list:
-    """Минутные свечи с момента последней проверки (не больше 1500 — ~25 часов)."""
-    n = int((time.time() * 1000 - since_ms) // 60_000) + 3
-    return md.binance_futures_ohlcv(symbol, "1m", limit=max(3, min(n, 1500)))
+    """Read every minute since the cursor, including an outage longer than 25h."""
+    end = int(time.time() * 1000)
+    found = {}
+    for _ in range(100):
+        n = max(3, min(int((end - since_ms) // 60_000) + 3, 1500))
+        page = md.binance_futures_ohlcv(symbol, "1m", limit=n, end_ms=end)
+        if not page:
+            raise RuntimeError("empty minute history during recovery")
+        for c in page:
+            if c.ts >= since_ms:
+                found[c.ts] = c
+        oldest = min(c.ts for c in page)
+        if oldest <= since_ms:
+            result = sorted(found.values(), key=lambda c: c.ts)
+            if result and result[0].ts > ((since_ms + 59_999) // 60_000) * 60_000:
+                raise RuntimeError("minute history starts after recovery cursor")
+            if any(b.ts - a.ts != 60_000 for a, b in zip(result, result[1:])):
+                raise RuntimeError("gap in minute history during recovery")
+            return result
+        if oldest - 1 >= end:
+            raise RuntimeError("minute history pagination did not advance")
+        end = oldest - 1
+    raise RuntimeError("minute history recovery exceeds 100 pages")
 
 
 def data_dir(a, base: Path = ROOT / "data" / "trade") -> Path:
@@ -115,6 +148,7 @@ def cmd_status(ledger: Ledger, st) -> None:
 
 
 PROFILES = ROOT / "data" / "trade" / "screener-profiles.json"
+LAST_MONITOR_STATS = {}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,25 +158,30 @@ def main(argv: list[str] | None = None) -> int:
     """
     if argv is None:
         argv = sys.argv[1:]
-    if argv or not PROFILES.exists():
+    exits_only = argv == ["--exits-only"]
+    if (argv and not exits_only) or not PROFILES.exists():
         return run_one(argv)
     profiles = json.loads(PROFILES.read_text(encoding="utf-8"))
     try:                                        # команды из Telegram — до круга
         from tools.trade import tg_control
         from tools.trade.run import load_env
         load_env()
-        tg_control.run(ROOT / "data" / "trade")
+        if os.environ.get("TELEGRAM_CONTROL_ENABLED") == "1" and os.environ.get('SCREENER_CONTROL_WORKER')!='1' and not exits_only:
+            tg_control.run(ROOT / "data" / "trade")
     except Exception as exc:                               # noqa: BLE001
         print(f"telegram: {exc}", file=sys.stderr)
     cache: dict = {}
     rc = 0
     for prof in profiles:
-        print(f"== {' '.join(prof) or '(по умолчанию)'}")
+        if not exits_only: print(f"== {' '.join(prof) or '(по умолчанию)'}")
         try:
-            rc |= run_one(prof, cache)
+            rc |= run_one(prof + (["--exits-only"] if exits_only else []), cache)
         except Exception as exc:                               # noqa: BLE001
             print(f"профиль упал: {exc}", file=sys.stderr)
             rc |= 1
+    if exits_only:
+        LAST_MONITOR_STATS.clear()
+        LAST_MONITOR_STATS.update(busy_profiles=cache.get('_busy', []), market_sources=getattr(cache.get('_minute_cache'), 'sources', {}))
     return rc
 
 
@@ -162,7 +201,16 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
                     help="фильтр по тренду скринера: tf — тренд таймфрейма сигнала, "
                          "overall — общий (1h и 4h совпали)")
     ap.add_argument("--trend-src", default=DEFAULT_TREND)
+    ap.add_argument("--no-timeout", action="store_true")
+    ap.add_argument("--max-attempts-5m", type=int, default=1)
+    ap.add_argument("--capital-fraction", type=float, default=1.0)
     ap.add_argument("--capital", type=float, default=1000.0)
+    ap.add_argument("--parallel-timeframes", action="store_true", help="разрешить отдельные позиции одной монеты на разных ТФ")
+    ap.add_argument("--min-entry-rr", type=float, default=0.0, help="минимум чистого R:R после исполнения и комиссий")
+    ap.add_argument("--max-fee-r", type=float, default=0.0, help="не входить, если комиссия входа и выхода по стопу больше N R (0 — выкл.)")
+    ap.add_argument("--skip-kinds", nargs="*", default=[], help="формации, которые профиль не берёт")
+    ap.add_argument("--learn", action="store_true", help="самообучение: убыточные по своим сделкам сетапы — с уменьшенным риском (src/trade/learning.py)")
+    ap.add_argument("--exit-on-opposite", action="store_true", help="выход при подтверждённом противоположном пробое/ретесте/сломе на том же или старшем ТФ")
     ap.add_argument("--risk-pct", type=float, default=0.01)
     ap.add_argument("--max-open", type=int, default=5)
     ap.add_argument("--max-age", type=int, default=1)
@@ -200,16 +248,18 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
     ap.add_argument("--data", default=None)
     ap.add_argument("--page-out", default=None)
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--exits-only", action="store_true", help="проверить выходы и команды без расчёта сигналов и новых входов")
     a = ap.parse_args(argv)
 
     ledger = Ledger(data_dir(a))
     now_ms = int(time.time() * 1000)
-    st = load_state(ledger.state_path, a.capital, now_ms)
     if a.status:
+        st = load_state(ledger.state_path, a.capital, now_ms)
         cmd_status(ledger, st)
         return 0
 
-    cfg = Config(policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
+    if not 0 < a.capital_fraction <= 1: ap.error("capital-fraction must be in (0,1]")
+    cfg = Config(no_timeout=a.no_timeout, max_attempts_5m=a.max_attempts_5m, capital_fraction=a.capital_fraction, parallel_timeframes=a.parallel_timeframes, min_entry_rr=a.min_entry_rr, max_fee_r=a.max_fee_r, skip_kinds=tuple(a.skip_kinds), learn=a.learn, exit_on_opposite=a.exit_on_opposite, policy=a.policy, trend=a.trend, risk_pct=a.risk_pct,
                  max_open=a.max_open, max_age=a.max_age, max_drawdown=a.max_drawdown,
                  breakeven_r=a.breakeven, trail_r=a.trail, daily_loss=a.daily_loss,
                  cooldown_min=a.cooldown, max_side=a.max_side,
@@ -217,12 +267,14 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
                  tp1_frac=a.tp1_frac, be_after_tp1=a.be_after_tp1,
                  no_target=a.no_target, pause_after=a.pause_after,
                  pause_min=a.pause_min, funding=a.funding)
-    trend, trend_err = load_trend(a.trend_src, time.time())
+    trend, trend_err = (None, None) if a.exits_only else load_trend(a.trend_src, time.time())
     if trend_err:
         print(trend_err, file=sys.stderr)
     try:
         ck = (a.signals_json, a.db, a.universe, tuple(a.tfs), a.exchange)
-        if cache is not None and ck in cache:
+        if a.exits_only:
+            rows, notes = [], []
+        elif cache is not None and ck in cache:
             rows, notes = cache[ck]
         else:
             rows, notes = screener_rows(a)
@@ -235,23 +287,93 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
     if a.trend != "off" and trend is None:
         # без свежего тренда фильтр не пропустит ничего; выходы всё равно проверяются
         rows = []
-    broker = PaperBroker("future")
+    # The entry worker can recover a long history over REST. Do that before
+    # acquiring the writer lock so existing positions keep their fast monitor.
+    if not a.exits_only:
+        from src.trade.monitor_market import MinuteCache
+        cache = cache if cache is not None else {}
+        if '_minute_cache' not in cache:
+            cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m,recovery_root=os.environ.get('SCREENER_RECOVERY_DIR'),local_only=bool(os.environ.get('SCREENER_RECOVERY_DIR')))
+        snapshot = load_state(ledger.state_path, a.capital, int(time.time()*1000))
+        for p in snapshot.pos():
+            try:
+                cache['_minute_cache'].candles(p.symbol, max(p.last_check_ms, p.opened_ms))
+            except Exception:
+                pass  # execute_profile logs a failed recovery; no state is changed here
+        from src.trade.entry_snapshot import prepare
+        from src.trade.confirmation import annotate
+        cache['_entry_broker'] = prepare(rows, snapshot, cfg, cache.setdefault('_entry_books', {}),book_root=os.environ.get('SCREENER_BOOK_DIR'))
+        rows=annotate(rows,Path(a.trend_src).parent/'kl')
+        if a.learn:
+            from src.trade import learning
+            if '_learning' not in cache:
+                cache['_learning'] = learning.refresh(ROOT / "data" / "trade")
+            model = cache['_learning']
+            rows = [dict(r, _learn_mult=learning.multiplier(model, r.get("kind", ""), r.get("tf", ""), r.get("direction", ""))) for r in rows]
+    from src.trade.atomic_store import transaction, Busy
+    try:
+        with transaction(ledger) as tx:
+            return execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache)
+    except Busy:
+        if cache is not None: cache.setdefault('_busy', []).append(ledger.root.name)
+        print(f"{ledger.root.name}: профиль занят, следующий быстрый круг")
+        return 0
+
+
+def execute_profile(a, ledger, tx, cfg, trend, trend_err, rows, cache):
+    if not a.exits_only and os.environ.get('SCREENER_TRACE_SLOW') == '1':
+        import faulthandler
+        faulthandler.dump_traceback_later(20, repeat=True)
+    now_ms = int(time.time()*1000)
+    st = load_state(ledger.state_path, a.capital, now_ms)
+    from src.trade.monitor_market import MinuteCache
+    cache = cache if cache is not None else {}
+    if '_minute_cache' not in cache:
+        cache['_minute_cache'] = MinuteCache(Path(a.trend_src).parent/'kl', candles_1m,recovery_root=os.environ.get('SCREENER_RECOVERY_DIR'),local_only=bool(os.environ.get('SCREENER_RECOVERY_DIR')))
+    market_cache = cache['_minute_cache']
+    live = market_cache.live([p.symbol for p in st.pos()], now_ms)
+    if os.environ.get('SCREENER_BOOK_DIR'):
+        from src.trade.entry_snapshot import prepare
+        broker=prepare([],st,cfg,book_root=os.environ['SCREENER_BOOK_DIR'])
+    else:
+        broker = PaperBroker("future") if a.exits_only else cache.get('_entry_broker', PaperBroker("future"))
+    broker.defer_funding = os.environ.get('SCREENER_DEFER_FUNDING')=='1'
     # ручные сделки и вебхук: идут первыми, мимо фильтра тренда
     from src.trade import inbox
-    manual, bad = inbox.take(ledger.root, broker.mid)
+    manual, bad = ([], []) if a.exits_only else inbox.take(ledger.root, broker.mid, transaction=tx,retry_market=True)
     for name, why in bad:
         ledger.log("skip", key=name, symbol="?", formation="inbox", tf="-", side="-",
                    reason=f"внешний сигнал не принят: {why}", trend="")
     rows = manual + list(rows)
-    res = cycle(rows, st, broker=broker, ledger=ledger,
-                candles=candles_1m, now_ms=now_ms, cfg=cfg, trend=trend)
-    save_state(ledger.state_path, st)
-    if a.notify and res["events"]:
-        from tools.trade.run import load_env, notify
-        load_env()
-        notify(f"Бот по скринеру ({ledger.root.name}):\n" + "\n".join(res["events"]))
-    print(f"сигналов {len(rows)}, открыто {res['opened']}, закрыто {res['closed']}, "
-          f"пропущено {res['skipped']}, капитал {res['equity']:.2f}")
+    exit_rows = rows
+    if a.exit_on_opposite:
+        from src.trade.reversal import load as reversal_rows, load_thesis
+        source=Path(a.trend_src).parent/'trade-setups.json';ck=('reversal',str(source))
+        if ck not in cache:cache[ck]=reversal_rows(source,source.parent/'kl',now_ms)+load_thesis(ledger.root.parent/'thesis-status.json',now_ms)
+        exit_rows=cache[ck]
+    from src.trade.position_controls import pending, apply
+    commands = pending(ledger.root)
+    before = None
+    control_events=[]
+    consumed_commands=[]
+    if commands:
+        before = cycle([], st, broker=broker, ledger=ledger, candles=market_cache.candles, now_ms=now_ms, cfg=cfg, trend=trend, live_prices=live)
+        control_events=apply(commands, st, broker, ledger, now_ms,consumed=consumed_commands)
+    res = cycle(rows, st, broker=broker, ledger=ledger, exit_rows=exit_rows,
+                candles=market_cache.candles, now_ms=now_ms, cfg=cfg, trend=trend, live_prices=live)
+    res["events"] = control_events + res["events"]
+    if before:
+        res["events"] = before["events"] + res["events"]
+        res["closed"] += before["closed"]
+    from src.trade.intraday import signal_key
+    tx.inbox_files += [Path(r['_inbox_path']) for r in manual if signal_key(r) in st.seen]
+    tx.commit(st, events=res["events"], notify=a.notify, commands=consumed_commands)
+    if not a.exits_only and os.environ.get('SCREENER_TRACE_SLOW') == '1':
+        import faulthandler
+        faulthandler.cancel_dump_traceback_later()
+    if not a.exits_only or res['closed'] or control_events:
+        print(f"сигналов {len(rows)}, открыто {res['opened']}, закрыто {res['closed']}, "
+              f"пропущено {res['skipped']}, капитал {res['equity']:.2f}")
 
     from tools.trade import screener_page
     kw = dict(policy=a.policy, trend=a.trend, cfg=cfg, now_ms=now_ms,
@@ -260,7 +382,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
         screener_page.write(ledger, st, ledger.root / "bot.html", **kw)
         if a.page_out:
             screener_page.write(ledger, st, Path(a.page_out), **kw)
-        if not a.data:                    # общая страница всех ботов, по вкладке на бота
+        if not a.data and not a.exits_only: # общая страница всех ботов, по вкладке на бота
             from tools.trade import page
             page.write_all(ledger.root.parent)
     except Exception as exc:                                   # noqa: BLE001

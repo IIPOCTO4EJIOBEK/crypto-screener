@@ -69,6 +69,12 @@ def test_вход_размер_и_цель(tmp_path):
     assert cl["reason"] == "target" and cl["r"] == pytest.approx(2.0)
     assert st.cash == pytest.approx(1000 + 2 * 4 - 0.1 - 2 * 104 * 0.0005)
 
+def test_exhausted_capital_does_not_open_dust_position(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    st.cash=1e-10
+    result=run(st,broker,ledger,data,[row()],T0)
+    assert result['opened']==0 and not st.positions
+
 
 def test_стоп_раньше_цели_и_гэп(tmp_path):
     p_book, broker, ledger, st, data = setup(tmp_path)
@@ -326,3 +332,214 @@ def test_вебхук_секрет_и_очередь(tmp_path):
     assert call({"symbol": "BTCUSDT", "side": "long", "stop_pct": 1, "token": "s" * 20}) == 200
     assert call({"symbol": "BTCUSDT"}, "s" * 20, "/hook?bot=nope") == 404
     assert len(list((bot / "inbox").glob("*.json"))) == 1
+
+def test_entry_fee_belongs_to_entry_day(tmp_path):
+    from src.trade.intraday import msk_day
+    book, broker, ledger, st, data = setup(tmp_path)
+    run(st, broker, ledger, data, [row()], T0)
+    assert st.day_pnl == pytest.approx(-0.1)
+    tomorrow = (msk_day(T0) + 1) * 86_400_000 - 3 * 3600_000
+    # Empty history deliberately exercises the market timeout across midnight.
+    book.prices['AAAUSDT'] = 100
+    run(st, broker, ledger, data, [], tomorrow + MIN)
+    assert not st.positions
+    assert st.day_pnl == pytest.approx(-0.1)  # exit fee only, entry paid yesterday
+
+
+def test_daily_stop_latched_until_midnight(tmp_path):
+    from src.trade.intraday import msk_day
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(daily_loss=0.03)
+    st.day = msk_day(T0); st.day_pnl = -31
+    assert run(st, broker, ledger, data, [row()], T0, cfg)['opened'] == 0
+    st.day_pnl = 20  # another existing position realizes a gain
+    assert run(st, broker, ledger, data, [row()], T0+MIN, cfg)['opened'] == 0
+    tomorrow = (msk_day(T0)+1)*86_400_000-3*3600_000
+    assert run(st, broker, ledger, data, [row()], tomorrow+MIN, cfg)['opened'] == 1
+
+
+def test_funding_uses_original_quantity_until_partial_exit(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(tp1_r=1, be_after_tp1=True, funding=True)
+    run(st, broker, ledger, data, [row()], T0, cfg)
+    broker.funding = lambda symbol,start,end: 0.01  # one charge before first partial
+    data['c'] = [c(T0+MIN,100,102.5,99.5,102)]
+    run(st, broker, ledger, data, [], T0+2*MIN, cfg)
+    save_state(ledger.state_path,st); st=load_state(ledger.state_path,1000,T0)
+    data['c'] = [c(T0+2*MIN,101,101,99.9,100)]
+    run(st, broker, ledger, data, [], T0+3*MIN,cfg)
+    cl = [r for r in ledger.journal() if r['kind']=='close'][-1]
+    assert cl['funding'] == pytest.approx(2)  # two coins held at the charge
+    assert st.cash == pytest.approx(999.799)
+
+
+def test_funding_failure_replays_partial_and_close_once(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg=Config(tp1_r=1,be_after_tp1=True,funding=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    data['c']=[c(T0+MIN,100,102.5,99.5,102),c(T0+2*MIN,101,101,99.9,100)]
+    def fail(*args):raise RuntimeError('offline')
+    broker.funding=fail
+    before=st.cash
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    assert st.cash==before and st.pos()[0].qty==2
+    broker.funding=lambda *args:0.01
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    assert len([r for r in ledger.journal() if r['kind']=='partial'])==1
+    assert len([r for r in ledger.journal() if r['kind']=='close'])==1
+
+
+def test_minute_history_recovers_beyond_1500(monkeypatch):
+    from tools.trade import screener_bot as cli
+    now=T0+1600*MIN
+    monkeypatch.setattr(cli.time,'time',lambda:now/1000)
+    def fetch(symbol, interval, limit, end_ms):
+        end=(end_ms//MIN)*MIN
+        return [c(ts,100,101,99,100) for ts in range(end-(limit-1)*MIN,end+1,MIN)]
+    monkeypatch.setattr(cli.md,'binance_futures_ohlcv',fetch)
+    cs=cli.candles_1m('AAAUSDT',T0)
+    assert len(cs)==1601 and cs[0].ts==T0 and cs[-1].ts==now
+
+
+def test_audit_reconciles_partial_cash_and_detects_damage(tmp_path):
+    from tools.trade.audit import profile
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(tp1_r=1,be_after_tp1=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    data['c']=[c(T0+MIN,100,102.5,99.5,102),c(T0+2*MIN,101,101,99.9,100)]
+    run(st,broker,ledger,data,[],T0+3*MIN,cfg)
+    save_state(ledger.state_path,st)
+    # Name identifies intraday schema; copy into a realistic profile directory.
+    import shutil
+    d=tmp_path/'screener-audit';d.mkdir()
+    for name in ['state.json','journal.jsonl']:shutil.copy(tmp_path/name,d/name)
+    r=profile(d)
+    assert r['reconciled'] and r['fees']==pytest.approx(.201)
+    st.cash+=1;save_state(d/'state.json',st)
+    assert not profile(d)['reconciled']
+
+
+def test_capacity_records_reason_without_consuming_signal(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1))
+    result=run(st,broker,ledger,data,[row(symbol='API3USDT')],T0+MIN,Config(max_open=1))
+    events=[r for r in ledger.journal() if r['kind']=='capacity']
+    assert events[-1]['symbols']==['API3USDT']
+    assert not any('API3USDT' in key for key in st.seen)
+    assert result['events']
+
+
+def test_actual_paper_fill_beyond_target_is_rejected(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    class MovingBook:
+        calls=0
+        def __call__(self,symbol,market):
+            self.calls+=1
+            price=100 if self.calls==1 else 105
+            return OrderBook('t',symbol,0,[Level(price,1e9)],[Level(price,1e9)])
+    broker=PaperBroker('future',book=MovingBook())
+    res=run(st,broker,ledger,data,[row()],T0)
+    assert res['opened']==0 and st.cash==1000 and not st.positions
+    assert any('цена исполнения' in r.get('reason','') for r in ledger.journal())
+
+
+def test_minimum_net_rr_rejects_late_entry(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    result=run(st,broker,ledger,data,[row()],T0,Config(min_entry_rr=3))
+    assert not result['opened'] and st.cash==1000
+    assert any(r.get('rr_net',99)<3 for r in ledger.journal() if r['kind']=='skip')
+
+
+def test_opposite_structural_signal_closes_old_position(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0)
+    opposite=row(direction='short',kind='breakout',entry=100,stop=102,target=94,ts=T0-4*MIN,trigger_level=101,_latest_closed=100)
+    result=run(st,broker,ledger,data,[opposite],T0+MIN,Config(exit_on_opposite=True))
+    closes=[r for r in ledger.journal() if r['kind']=='close']
+    assert result['closed']==1 and closes[-1]['reason']=='invalidation'
+
+
+def test_parallel_timeframes_keep_distinct_positions(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    result=run(st,broker,ledger,data,[row(tf='5m'),row(tf='15m')],T0,Config(parallel_timeframes=True))
+    assert result['opened']==2
+    assert all(p.entry_rules['parallel_timeframes'] for p in st.pos())
+
+
+def test_more_slots_do_not_create_extra_capital(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path,prices={'AAAUSDT':100,'BBB USDT':100,'BBBUSDT':100})
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1,risk_pct=1))
+    result=run(st,broker,ledger,data,[row(symbol='BBBUSDT')],T0+MIN,Config(max_open=20))
+    assert result['opened']==0 and not any('BBBUSDT' in key for key in st.seen)
+    assert any('капитал' in r.get('reason','') for r in ledger.journal())
+
+
+def test_eighty_percent_capital_limit(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(max_open=1,risk_pct=1,capital_fraction=.8))
+    assert sum(p.qty*p.entry for p in st.pos()) <= 800+1e-7
+    assert len(st.positions)==1
+
+
+def test_three_attempts_have_distinct_receipts_and_wait_for_next_event(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(max_attempts_5m=3,no_timeout=True)
+    signal=row(ts=T0)
+    run(st,broker,ledger,data,[signal],T0,cfg)
+    for n in range(3):
+        data['c']=[c(T0+(2*n+1)*MIN,100,101,97,99)]
+        run(st,broker,ledger,data,[signal],T0+(2*n+2)*MIN,cfg)
+    assert not st.positions
+    opened=[r for r in ledger.journal() if r['kind']=='open']
+    assert len(opened)==3 and len({r['key'] for r in opened})==3
+    assert any(r['kind']=='attempt_review' for r in ledger.journal())
+    data['c']=[]
+    assert run(st,broker,ledger,data,[row(ts=T0+5*MIN)],T0+8*MIN,cfg)['opened']==1
+
+
+def test_no_timeout_preserves_position_after_old_horizon(tmp_path):
+    book,broker,ledger,st,data=setup(tmp_path)
+    cfg=Config(no_timeout=True)
+    run(st,broker,ledger,data,[row()],T0,cfg)
+    assert run(st,broker,ledger,data,[],T0+3*86400000,cfg)['closed']==0
+
+
+def test_manual_stop_edit_and_close_preserve_reason(tmp_path):
+    from src.trade.position_controls import enqueue,pending,apply
+    book,broker,ledger,st,data=setup(tmp_path)
+    run(st,broker,ledger,data,[row()],T0,Config(no_timeout=True))
+    p=st.pos()[0]
+    enqueue(tmp_path,dict(op='edit',key=p.key,reason='уровень поддержки',stop=99,target=107))
+    commands=pending(tmp_path);apply(commands,st,broker,ledger,T0+MIN)
+    assert st.pos()[0].stop==99 and st.pos()[0].target==107
+    apply([(tmp_path/'close.json',dict(op='close',key=p.key,reason='слом идеи'))],st,broker,ledger,T0+MIN)
+    result=run(st,broker,ledger,data,[],T0+2*MIN,Config(no_timeout=True))
+    assert result['closed']==1
+    closed=[r for r in ledger.journal() if r['kind']=='close'][-1]
+    assert closed['reason']=='manual' and closed['manual_reason']=='слом идеи'
+
+
+def test_близкий_стоп_дорогая_комиссия_не_входим(tmp_path):
+    # стоп 0.2 при цене 100: комиссия 0.0005*(100+99.8)≈0.1 = 0.5R > 0.25R
+    book, broker, ledger, st, data = setup(tmp_path)
+    res = run(st, broker, ledger, data, [row(stop=99.8, target=101.0)], T0, Config(max_fee_r=0.25))
+    assert res["opened"] == 0 and res["skipped"] == 1
+    sk = [r for r in ledger.journal() if r["kind"] == "skip"][-1]
+    assert "комиссия" in sk["reason"] and sk["fee_r"] == pytest.approx(0.499, abs=1e-3)
+    # обычный стоп 2.0 (комиссия 0.05R) проходит
+    assert run(st, broker, ledger, data, [row()], T0, Config(max_fee_r=0.25))["opened"] == 1
+
+
+def test_исключённые_формации_не_берём(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    cfg = Config(skip_kinds=("absorption", "bounce"))
+    res = run(st, broker, ledger, data, [row(kind="absorption")], T0, cfg)
+    assert res["opened"] == 0 and res["skipped"] == 1
+    assert run(st, broker, ledger, data, [row(kind="retest", entry=100.2)], T0, cfg)["opened"] == 1
+
+
+def test_ручной_сигнал_фильтры_не_режут(tmp_path):
+    book, broker, ledger, st, data = setup(tmp_path)
+    res = run(st, broker, ledger, data, [row(kind="absorption", stop=99.8, target=101.0, manual=True)], T0,
+              Config(max_fee_r=0.25, skip_kinds=("absorption",)))
+    assert res["opened"] == 1

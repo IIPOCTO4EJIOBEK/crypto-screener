@@ -1,23 +1,24 @@
 {
-  "at": "2026-09-30 14:33 МСК",
-  "at_unix": 1790768025,
-  "elapsed": 107.9,
+  "at": "2026-10-10 22:28 МСК",
+  "at_unix": 1791660530,
+  "elapsed": 464.65,
   "universe": {
-    "n": 39,
-    "min_quote_volume": 100000000.0,
-    "at": "2026-09-30 14:31 МСК"
+    "n": 97,
+    "min_quote_volume": 20000000.0,
+    "at": "2026-10-10 22:21 МСК"
   },
   "collected": {
-    "symbols": 39,
-    "books": 39,
-    "candles": 31200
+    "symbols": 97,
+    "books": 97,
+    "candles": 77600
   },
   "pages": {
-    "screen": 1.25,
-    "structures": 1.08,
-    "densities": 44.08,
-    "landing_repo": 0.21
+    "screen": 121.21,
+    "structures": 14.14,
+    "densities": 151.58,
+    "board": 3.52,
+    "landing_repo": 2.14
   },
   "errors": [],
-  "round": 1
+  "round": 5
 }

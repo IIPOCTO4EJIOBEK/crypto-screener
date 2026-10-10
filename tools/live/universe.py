@@ -40,6 +40,7 @@ if str(ROOT) not in sys.path:
 from src.data import market            # noqa: E402
 
 DEFAULT_PATH = ROOT / "data" / "universe-turnover.json"
+WATCHLIST_PATH = ROOT / "data" / "watchlist.txt"
 MIN_QUOTE_VOLUME = 100e6
 SUPPORTED = ("binance_futures",)
 
@@ -82,24 +83,70 @@ def _msk() -> str:
 
 def pick(exchange: str, min_quote_volume: float, *,
          contracts: list[dict] | None = None,
-         volumes: dict[str, float] | None = None) -> dict:
-    """Срез вселенной. Сеть дёргается один раз — тикеры отдают весь рынок."""
+         volumes: dict[str, float] | None = None,
+         watchlist_path: str | Path | None = None) -> dict:
+    """Срез вселенной. Сеть дёргается один раз — тикеры отдают весь рынок.
+
+    К монетам по обороту добавляются монеты из ручного списка
+    (`data/watchlist.txt`), даже если их оборот ниже порога.
+    """
     if exchange not in SUPPORTED:
         raise SystemExit(
             f"отбор по обороту есть только для {', '.join(SUPPORTED)}; "
             f"для {exchange} состав монет придётся задавать списком (--symbols)")
+    if contracts is None:
+        contracts = market.binance_futures_contracts()
+    if volumes is None:
+        volumes = market.binance_futures_volumes()
     pairs = market.futures_coin_universe(min_quote_volume,
                                          contracts=contracts, volumes=volumes)
+    symbols = [s for s, _ in pairs]
+    vols = {s: v for s, v in pairs}
+    # Ручной список: монета остаётся в скринере и тогда, когда её оборот
+    # ниже порога. Берём только то, что реально торгуется перпетуалом, —
+    # опечатка в файле не должна ронять круг.
+    trading = {c.get("symbol") for c in contracts
+               if c.get("contractType") == "PERPETUAL" and c.get("status") == "TRADING"}
+    watch = [s for s in load_watchlist(watchlist_path) if s in trading]
+    for s in watch:
+        if s not in vols:
+            symbols.append(s)
+            if volumes.get(s) is not None:
+                vols[s] = volumes[s]
     return {
         "at": _msk(),
         "at_unix": int(time.time()),
         "exchange": exchange,
         "min_quote_volume": float(min_quote_volume),
         "quote": "USDT",
-        "symbols": [s for s, _ in pairs],
-        "volumes": {s: v for s, v in pairs},
+        "symbols": symbols,
+        "volumes": vols,
+        "watch": watch,
         "source": "fapi/v1/exchangeInfo + fapi/v1/ticker/24hr",
     }
+
+
+def load_watchlist(path: str | Path | None = None) -> list[str]:
+    """Ручной список монет: по одной в строке, `#` — комментарий.
+
+    `GTC`, `gtcusdt` и `GTCUSDT` — одна и та же монета. Нет файла — пустой
+    список.
+    """
+    p = Path(path) if path else WATCHLIST_PATH
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out: list[str] = []
+    for line in text.splitlines():
+        s = line.split("#", 1)[0].strip().upper()
+        if not s:
+            continue
+        if not s.endswith("USDT"):
+            s += "USDT"
+        if s not in out:
+            out.append(s)
+    return out
 
 
 def load(path: str | Path) -> dict | None:
@@ -136,8 +183,11 @@ def note_of(data: dict | None) -> str:
     if not data:
         return ""
     thr = volume_text(data.get("min_quote_volume"))
+    watch = data.get("watch") or []
+    extra = (f"; плюс ручной список: {', '.join(s.removesuffix('USDT') for s in watch)}"
+             if watch else "")
     return (f"состав — монеты с оборотом от {thr} {data.get('quote', 'USDT')} "
-            f"за сутки ({len(symbols_of(data))} шт., срез {data.get('at', '—')})")
+            f"за сутки ({len(symbols_of(data))} шт., срез {data.get('at', '—')}){extra}")
 
 
 def save(path: str | Path, data: dict) -> Path:

@@ -268,13 +268,40 @@ def collect_pair(conn, symbol: str, tf: str, exchange: str,
             "rr": round(f.rr, 3), "risk_pct": round(f.risk_pct, 3),
             "confidence": f.confidence, "triggered": bool(f.triggered),
             "age_candles": f.age_candles, "style": f.style,
-            "ts": f.ts, "invalid": f.invalid,
+            "ts": f.ts, "invalid": f.invalid, "trigger_level": f.trigger_level,
             # сигнальная свеча: _scan отбрасывает формирующуюся и отсчитывает
             # возраст назад — при age 0 это последняя закрытая свеча массива
             "idx": len(raw) - 2 - f.age_candles,
             "reasons": list(f.reasons),
             "measured": measured,
         })
+
+    from src.data.trade_plan import plan as trade_plan
+    plan_levels = levels + [dict(price=line["to_value"], touches=line["touches"],
+                                kind="support" if line["kind"] == "up" else "resistance")
+                            for line in lines if line.get("touches", 0) >= 3]
+    for form in formations:
+        end = min(len(raw)-1, max(0, form["idx"]))
+        history = raw[max(0,end-14):end+1]
+        ranges = [max(c.high-c.low, abs(c.high-history[i-1].close), abs(c.low-history[i-1].close)) for i,c in enumerate(history) if i]
+        atr = sum(ranges)/len(ranges) if ranges else None
+        signal_range = raw[end].high-raw[end].low
+        expected = max(2*atr, signal_range) if atr else None
+        pl = trade_plan(form["entry"], form["stop"], form["direction"], plan_levels, expected_move=expected)
+        from src.data.entry_safety import stop_guard, prior_atr
+        baseline_atr=prior_atr([[c.ts,c.open,c.high,c.low,c.close] for c in raw],form['ts'])
+        guard=stop_guard(form['entry'],form['stop'],tf,baseline_atr)
+        if guard:pl=dict(ok=False,why=guard)
+        if form['kind']=='volume_splash':pl=dict(ok=False,why='всплеск объёма — кандидат; нужен отдельный пробой или ретест уровня')
+        form['prior_atr']=baseline_atr
+        form["atr"] = atr; form["expected_move"] = expected
+        form["raw_target"] = form["target"]
+        form["plan_ok"] = pl["ok"]
+        form["plan_why"] = pl["why"]
+        form["rr_net"] = pl.get("rr_net")
+        if pl["ok"]:
+            form["target"] = pl["target"]
+            form["rr"] = round(pl["rr"], 3)
 
     # Сводка по паре считается здесь, а не на странице: страница только
     # показывает то, что посчитано, — иначе одно и то же число считалось бы

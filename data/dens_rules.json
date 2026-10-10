@@ -1,0 +1,9 @@
+{
+ "min_k": 1.0,
+ "big_k": 3.0,
+ "min_usd": 50000,
+ "max_dist": 3.0,
+ "min_age": 300,
+ "near_pct": 0.35,
+ "window_min": 30
+}

@@ -270,7 +270,7 @@ STYLE = """
   :root { --bg:#12141a; --fg:#e6e8ee; --dim:#8b93a7; --line:#252a36;
           --good:#3ddc97; --bad:#ff6b6b; }
   body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
-         font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; max-width:1100px; }
+         font:14px/1.5 system-ui,Segoe UI,sans-serif; width:100%;max-width:none;box-sizing:border-box; }
   h1 { font-size:18px; margin:0 0 4px; }
   h2 { font-size:15px; margin:26px 0 8px; color:var(--fg); }
   .meta, .sub, .dim td { color:var(--dim); }
@@ -282,20 +282,21 @@ STYLE = """
   th { color:var(--dim); font-weight:400; }
   td.num { text-align:right; white-space:nowrap; }
   .long, tr.long td:first-child { color:var(--good); } .short { color:var(--bad); }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; }
   @media (max-width:800px) { .grid { grid-template-columns:1fr; } body { padding:16px; } }
   .chart { width:100%; height:120px; background:#161922; }
-  .wrap { overflow-x:auto; }
+  .grid > * { min-width:0; }
+  .wrap { max-width:100%;overflow-x:auto; }
   ul { margin:6px 0 0; padding-left:18px; }
-  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 18px; border-bottom:1px solid var(--line); }
-  .tabs button { font:inherit; color:var(--dim); background:none; border:0;
+  .tabs { display:flex; flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding:8px 0; gap:6px; margin:0 0 18px; border-bottom:1px solid var(--line); }
+  .tabs button { flex:0 0 220px;border-radius:10px;background:#162238!important; font:inherit; color:var(--dim); background:none; border:0;
                  border-bottom:2px solid transparent; padding:8px 12px; cursor:pointer; text-align:left; }
-  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--good); }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--good);background:#243e5d!important; }
   .tabs .sub { display:block; }
   .tab[hidden] { display:none; }
   @media (max-width:800px) { .tabs { flex-wrap:nowrap; overflow-x:auto; }
                              .tabs button { flex:0 0 auto; } }
-  iframe.bot { width:100%; height:85vh; border:1px solid var(--line); background:var(--bg); }
+  iframe.bot { width:100%; height:600px;display:block; border:0; background:var(--bg); }
   a { color:var(--good); }
 """
 
@@ -333,10 +334,17 @@ def profile_kw(args: list[str]) -> dict:
 
 def tab_label(ledger: Ledger, name: str) -> tuple[str, str]:
     """Подпись вкладки: имя бота и под ним капитал с доходностью от старта."""
-    eq = [r for r in ledger.journal() if r["kind"] == "equity"]
+    journal=ledger.journal()
+    eq = [r for r in journal if r["kind"] == "equity"]
     if not eq:
         return name, "ещё не запускался"
     first, last = eq[0]["equity"], eq[-1]["equity"]
+    if any(r['kind']=='capital_flow' for r in journal):
+        from src.trade.atomic_store import read_state
+        from src.trade.capital_flow import performance
+        state=read_state(ledger.root)
+        perf=performance(state['start_equity'],journal,last)
+        return name,f"{last:.2f} USDT · {pct(perf['return_fraction'])} без пополнений"
     return name, f"{last:.2f} USDT · {pct(last / first - 1.0 if first else None)}"
 
 
@@ -368,7 +376,7 @@ def screener_tab(root: Path) -> str:
         return ('<div class="box sub">бот ещё не запускался — страница появится '
                 'после первого круга</div>')
     doc = page.read_text(encoding="utf-8")
-    return f'<iframe class="bot" srcdoc="{e(doc)}" loading="lazy" title="{e(root.name)}"></iframe>'
+    return f'<iframe class="bot" data-autosize="content" srcdoc="{e(doc)}" loading="lazy" title="{e(root.name)}"></iframe>'
 
 
 TABS_JS = """<script>
@@ -380,11 +388,34 @@ TABS_JS = """<script>
     if (!found) return false;
     btns.forEach(function (b) { var on = b.dataset.tab === id;
       b.setAttribute('aria-selected', on); document.getElementById(b.dataset.tab).hidden = !on; });
+    window.dispatchEvent(new Event('bot-tab-change'));
     return true;
   }
   btns.forEach(function (b) { b.addEventListener('click', function () {
     show(b.dataset.tab); history.replaceState(null, '', '#' + b.dataset.tab); }); });
+  window.addEventListener('hashchange',function(){show(decodeURIComponent(location.hash.slice(1)));});
   if (location.hash) show(decodeURIComponent(location.hash.slice(1)));
+  // Fit intrinsic content, including collapsed panels, without a second vertical scrollbar.
+  document.querySelectorAll('iframe.bot[data-autosize]').forEach(function(frame){
+    var observer,queued=false;
+    function size(){queued=false;try{
+      if(!frame.offsetWidth)return;
+      var doc=frame.contentDocument,end=doc&&doc.getElementById('bot-page-end');
+      if(!end)return;
+      var h=Math.ceil(end.getBoundingClientRect().bottom + doc.defaultView.scrollY + parseFloat(doc.defaultView.getComputedStyle(doc.body).paddingBottom));
+      if(Math.abs(frame.getBoundingClientRect().height-h)>1)frame.style.height=Math.max(200,h)+'px';
+      doc.documentElement.style.overflowY='hidden';
+    }catch(e){/* Native scroll remains the fallback if content is inaccessible. */}}
+    function schedule(){if(!queued){queued=true;requestAnimationFrame(size);}}
+    function attach(){try{
+      if(observer)observer.disconnect();var doc=frame.contentDocument;if(!doc||!doc.body)return;
+      if(window.ResizeObserver){observer=new ResizeObserver(schedule);observer.observe(doc.body);}
+      doc.addEventListener('toggle',schedule,true);
+      if(doc.fonts)doc.fonts.ready.then(schedule);schedule();
+    }catch(e){}}
+    frame.addEventListener('load',attach);window.addEventListener('resize',schedule);
+    window.addEventListener('bot-tab-change',schedule);attach();
+  });
 })();
 </script>"""
 
@@ -464,7 +495,8 @@ def to_json(ledger: Ledger, *, mode: str = "paper", market: str = "spot",
 def _write(out: Path, text: str) -> Path:
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(out.suffix + ".tmp")
+    import uuid
+    tmp = out.with_suffix(out.suffix + "." + uuid.uuid4().hex + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(out)
     return out

@@ -225,6 +225,10 @@ footer b{color:var(--fg)}
 </style>
 </head>
 <body>
+<script>/* #…&embed=1 — только деталь пары: так её открывает таблица монет */
+if(/(^#|&)embed=1(&|$)/.test(location.hash)) document.body.className+=' embed';</script>
+<style>body.embed .wrap>header,body.embed .wrap>section,body.embed .wrap>footer,body.embed .detail-sec>h2{display:none}
+body.embed .wrap>section.detail-sec{display:block;margin-top:0}</style>
 <div class="wrap">
 
 <header>
@@ -260,7 +264,7 @@ footer b{color:var(--fg)}
   <p class="note" id="tblNote"></p>
 </section>
 
-<section>
+<section class="detail-sec">
   <h2 class="sec">Деталь пары</h2>
   <div class="cards" id="detail"></div>
 </section>
