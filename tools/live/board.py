@@ -232,6 +232,7 @@ def charts(struct: dict) -> dict:
                       for t in p.get("trendlines", [])],
             "forms": [{"title": f.get("title") or f["kind"], "dir": f.get("direction"),
                        "idx": f.get("idx"), "entry": f.get("entry"), "stop": f.get("stop"),
+                       "plan_ok": f.get("plan_ok", False), "plan_why": f.get("plan_why"), "rr_net": f.get("rr_net"), "atr": f.get("atr"), "expected_move": f.get("expected_move"),
                        "target": f.get("target"), "rr": f.get("rr"),
                        "invalid": f.get("invalid"), "reasons": f.get("reasons", [])[:4],
                        "exp": (f.get("measured") or {}).get("exp_net"),
@@ -269,11 +270,12 @@ def build(db_path: str | None, live_dir: Path, universe_path: Path | None) -> di
                 "symbol": p["symbol"], "coin": p["symbol"].removesuffix("USDT"),
                 "tf": p["tf"], "title": f.get("title") or f["kind"], "kind": f["kind"],
                 "dir": f.get("direction"), "entry": f.get("entry"), "stop": f.get("stop"),
+                "plan_ok": f.get("plan_ok", False), "plan_why": f.get("plan_why"), "rr_net": f.get("rr_net"), "atr": f.get("atr"), "expected_move": f.get("expected_move"), "raw_target": f.get("raw_target"),
                 "target": f.get("target"), "rr": f.get("rr"), "risk": f.get("risk_pct"),
                 "age": f.get("age_candles"), "exp": m.get("exp_net"), "n": m.get("n"),
                 "sig": bool(m.get("significant")), "price": p.get("price"),
                 "regime": (p.get("regime") or {}).get("label"),
-                "triggered": bool(f.get("triggered")), "invalid": f.get("invalid"),
+                "triggered": bool(f.get("triggered")), "invalid": f.get("invalid"), "ts": f.get("ts"), "trigger_level": f.get("trigger_level"),
                 "reasons": f.get("reasons", [])[:4],
             })
         for f in p.get("formations", []):
@@ -374,6 +376,12 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     out = Path(a.html)
     data = build(a.db, out.parent, Path(a.universe) if a.universe else None)
+    from src.data.trade_setups import select, bot_rows
+    data["trade_setups"] = select(data)
+    setup_path = out.parent / "trade-setups.json"
+    setup_tmp = setup_path.with_suffix(".tmp")
+    setup_tmp.write_text(json.dumps({"built_unix": data["meta"]["built_unix"], "signals": bot_rows(data["trade_setups"]), "notes": ["Те же сетапы, что на странице Можно торговать; исполнение проверяется по живому стакану."]}, ensure_ascii=False), encoding="utf-8")
+    setup_tmp.replace(setup_path)
     chart_data = data.pop("charts")
     tmpc = out.parent / "charts.json.tmp"
     dens_by_sym: dict[str, list] = {}

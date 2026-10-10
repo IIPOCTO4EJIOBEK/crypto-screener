@@ -45,11 +45,11 @@ REST = "https://fapi.binance.com/fapi/v1/klines"
 # принимает, но данных не шлёт
 WS = "wss://fstream.binance.com/market/stream?streams="
 SILENT = 30.0               # столько секунд без сообщений — переподключение
-TFS = ("5m", "15m", "1h")
+TFS = ("1m", "5m", "15m", "1h")
 LIMIT = 499                 # до 500 свечей вес запроса 2, дальше 5
-UNIVERSE_EVERY = 300.0      # как часто перечитывать состав, с
-STATS_EVERY = 120.0         # пауза между проходами рыночных метрик, с
-DENS_EVERY = 90.0           # пауза между сверками плотностей со стаканом, с
+UNIVERSE_EVERY = 30.0       # include newly held symbols promptly
+STATS_EVERY = float(os.environ.get("SCREENER_STATS_EVERY", "120"))         # пауза между проходами рыночных метрик, с
+DENS_EVERY = float(os.environ.get("SCREENER_DENS_EVERY", "90"))           # пауза между сверками плотностей со стаканом, с
 
 
 def _write(path: Path, obj) -> None:
@@ -73,20 +73,36 @@ class Feed:
         self.syms: list[str] = []
         self.alerts = None
         self.first_seen: dict[str, float] = {}
+        self.live_prices = {}
+        self.ticks = {}
+        self.manual_queued = set()
+        self.manual_retry = {}
+        self.quote_times = {}
 
     def read_symbols(self) -> list[str]:
         try:
             u = json.loads(self.universe.read_text(encoding="utf-8"))
-            return sorted(set(s.upper() for s in u.get("symbols", [])))
+            held=[];pin=os.environ.get('SCREENER_POSITION_SYMBOLS')
+            if pin:held=json.loads(Path(pin).read_text(encoding='utf-8'))['symbols']
+            return sorted(set(s.upper() for s in list(u.get("symbols", []))+held))
         except Exception as e:                      # noqa: BLE001
             print(f"klines: состав не прочитан ({type(e).__name__}), остаюсь на старом")
             return self.syms
 
-    def merge(self, sym: str, tf: str, c: list) -> None:
+    def merge(self, sym: str, tf: str, c: list, quote_ms: int = 0) -> None:
+        if quote_ms:
+            self.live_prices[sym] = (float(c[4]), quote_ms/1000)
+            self.quote_times[(sym,tf)] = quote_ms
+        if tf == '1m' and quote_ms:
+            trace = self.ticks.setdefault(sym, [])
+            if not trace or (quote_ms > trace[-1][0] and c[4] != trace[-1][1]):
+                trace.append([quote_ms, float(c[4])])
+                del trace[:-512]
         key = (sym, tf)
         cs = self.hist.get(key)
         if cs is None:
             self.pending[key] = c
+            self.dirty_live.add(sym)
             return
         if cs and c[0] == cs[-1][0]:
             cs[-1] = c
@@ -110,8 +126,13 @@ class Feed:
             await asyncio.sleep(0.25)               # история на старте: не больше ~12 запросов в секунду
             for attempt in range(3):
                 try:
+                    from src.data import binance_limits
+                    await asyncio.to_thread(binance_limits.acquire, REST, {"limit": LIMIT})
                     async with http.get(REST, params={"symbol": sym, "interval": tf,
                                                       "limit": LIMIT}) as r:
+                        await asyncio.to_thread(binance_limits.observe, REST, r.status, dict(r.headers))
+                        if r.status in (418, 429):
+                            raise RuntimeError("-1003 shared Binance cooldown")
                         data = await r.json()
                     if isinstance(data, list):
                         break
@@ -142,8 +163,10 @@ class Feed:
             self.dirty_live.discard(sym)
             k = {tf: self.hist[(sym, tf)][-1] for tf in self.tfs
                  if self.hist.get((sym, tf))}
+            k.update({tf:self.pending[(sym,tf)] for tf in self.tfs if (sym,tf) in self.pending})
             if k:
-                _write(self.out / f"{sym}.live.json", {"t": now, "k": k})
+                stamps={tf:self.quote_times.get((sym,tf),0) for tf in k}
+                _write(self.out / f"{sym}.live.json", {"t": now, "k": k, "quote_ms":stamps,"ticks": self.ticks.get(sym, [])})
 
     async def flusher(self) -> None:
         while True:
@@ -152,6 +175,36 @@ class Feed:
                 self.flush()
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: запись не удалась: {type(e).__name__} {e}")
+
+    async def manual_loop(self) -> None:
+        import html, os
+        from src.data.manual_levels import Store
+        store = Store(os.environ.get("MANUAL_LEVELS_DB", "/var/lib/screener/manual-levels.db"))
+        while True:
+            await asyncio.sleep(5)
+            try:
+                now = time.time()
+                prices = {s:p for s,(p,t) in self.live_prices.items() if now-t < 15}
+                await asyncio.to_thread(store.observe, prices, int(now*1000))
+                pending = (await asyncio.to_thread(store.snapshot))["events"]
+                for e in reversed(pending):
+                    ident = e["id"]
+                    if e["delivered"] or ident in self.manual_queued or now < self.manual_retry.get(ident, 0) or not self.alerts.token:
+                        continue
+                    text = ("🔔 <b>" + html.escape(e["symbol"].removesuffix("USDT")) + "</b>: сигнальный уровень "
+                            + str(e["price"]) + (" пересечён вверх" if e["direction"] == "up" else " пересечён вниз")
+                            + "\n" + html.escape(e["label"]) + " · " + e["tf"]
+                            + "\nhttps://vpn.markus.tw1.su/ · уведомление об уровне")
+                    self.manual_queued.add(ident)
+                    def done(mid, ident=ident):
+                        try:
+                            if mid: store.change("delivered", ident)
+                        finally:
+                            self.manual_queued.discard(ident)
+                            self.manual_retry[ident] = time.time()+60
+                    self.alerts.q.put(("manual|"+ident, lambda text=text, done=done: (text,b"",None,None,done)))
+            except Exception as exc:
+                print("manual levels:", type(exc).__name__, flush=True)
 
     async def stats_loop(self) -> None:
         """Раз в минуту — funding, OI, long/short, сделки, хай/лой (kl/stats.json)."""
@@ -227,19 +280,15 @@ class Feed:
             except Exception as e:                  # noqa: BLE001
                 print(f"klines: плотности не сверены: {type(e).__name__} {e}")
 
-    async def session(self, http: aiohttp.ClientSession) -> None:
+    async def socket_group(self, http: aiohttp.ClientSession, syms, sem) -> None:
         """Одно подключение: WS на весь состав + догрузка истории."""
-        syms = self.syms
         streams = "/".join(f"{s.lower()}@kline_{tf}" for s in syms for tf in self.tfs)
-        sem = asyncio.Semaphore(3)
         async with http.ws_connect(WS + streams, heartbeat=60, max_msg_size=0) as ws:
-            self.hist.clear()
-            self.pending.clear()
             loader = asyncio.gather(*(self.load(http, s, tf, sem)
                                       for s in syms for tf in self.tfs))
             print(f"klines: подключён, монет {len(syms)}, ТФ {','.join(self.tfs)}")
             sys.stdout.flush()
-            checked = last = time.monotonic()
+            last = time.monotonic()
             try:
                 while True:
                     try:
@@ -256,22 +305,36 @@ class Feed:
                         k = d.get("k")
                         if k:
                             self.merge(k["s"], k["i"], [int(k["t"]), float(k["o"]), float(k["h"]),
-                                                        float(k["l"]), float(k["c"]), float(k["q"])])
-                    if time.monotonic() - checked > UNIVERSE_EVERY:
-                        checked = time.monotonic()
-                        fresh = self.read_symbols()
-                        if fresh and fresh != self.syms:
-                            print(f"klines: состав сменился ({len(self.syms)} → {len(fresh)}), переподключаюсь")
-                            self.syms = fresh
-                            return
+                                                        float(k["l"]), float(k["c"]), float(k["q"])], int(d.get('E') or 0))
             finally:
                 loader.cancel()
+                await asyncio.gather(loader,return_exceptions=True)
+
+    async def session(self,http):
+        self.hist.clear();self.pending.clear();self.quote_times.clear()
+        sem=asyncio.Semaphore(3)
+        # Keep each connection bounded even if 200 held coins leave the universe.
+        chunk=max(1,512//len(self.tfs))
+        tasks=[asyncio.create_task(self.socket_group(http,self.syms[i:i+chunk],sem)) for i in range(0,len(self.syms),chunk)]
+        try:
+            while True:
+                done,_=await asyncio.wait(tasks,timeout=UNIVERSE_EVERY,return_when=asyncio.FIRST_COMPLETED)
+                if done:
+                    for task in done:task.result()
+                    return
+                fresh=self.read_symbols()
+                if fresh and fresh!=self.syms:
+                    self.syms=fresh;return
+        finally:
+            for task in tasks:task.cancel()
+            await asyncio.gather(*tasks,return_exceptions=True)
 
     async def run(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         from tools.live.alerts import Alerts
         self.alerts = Alerts(self.out, candles=lambda sym, tf: list(self.hist.get((sym, tf)) or []))
         asyncio.get_running_loop().create_task(self.flusher())
+        asyncio.get_running_loop().create_task(self.manual_loop())
         self.syms = self.read_symbols()
         asyncio.get_running_loop().create_task(self.stats_loop())
         asyncio.get_running_loop().create_task(self.dens_loop())

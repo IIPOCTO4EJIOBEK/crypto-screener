@@ -40,7 +40,10 @@ def _get(path: str, **params):
     global BANNED_UNTIL
     if banned():
         raise Banned("ждём снятия ограничения Binance")
+    from src.data import binance_limits
+    binance_limits.acquire(API + path, params)
     r = requests.get(API + path, params=params, timeout=TIMEOUT)
+    binance_limits.observe(API + path, r.status_code, r.headers)
     if r.status_code in (418, 429):
         wait = float(r.headers.get("Retry-After") or 0) or 600.0
         BANNED_UNTIL = time.time() + max(wait, 120.0)

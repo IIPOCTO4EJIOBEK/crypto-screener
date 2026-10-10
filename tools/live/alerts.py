@@ -45,14 +45,18 @@ MIN_DENS = 100_000          # съеденные плотности меньше
 MAX_PER_MIN = 15            # потолок сообщений в минуту, чтобы не залить канал
 MIN_RR = 3.0                # сделки по тренду — только от 1:3 (правило markus)
 # Монеты «в игре» (разбор алертов Дигаша): алерты — только по ним, остальные
-# хай/лой дня — одной сводкой раз в DIGEST_MIN минут. Дневной лимит — на всё, кроме отработок.
+# хай/лой дня — одной сводкой раз в DIGEST_MIN минут. Дневной лимит — на всё, кроме отработок и сетапов.
 PLAY_TOP = 15               # топ роста за сутки
 PLAY_CH = 5.0               # или изменение за сутки по модулю от, %
 PLAY_NATR = 1.5             # или NATR 1ч от, %
 PLAY_SPIKE = 3.0            # или 5м свеча за последний час с оборотом от N× среднего
 DIGEST_MIN = 30
-DAY_LIMIT = 60
-SCREENER_URL = "http://10.1.222.59"
+DAY_LIMIT = 200             # было 60: сводки и хай/лой дня выбирали его к часу ночи
+# Один и тот же сетап приходил двумя сообщениями подряд: «Пробой уровня» и «Ретест уровня»
+# с той же сделкой, или повторное срабатывание на следующей свече. Повтор по монете, ТФ и
+# стороне с входом ближе 1R к уже отправленному за это время не шлём.
+SETUP_REPEAT = 1800.0
+SCREENER_URL = "https://vpn.markus.tw1.su"
 
 
 def _env() -> dict[str, str]:
@@ -98,6 +102,7 @@ class Alerts:
         self.dens_prev: dict[str, str] = {}
         self.forms_seen: set[str] = set()
         self.forms_mtime = 0.0
+        self.setup_last: dict[tuple, tuple[float, float, float]] = {}
         self.stats: dict[str, dict] = {}
         self.signals: list[dict] = []
         try:
@@ -131,9 +136,11 @@ class Alerts:
         day = time.strftime("%Y%m%d")
         if self.day_count[0] != day:
             self.day_count = (day, 0)
-        if self.day_count[1] >= DAY_LIMIT:
+        limited = not key.startswith("setup|")     # сетапы 1:3 лимит не режет: сводки и хай/лой дня его выбирали к часу ночи
+        if limited and self.day_count[1] >= DAY_LIMIT:
             return
-        self.day_count = (day, self.day_count[1] + 1)
+        if limited:
+            self.day_count = (day, self.day_count[1] + 1)
         self.window.append(now)
         self.sent[key] = now
         self.q.put((key, build))
@@ -150,6 +157,9 @@ class Alerts:
             trade = res[2] if len(res) > 2 else None
             reply_to = res[3] if len(res) > 3 else None
             mid = self._post(text, png, reply_to=reply_to)
+            if len(res) > 4 and callable(res[4]):
+                try: res[4](mid)
+                except Exception as exc: print("manual delivery:", type(exc).__name__, flush=True)
             if mid and trade and trade.get("ok"):
                 self._track(mid, trade)
 
@@ -192,9 +202,20 @@ class Alerts:
         return f"https://t.me/c/{c[4:] if c.startswith('-100') else c.lstrip('-')}/{mid}"
 
     def _track(self, mid: int, t: dict) -> None:
+        # та же сделка из второго алерта по монете — отработки уже идут по первому
+        if any(not tr["done"] and tr["sym"] == t["sym"] and tr["dir"] == t["direction"]
+               and tr["entry"] == t["entry"] and tr["stop"] == t["stop"] for tr in self.tracks):
+            return
+        observed = self.candles(t["sym"], "5m")
+        price = observed[-1][4] if observed else t["entry"]
+        sign = 1 if t["direction"] == "long" else -1
+        risk = abs(t["entry"] - t["stop"])
+        reached = sign * (price - t["entry"]) / risk if risk else 0
+        hit = [n for n in (1, 2) if reached >= n]
+        done = sign * (price - t["stop"]) <= 0 or sign * (price - t["target"]) >= 0
         self.tracks.append({"mid": mid, "sym": t["sym"], "tf": t.get("tf", "5m"), "dir": t["direction"],
                             "entry": t["entry"], "stop": t["stop"], "target": t["target"], "rr": t["rr"],
-                            "t": int(time.time() * 1000), "hit": [], "done": False})
+                            "t": int(time.time() * 1000), "published_price": price, "hit": hit, "done": done})
         self._save_tracks()
 
     def _save_tracks(self) -> None:
@@ -219,12 +240,16 @@ class Alerts:
             if now - tr["t"] > 24 * 3600_000:
                 tr["done"] = True; changed = True
                 continue
-            cs = [c for c in self.candles(tr["sym"], "5m") if c[0] + 300_000 > tr["t"]]
-            if not cs:
+            observed = self.candles(tr["sym"], "5m")
+            if not observed:
                 continue
+            # A candle overlapping publication contains extrema from before the alert.
+            # Only later candles and the current observed price are causal evidence.
+            cs = [c for c in observed if c[0] >= tr["t"]]
+            prices = [observed[-1][4]]
             up, R = tr["dir"] == "long", abs(tr["entry"] - tr["stop"])
-            best = max(c[2] for c in cs) if up else min(c[3] for c in cs)
-            worst = min(c[3] for c in cs) if up else max(c[2] for c in cs)
+            best = max(prices + [c[2] for c in cs]) if up else min(prices + [c[3] for c in cs])
+            worst = min(prices + [c[3] for c in cs]) if up else max(prices + [c[2] for c in cs])
             mins = (now - tr["t"]) // 60000
             name, ent = tr["sym"].removesuffix("USDT"), tr["entry"]
             def pc(x: float) -> str:
@@ -247,7 +272,7 @@ class Alerts:
             if msg:
                 changed = True
                 link = self.link(tr["mid"])
-                text = msg + f"\n<a href=\"{link}\">сигнал</a> · вход {_fmt(ent)} · стоп {_fmt(tr['stop'])} · цель {_fmt(tr['target'])}"
+                text = msg + "\nРасчётные уровни сигнала; исполнение ботом не подтверждено." + f"\n<a href=\"{link}\">сигнал</a> · вход {_fmt(ent)} · стоп {_fmt(tr['stop'])} · цель {_fmt(tr['target'])}"
                 self.q.put((f"follow|{tr['mid']}|{msg[:2]}", lambda text=text, mid=tr["mid"]: (text, b"", None, mid)))
         if changed:
             self._save_tracks()
@@ -258,8 +283,13 @@ class Alerts:
         tfms = {"5m": 300_000, "15m": 900_000, "1h": 3_600_000}
         keep = []
         for x in self.signals:
-            t0 = x.get("ts") or x["added"]
-            age = int((now - t0) // tfms.get(x["tf"], 300_000)) if isinstance(t0, (int, float)) else 0
+            duration = tfms.get(x["tf"], 300_000)
+            # Formation ts is the OPEN time of its closed candle; age 0 starts at CLOSE.
+            t0 = x.get("ts")
+            ready = x.get("ready_ms")
+            if ready is None:
+                ready = t0 + duration if isinstance(t0, (int, float)) else x["added"]
+            age = max(0, int((now - ready) // duration))
             if age <= 1:
                 keep.append(dict(x, age_candles=max(age, 0)))
         self.signals = [x for x in self.signals if any(k["added"] == x["added"] and k["symbol"] == x["symbol"] for k in keep)]
@@ -425,6 +455,7 @@ class Alerts:
         self.signals.append({"kind": "alert", "title": title, "tf": tf, "symbol": sym, "exchange": "binance_futures",
                              "direction": t["direction"], "entry": t["entry"], "stop": t["stop"], "target": t["target"],
                              "rr": t["rr"], "triggered": True, "ts": int(time.time() * 1000) // 300_000 * 300_000,
+                             "ready_ms": int(time.time() * 1000) // 300_000 * 300_000,
                              "reasons": [t.get("why", "")], "measured": None, "exp_net": None,
                              "added": int(time.time() * 1000)})
         self._write_signals()
@@ -490,6 +521,17 @@ class Alerts:
                     sym, "15m", f"⬇️ <b>{sym.removesuffix('USDT')}</b> у лоя дня: цена {_fmt(p)}, лой {_fmt(lo)}",
                     hlines=[(lo, "#4c8dff", "лой дня")], title="у лоя дня", extra=self._level_age(sym, lo, False)))
 
+    def _setup_repeat(self, sym: str, tf: str, direction: str, entry: float, stop: float) -> bool:
+        """Повтор уже отправленного сетапа (другая формация или следующая свеча той же зоны)."""
+        if not hasattr(self, "setup_last"):
+            self.setup_last = {}
+        now, k = time.time(), (sym, tf, direction)
+        prev = self.setup_last.get(k)
+        if prev and now - prev[0] < SETUP_REPEAT and abs(entry - prev[1]) <= prev[2]:
+            return True
+        self.setup_last[k] = (now, entry, abs(entry - stop))
+        return False
+
     def setups(self, live_dir: Path) -> None:
         """Новый сетап «можно торговать»: по тренду своего ТФ и с R:R не меньше 1:3,
         где цель — первое препятствие за 3R (перехай, уровень, наклонная, Фибо,
@@ -536,10 +578,12 @@ class Alerts:
                 if not pl.get("ok"):
                     continue                        # до 1:3 мешает уровень — не сделка
                 ff = dict(f, target=pl["target"], rr=pl["rr"], target_why=pl["why"])
+                if self._setup_repeat(sym, tf, ff["direction"], ff["entry"], ff["stop"]):
+                    continue
                 self.signals.append({"kind": ff["kind"], "title": ff.get("title") or ff["kind"], "tf": tf,
                                      "symbol": sym, "exchange": "binance_futures", "direction": ff["direction"],
                                      "entry": ff["entry"], "stop": ff["stop"], "target": ff["target"], "rr": ff["rr"],
-                                     "triggered": True, "ts": ff.get("ts"), "reasons": (ff.get("reasons") or [])[:4],
+                                     "triggered": True, "ts": ff.get("ts"), "trigger_level":ff.get('trigger_level'), "reasons": (ff.get("reasons") or [])[:4],
                                      "measured": ff.get("measured"),
                                      "exp_net": (ff.get("measured") or {}).get("exp_net"),
                                      "added": int(time.time() * 1000)})

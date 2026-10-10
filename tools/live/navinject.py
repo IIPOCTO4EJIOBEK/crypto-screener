@@ -43,7 +43,7 @@ def inject(path: Path) -> bool:
 
 
 def ensure(live_dir: Path) -> int:
-    for name in ("nav.js", "alerts.html"):
+    for name in ("nav.js", "workspace.css", "workspace.js", "alerts.html", "manual-levels.js", "manual-drag.js", "trade-overlay.js", "tradingview.html"):
         src, dst = HERE / name, live_dir / name
         try:
             if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
@@ -51,6 +51,14 @@ def ensure(live_dir: Path) -> int:
         except Exception:                           # noqa: BLE001
             pass
     positions(live_dir)
+    monitor = TRADE / 'monitor-status.json'
+    if monitor.exists():
+        try:
+            tmp = live_dir / 'monitor-status.json.tmp'
+            shutil.copyfile(monitor, tmp)
+            os.replace(tmp, live_dir / 'monitor-status.json')
+        except OSError:
+            pass
     n = sum(inject(live_dir / p) for p in PAGES if (live_dir / p).exists())
     if TRADE.exists():
         n += sum(inject(p) for p in TRADE.glob("*/bot.html"))
@@ -61,6 +69,7 @@ def positions(live_dir: Path) -> int:
     """Открытые позиции ботов по скринеру → kl/positions.json (для графика главной)."""
     import json
     out = []
+    trades = []
     if TRADE.exists():
         for st in TRADE.glob("screener-*/state.json"):
             try:
@@ -72,11 +81,20 @@ def positions(live_dir: Path) -> int:
                 if not isinstance(p, dict) or not p.get("symbol"):
                     continue
                 out.append({k: p.get(k) for k in ("symbol", "tf", "side", "entry", "stop", "target", "risk0",
-                                                   "opened_ms", "expires_ms", "title", "mark")} | {"bot": bot})
+                                                   "opened_ms", "expires_ms", "title", "mark", "reasons", "key")} | {"bot": bot})
+            try:
+                data = json.loads((st.parent / "bot.json").read_text(encoding="utf-8"))
+                for r in data.get('open', []):
+                    current=next((p for p in out if p['bot']==bot and p.get('key')==r.get('key')),None)
+                    if current is not None:current.update({k:r.get(k) for k in ('pnl_usdt','pnl_pct','exposure_pct')})
+                trades.extend(dict(r, bot=bot, phase="open") for r in data.get("open", []))
+                trades.extend(dict(r, bot=bot, phase="closed") for r in data.get("closed", [])[-50:])
+            except (OSError, ValueError):
+                pass
     path = live_dir / "kl" / "positions.json"
     try:
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps({"positions": out}, ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(json.dumps({"positions": out, "trades": trades}, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
     except Exception:                               # noqa: BLE001
         pass

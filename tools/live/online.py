@@ -113,9 +113,9 @@ def _run(module: str, args: list[str]) -> tuple[bool, str]:
     cmd = [sys.executable, "-m", f"tools.live.{module}", *args]
     try:
         r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
-                           timeout=300)
+                           timeout=600 if module == "densities" else 300)
     except subprocess.TimeoutExpired:
-        return False, f"{module}: не уложился в 300 с"
+        return False, f"{module}: превышен тайм-аут сборки"
     if r.returncode != 0:
         tail = (r.stderr or r.stdout or "").strip().splitlines()
         return False, f"{module}: код {r.returncode}, {tail[-1] if tail else '—'}"
