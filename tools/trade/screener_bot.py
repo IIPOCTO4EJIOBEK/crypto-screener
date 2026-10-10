@@ -310,7 +310,7 @@ def run_one(argv: list[str], cache: dict | None = None) -> int:
             if '_learning' not in cache:
                 cache['_learning'] = learning.refresh(ROOT / "data" / "trade")
             model = cache['_learning']
-            rows = [dict(r, _learn_mult=learning.multiplier(model, r.get("kind", ""), r.get("tf", ""), r.get("direction", ""))) for r in rows]
+            rows = [dict(r, _learn_mult=learning.multiplier(model, r.get("kind", ""), r.get("tf", ""), r.get("direction", ""), r.get("symbol", ""))) for r in rows]
         if a.kronos_filter:
             from src.trade.intraday import signal_key
             from tools.trade import kronos_worker

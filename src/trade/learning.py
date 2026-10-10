@@ -13,6 +13,11 @@
 который снова начал зарабатывать, через несколько дней возвращается к полному
 риску сам.
 
+Так же отдельно считается каждая монета (от `MIN_N_COIN` сделок): убыточная
+по своим сделкам монета тоже берётся с пробным риском. Прогон по истории
+(10.10.2026, без заглядывания вперёд): по сетапам −788 → −447 $, по сетапам
+и монетам −788 → −284 $.
+
 Модель пересобирается не чаще раза в `EVERY_MS` и лежит в
 `data/trade/learning.json` — её видно и можно проверить руками.
 """
@@ -28,6 +33,7 @@ from pathlib import Path
 
 WINDOW_DAYS = 7
 MIN_N = 30
+MIN_N_COIN = 15
 PRIOR = 20
 BLOCK_R = -0.05
 PROBE = 0.25
@@ -60,21 +66,25 @@ def build(trade_root: Path, now_ms: int | None = None) -> dict:
             if not r.get("formation") or not r.get("tf") or not r.get("side"):
                 continue
             k = _signal(r.get("key") or "")
-            t = trades.setdefault(k, {"seg": segment(r["formation"], r["tf"], r["side"]), "r": []})
+            t = trades.setdefault(k, {"seg": segment(r["formation"], r["tf"], r["side"]), "coin": r.get("symbol") or "", "r": []})
             t["r"].append(float(r["r_net"]))
-    segs: dict[str, dict] = {}
-    for t in trades.values():
-        s = segs.setdefault(t["seg"], {"n": 0, "sum": 0.0})
-        s["n"] += 1
-        s["sum"] += sum(t["r"]) / len(t["r"])
-    out = {}
-    for name, s in sorted(segs.items()):
-        mean = s["sum"] / s["n"]
-        shrunk = s["sum"] / (s["n"] + PRIOR)
-        out[name] = {"n": s["n"], "mean_r": round(mean, 4), "shrunk_r": round(shrunk, 4),
-                     "mult": PROBE if s["n"] >= MIN_N and shrunk < BLOCK_R else 1.0}
-    return {"built_ms": now_ms, "window_days": WINDOW_DAYS, "min_n": MIN_N, "prior": PRIOR,
-            "block_r": BLOCK_R, "probe": PROBE, "segments": out}
+    def score(field: str, min_n: int) -> dict:
+        groups: dict[str, dict] = {}
+        for t in trades.values():
+            if not t[field]:
+                continue
+            s = groups.setdefault(t[field], {"n": 0, "sum": 0.0})
+            s["n"] += 1
+            s["sum"] += sum(t["r"]) / len(t["r"])
+        out = {}
+        for name, s in sorted(groups.items()):
+            shrunk = s["sum"] / (s["n"] + PRIOR)
+            out[name] = {"n": s["n"], "mean_r": round(s["sum"] / s["n"], 4), "shrunk_r": round(shrunk, 4),
+                         "mult": PROBE if s["n"] >= min_n and shrunk < BLOCK_R else 1.0}
+        return out
+    return {"built_ms": now_ms, "window_days": WINDOW_DAYS, "min_n": MIN_N, "min_n_coin": MIN_N_COIN,
+            "prior": PRIOR, "block_r": BLOCK_R, "probe": PROBE,
+            "segments": score("seg", MIN_N), "coins": score("coin", MIN_N_COIN)}
 
 
 def refresh(trade_root: Path, path: Path | None = None, now_ms: int | None = None) -> dict:
@@ -97,7 +107,10 @@ def refresh(trade_root: Path, path: Path | None = None, now_ms: int | None = Non
     return model
 
 
-def multiplier(model: dict | None, kind: str, tf: str, side: str) -> float:
+def multiplier(model: dict | None, kind: str, tf: str, side: str, symbol: str = "") -> float:
+    """Пробный риск, если убыточен сетап или монета; иначе полный."""
     if not model:
         return 1.0
-    return float(((model.get("segments") or {}).get(segment(kind, tf, side)) or {}).get("mult", 1.0))
+    seg = float(((model.get("segments") or {}).get(segment(kind, tf, side)) or {}).get("mult", 1.0))
+    coin = float(((model.get("coins") or {}).get(symbol) or {}).get("mult", 1.0))
+    return min(seg, coin)

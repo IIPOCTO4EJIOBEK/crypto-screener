@@ -21,8 +21,9 @@ def journal(root, name, closes):
     c.commit(); c.close()
 
 
-def close(i, r_net, kind="bounce", tf="5m", side="long", ts=T0):
-    return dict(key=f"{kind}|{tf}|S{i}|{side}|1|attempt1", formation=kind, tf=tf, side=side, r_net=r_net, exit_ts=ts)
+def close(i, r_net, kind="bounce", tf="5m", side="long", ts=T0, symbol=None):
+    return dict(key=f"{kind}|{tf}|S{i}|{side}|1|attempt1", formation=kind, tf=tf, side=side, r_net=r_net, exit_ts=ts,
+                symbol=symbol or f"S{i}USDT")
 
 
 def test_убыточный_сегмент_пробный_риск_прибыльный_полный(tmp_path):
@@ -74,3 +75,18 @@ def test_без_флага_learn_множитель_не_действует(tmp_
     book, broker, ledger, st, data = setup(tmp_path)
     run(st, broker, ledger, data, [row(_learn_mult=0.25)], T0, Config())
     assert st.pos()[0].qty == pytest.approx(2.0)
+
+
+def test_убыточная_монета_пробный_риск_даже_в_хорошем_сетапе(tmp_path):
+    journal(tmp_path, "a", [close(i, -1.0, kind="retest", tf=["5m", "15m", "1h"][i % 3], symbol="METUSDT") for i in range(20)]
+            + [close(100 + i, 0.5, kind="retest") for i in range(40)])
+    m = learning.build(tmp_path, T0)
+    assert m["coins"]["METUSDT"]["mult"] == learning.PROBE
+    assert learning.multiplier(m, "retest", "5m", "long", "METUSDT") == learning.PROBE
+    assert learning.multiplier(m, "retest", "5m", "long", "LINKUSDT") == 1.0
+    assert learning.multiplier(m, "retest", "5m", "long") == 1.0
+
+
+def test_мало_сделок_по_монете_не_режет(tmp_path):
+    journal(tmp_path, "a", [close(i, -1.0, symbol="XUSDT") for i in range(learning.MIN_N_COIN - 1)])
+    assert learning.build(tmp_path, T0)["coins"]["XUSDT"]["mult"] == 1.0
