@@ -85,7 +85,9 @@ DEFAULT_MIN_VOLUME = "100m"
 STRUCT_TFS = ("5m", "15m", "1h")
 PAGES = (("screen", "screener.html", None),
          ("structures", "structures.html", STRUCT_TFS),
-         ("densities", "densities.html", ()))
+         ("densities", "densities.html", ()),
+         # таблица монет читает уже собранные плотности и структуры — последней
+         ("board", "board.html", ()))
 
 # Что кладём в плоскую папку предпросмотра: страницы контура плюс уже
 # собранные страницы тренда (они обновляются измерением, не кругом).
@@ -111,9 +113,9 @@ def _run(module: str, args: list[str]) -> tuple[bool, str]:
     cmd = [sys.executable, "-m", f"tools.live.{module}", *args]
     try:
         r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
-                           timeout=300)
+                           timeout=600 if module == "densities" else 300)
     except subprocess.TimeoutExpired:
-        return False, f"{module}: не уложился в 300 с"
+        return False, f"{module}: превышен тайм-аут сборки"
     if r.returncode != 0:
         tail = (r.stderr or r.stdout or "").strip().splitlines()
         return False, f"{module}: код {r.returncode}, {tail[-1] if tail else '—'}"
@@ -337,10 +339,22 @@ def main(argv: list[str] | None = None) -> int:
                   f"({type(e).__name__}), состав будет взят из файла среза")
     uni: dict | None = None
 
+    # Живые свечи для графиков главной — отдельный долгий процесс рядом с
+    # кругом (tools.live.klines): у браузера до Binance доступа может не быть
+    feed = None
+    feed_cmd = None
+    if not a.once and not fixed and a.exchange == "binance_futures":
+        feed_cmd = [sys.executable, "-X", "utf8", "-m", "tools.live.klines",
+                    "--out", str(out_dir / "kl"), "--universe", str(universe_path)]
+
     round_no = 0
     while True:
         round_no += 1
         errors: list[str] = []
+        if feed_cmd and (feed is None or feed.poll() is not None):
+            if feed is not None:
+                errors.append(f"свечи графиков: процесс упал (код {feed.returncode}), перезапущен")
+            feed = subprocess.Popen(feed_cmd, cwd=str(ROOT))
 
         if fixed:
             uni = None
