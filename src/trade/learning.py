@@ -96,7 +96,8 @@ def refresh(trade_root: Path, path: Path | None = None, now_ms: int | None = Non
         if now_ms - int(model.get("built_ms", 0)) < EVERY_MS:
             return model
     except Exception:                                       # noqa: BLE001
-        pass
+        model = None
+    prev = model
     model = build(trade_root, now_ms)
     try:
         tmp = path.with_name(path.name + ".tmp")
@@ -104,6 +105,12 @@ def refresh(trade_root: Path, path: Path | None = None, now_ms: int | None = Non
         os.replace(tmp, path)
     except OSError:
         pass
+    try:                                                    # страница learning.html — не мешает торговле, если упадёт
+        from tools.trade import learning_page
+        learning_page.record_changes(prev, model, Path(trade_root) / "learning-history.json")
+        learning_page.write(trade_root, model)
+    except Exception as exc:                                # noqa: BLE001
+        print("learning page:", type(exc).__name__, exc)
     return model
 
 

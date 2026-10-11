@@ -116,6 +116,13 @@ def build(root: Path, now: dt.datetime) -> str:
     parts += scr
     if daily:
         parts.append("Дневные трендовые боты:\n" + "\n".join(daily))
+    try:
+        from tools.trade.learning_page import line_for_report
+        learn = line_for_report(root)
+    except Exception:                                       # noqa: BLE001
+        learn = ""
+    if learn:
+        parts.append(learn)
     parts.append(f'<a href="{SITE}">Подробно на странице ботов</a>')
     return "\n\n".join(parts)
 
